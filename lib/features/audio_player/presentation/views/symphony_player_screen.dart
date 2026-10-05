@@ -535,7 +535,15 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
                   isCurrent: isCurrent,
                   onTap: () async {
                     try {
-                      await handler.playQueue(playlist.tracks, startIndex: index);
+                      if (isCurrent) {
+                        if (isPlaying) {
+                          await handler.pause();
+                        } else {
+                          await handler.play();
+                        }
+                      } else {
+                        await handler.playQueue(playlist.tracks, startIndex: index);
+                      }
                     } catch (e) {
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(

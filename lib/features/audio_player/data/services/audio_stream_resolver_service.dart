@@ -24,6 +24,21 @@ class AudioStreamResolverService {
   /// On Native, extracts on-device YouTube streams via `youtube_explode_dart`,
   /// falling back to the global CDN if YouTube blocks or restricts the device.
   Future<ResolvedAudioStream> resolveBestAudioStream(Track track) async {
+    // 0. Direct stream attached to track (Spotify preview, Deezer, Apple, Smart Mix)
+    if (track.streamUri != null) {
+      developer.log(
+        'Direct streamUri found on track: "${track.title}" -> ${track.streamUri}',
+        name: 'AudioStreamResolver',
+      );
+      return ResolvedAudioStream(
+        streamUri: track.streamUri!,
+        duration: track.expectedDuration ?? const Duration(seconds: 30),
+        bitrateKbps: 320,
+        format: track.streamUri!.path.endsWith('.m4a') ? 'aac' : 'mp3',
+        sourceVideoId: track.id,
+      );
+    }
+
     // 1. Web environment: Browser CORS requires CDN streaming endpoints
     if (kIsWeb) {
       developer.log('Web environment detected: routing to high-speed CDN audio stream', name: 'AudioStreamResolver');
@@ -91,35 +106,101 @@ class AudioStreamResolverService {
 
   /// Resolves an unauthenticated, zero-cost high-fidelity AAC stream via Apple CDN.
   Future<ResolvedAudioStream?> _resolveDirectCdnAudio(Track track) async {
-    final query = '${track.artist} ${track.title}'.trim();
-    final uri = Uri.parse(
-      'https://itunes.apple.com/search?term=${Uri.encodeComponent(query)}&media=music&entity=song&limit=3',
-    );
+    // Sanitize query components to maximize search hit-rates
+    final cleanTitle = track.title
+        .replaceAll(RegExp(r'\(feat\.[^)]*\)', caseSensitive: false), '')
+        .replaceAll(RegExp(r'\[feat\.[^\]]*\]', caseSensitive: false), '')
+        .replaceAll(RegExp(r'\(remix[^)]*\)', caseSensitive: false), '')
+        .replaceAll(RegExp(r'\(.*remaster.*?\)', caseSensitive: false), '')
+        .replaceAll(RegExp(r'- .*remaster.*', caseSensitive: false), '')
+        .replaceAll(RegExp(r'- .*version.*', caseSensitive: false), '')
+        .trim();
 
-    try {
-      final response = await _httpClient.get(uri).timeout(const Duration(seconds: 5));
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> data = jsonDecode(response.body) as Map<String, dynamic>;
-        final results = (data['results'] as List<dynamic>?) ?? [];
+    final cleanArtist = track.artist
+        .split(RegExp(r'[,/&]|ft\.|feat\.', caseSensitive: false))
+        .first
+        .trim();
 
-        for (final item in results) {
-          final previewUrl = item['previewUrl'] as String?;
-          if (previewUrl != null && previewUrl.isNotEmpty) {
-            final durationMs = item['trackTimeMillis'] as int? ?? 30000;
-            developer.log('Resolved CDN stream for: "$query" -> $previewUrl', name: 'AudioStreamResolver');
+    final queryVariations = [
+      '$cleanArtist $cleanTitle'.trim(),
+      cleanTitle,
+      '${track.artist} ${track.title}'.trim(),
+    ];
+
+    for (final query in queryVariations) {
+      if (query.isEmpty) continue;
+      final uri = Uri.parse(
+        'https://itunes.apple.com/search?term=${Uri.encodeComponent(query)}&media=music&entity=song&limit=10',
+      );
+
+      try {
+        final response = await _httpClient.get(uri).timeout(const Duration(seconds: 5));
+        if (response.statusCode == 200) {
+          final Map<String, dynamic> data = jsonDecode(response.body) as Map<String, dynamic>;
+          final results = (data['results'] as List<dynamic>?) ?? [];
+
+          Map<String, dynamic>? bestCandidate;
+          int highestScore = -999;
+
+          final targetTitleLower = cleanTitle.toLowerCase();
+          final targetArtistLower = cleanArtist.toLowerCase();
+
+          for (final item in results) {
+            if (item is! Map<String, dynamic>) continue;
+            final previewUrl = item['previewUrl'] as String?;
+            if (previewUrl == null || previewUrl.isEmpty) continue;
+
+            final itemTitle = (item['trackName'] as String? ?? '').toLowerCase();
+            final itemArtist = (item['artistName'] as String? ?? '').toLowerCase();
+
+            int score = 0;
+            if (itemTitle == targetTitleLower) {
+              score += 100;
+            } else if (itemTitle.contains(targetTitleLower) || targetTitleLower.contains(itemTitle)) {
+              score += 50;
+            }
+
+            if (itemArtist.contains(targetArtistLower)) {
+              score += 50;
+            }
+            if (itemArtist == targetArtistLower) {
+              score += 30;
+            }
+
+            // Penalize remixes, live, karaoke, cover, tribute unless specifically requested
+            if (itemTitle.contains('remix') && !targetTitleLower.contains('remix')) score -= 80;
+            if (itemTitle.contains('live') && !targetTitleLower.contains('live')) score -= 80;
+            if (itemTitle.contains('karaoke') || itemArtist.contains('karaoke')) score -= 200;
+            if (itemTitle.contains('tribute') || itemArtist.contains('tribute')) score -= 200;
+            if (itemTitle.contains('cover') || itemArtist.contains('cover')) score -= 200;
+            if (itemTitle.contains('instrumental') && !targetTitleLower.contains('instrumental')) score -= 100;
+
+            if (score > highestScore) {
+              highestScore = score;
+              bestCandidate = item;
+            }
+          }
+
+          if (bestCandidate != null && highestScore > 0) {
+            final previewUrl = bestCandidate['previewUrl'] as String;
+            final durationMs = bestCandidate['trackTimeMillis'] as int? ?? 30000;
+            developer.log(
+              'Selected best master match: "${bestCandidate['trackName']}" by "${bestCandidate['artistName']}" [score: $highestScore] -> $previewUrl',
+              name: 'AudioStreamResolver',
+            );
 
             return ResolvedAudioStream(
               streamUri: Uri.parse(previewUrl),
               duration: track.expectedDuration ?? Duration(milliseconds: durationMs),
               bitrateKbps: 256,
               format: 'aac',
-              sourceVideoId: 'itunes_cdn_${item['trackId'] ?? 0}',
+              sourceVideoId: 'itunes_cdn_${bestCandidate['trackId'] ?? 0}',
             );
           }
         }
+      } catch (e) {
+        developer.log('CDN resolution error for "$query": $e', name: 'AudioStreamResolver');
       }
-    } catch (e) {
-      developer.log('CDN resolution error for "$query": $e', name: 'AudioStreamResolver');
     }
 
     return null;

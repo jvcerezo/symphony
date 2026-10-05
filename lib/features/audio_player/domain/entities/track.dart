@@ -7,6 +7,7 @@ class Track {
   final String? album;
   final Duration? expectedDuration;
   final Uri? artworkUri;
+  final Uri? streamUri;
 
   const Track({
     required this.id,
@@ -15,6 +16,7 @@ class Track {
     this.album,
     this.expectedDuration,
     this.artworkUri,
+    this.streamUri,
   });
 
   MediaItem toMediaItem({required Duration actualDuration}) {
@@ -35,6 +37,7 @@ class Track {
     String? album,
     Duration? expectedDuration,
     Uri? artworkUri,
+    Uri? streamUri,
   }) {
     return Track(
       id: id ?? this.id,
@@ -43,9 +46,10 @@ class Track {
       album: album ?? this.album,
       expectedDuration: expectedDuration ?? this.expectedDuration,
       artworkUri: artworkUri ?? this.artworkUri,
+      streamUri: streamUri ?? this.streamUri,
     );
   }
 
   @override
-  String toString() => 'Track(id: $id, title: "$title", artist: "$artist")';
+  String toString() => 'Track(id: $id, title: "$title", artist: "$artist", hasStream: ${streamUri != null})';
 }

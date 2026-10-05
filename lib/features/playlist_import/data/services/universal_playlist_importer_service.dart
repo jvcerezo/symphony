@@ -98,6 +98,7 @@ class UniversalPlaylistImporterService {
           final artist = item['artist']?['name'] as String? ?? 'Unknown Artist';
           final durationSec = item['duration'] as int? ?? 0;
           final art = item['album']?['cover_xl'] as String? ?? item['album']?['cover_big'] as String?;
+          final previewUrl = item['preview'] as String?;
 
           tracks.add(
             Track(
@@ -107,6 +108,7 @@ class UniversalPlaylistImporterService {
               album: item['album']?['title'] as String? ?? title,
               expectedDuration: durationSec > 0 ? Duration(seconds: durationSec) : null,
               artworkUri: art != null ? Uri.tryParse(art) : null,
+              streamUri: previewUrl != null ? Uri.tryParse(previewUrl) : null,
             ),
           );
         }
@@ -266,6 +268,7 @@ class UniversalPlaylistImporterService {
           final durationMs = item['trackTimeMillis'] as int? ?? 0;
           final rawArt = item['artworkUrl100'] as String?;
           final highResArt = rawArt?.replaceAll(RegExp(r'\d+x\d+bb'), '1000x1000bb');
+          final previewUrl = item['previewUrl'] as String?;
 
           return Track(
             id: 'smart_${item['trackId'] ?? title}',
@@ -274,6 +277,7 @@ class UniversalPlaylistImporterService {
             album: album,
             expectedDuration: durationMs > 0 ? Duration(milliseconds: durationMs) : null,
             artworkUri: highResArt != null ? Uri.tryParse(highResArt) : null,
+            streamUri: previewUrl != null ? Uri.tryParse(previewUrl) : null,
           );
         }).toList();
 

@@ -166,6 +166,10 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
 
   Future<void> _loadAndPlayTrack(Track track) async {
     try {
+      // 1. MUST stop existing playback to reset browser HTML5 audio element
+      // and prevent "DOMException: The play() request was interrupted by a new load request"
+      await _player.stop();
+
       playbackState.add(
         playbackState.value.copyWith(
           processingState: AudioProcessingState.buffering,
@@ -225,19 +229,19 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> skipToNext() async {
-    if (currentIndex + 1 < _playlistQueue.length) {
-      final nextIdx = currentIndex + 1;
-      _currentIndexSubject.add(nextIdx);
-      await _loadAndPlayTrack(_playlistQueue[nextIdx]);
-    }
+    if (_playlistQueue.isEmpty) return;
+    final nextIdx = (currentIndex + 1) % _playlistQueue.length;
+    _currentIndexSubject.add(nextIdx);
+    await _loadAndPlayTrack(_playlistQueue[nextIdx]);
   }
 
   @override
   Future<void> skipToPrevious() async {
+    if (_playlistQueue.isEmpty) return;
     if (_player.position.inSeconds > 3) {
       await seek(Duration.zero);
-    } else if (currentIndex > 0) {
-      final prevIdx = currentIndex - 1;
+    } else {
+      final prevIdx = currentIndex > 0 ? currentIndex - 1 : _playlistQueue.length - 1;
       _currentIndexSubject.add(prevIdx);
       await _loadAndPlayTrack(_playlistQueue[prevIdx]);
     }

@@ -265,7 +265,18 @@ class _SearchViewState extends ConsumerState<SearchView> {
             ),
             const SizedBox(height: 12),
             InkWell(
-              onTap: () => handler.playQueue(tracks, startIndex: 0),
+              onTap: () {
+                final isTopCurrent = mediaItem?.title == topTrack.title && mediaItem?.artist == topTrack.artist;
+                if (isTopCurrent) {
+                  if (isPlaying) {
+                    handler.pause();
+                  } else {
+                    handler.play();
+                  }
+                } else {
+                  handler.playQueue(tracks, startIndex: 0);
+                }
+              },
               borderRadius: BorderRadius.circular(12),
               child: Container(
                 padding: const EdgeInsets.all(20),
@@ -352,7 +363,15 @@ class _SearchViewState extends ConsumerState<SearchView> {
                 isPlaying: isPlaying,
                 isCurrent: isCurrent,
                 onTap: () {
-                  handler.playQueue(tracks, startIndex: idx + 1);
+                  if (isCurrent) {
+                    if (isPlaying) {
+                      handler.pause();
+                    } else {
+                      handler.play();
+                    }
+                  } else {
+                    handler.playQueue(tracks, startIndex: idx + 1);
+                  }
                 },
               );
             }),

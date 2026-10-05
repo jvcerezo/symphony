@@ -36,6 +36,7 @@ class SearchService {
         final rawArt = item['artworkUrl100'] as String?;
         // Request ultra high resolution master artwork
         final highResArt = rawArt?.replaceAll(RegExp(r'\d+x\d+bb'), '1000x1000bb');
+        final previewUrl = item['previewUrl'] as String?;
 
         return Track(
           id: 'itunes_${item['trackId'] ?? title}',
@@ -44,6 +45,7 @@ class SearchService {
           album: album,
           expectedDuration: durationMs > 0 ? Duration(milliseconds: durationMs) : null,
           artworkUri: highResArt != null ? Uri.tryParse(highResArt) : null,
+          streamUri: previewUrl != null ? Uri.tryParse(previewUrl) : null,
         );
       }).toList();
     } catch (e, st) {

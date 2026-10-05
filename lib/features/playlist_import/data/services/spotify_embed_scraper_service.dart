@@ -150,6 +150,14 @@ class SpotifyEmbedScraperService {
             final durationMs = item['duration'] as int? ?? 0;
             final trackUriStr = item['uri'] as String? ?? 'spotify:track:$i';
 
+            // Extract direct stream preview if provided in Spotify embed JSON
+            String? previewUrl;
+            final audioPreview = item['audioPreview'];
+            if (audioPreview is Map) {
+              previewUrl = audioPreview['url'] as String?;
+            }
+            previewUrl ??= item['preview_url'] as String? ?? item['audio_preview_url'] as String?;
+
             // Distinct individual artwork: Do not duplicate playlist coverUrl to individual tracks!
             tracks.add(
               Track(
@@ -159,6 +167,7 @@ class SpotifyEmbedScraperService {
                 album: title,
                 expectedDuration: durationMs > 0 ? Duration(milliseconds: durationMs) : null,
                 artworkUri: null,
+                streamUri: previewUrl != null ? Uri.tryParse(previewUrl) : null,
               ),
             );
           }
@@ -207,6 +216,9 @@ class SpotifyEmbedScraperService {
           artworkUri: Uri.parse(
             'https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/2b/b9/fe/2bb9fef5-d7f3-8345-25a9-db0e79fde4e4/20UMGIM11048.rgb.jpg/600x600bb.jpg',
           ),
+          streamUri: Uri.parse(
+            'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/1d/44/0d/1d440dbc-9832-08e6-080d-aa1e1bacf40c/mzaf_3600642016947675074.plus.aac.p.m4a',
+          ),
         ),
         Track(
           id: 'tth_02',
@@ -216,6 +228,9 @@ class SpotifyEmbedScraperService {
           expectedDuration: const Duration(minutes: 3, seconds: 50),
           artworkUri: Uri.parse(
             'https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/5a/08/94/5a089454-e0e9-b541-6547-06399b109e9e/16UMGIM56476.rgb.jpg/600x600bb.jpg',
+          ),
+          streamUri: Uri.parse(
+            'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/11/71/d6/1171d6ad-3c96-e027-2af6-58028426588c/mzaf_15137631797407745471.plus.aac.p.m4a',
           ),
         ),
         Track(
@@ -227,6 +242,9 @@ class SpotifyEmbedScraperService {
           artworkUri: Uri.parse(
             'https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/49/3d/ab/493dab54-f920-9043-6181-809930f36894/19UMGIM68357.rgb.jpg/600x600bb.jpg',
           ),
+          streamUri: Uri.parse(
+            'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/44/af/81/44af8168-9609-1b85-5048-ada08dceacf3/mzaf_1341699644335558812.plus.aac.p.m4a',
+          ),
         ),
         Track(
           id: 'tth_04',
@@ -236,6 +254,9 @@ class SpotifyEmbedScraperService {
           expectedDuration: const Duration(minutes: 2, seconds: 47),
           artworkUri: Uri.parse(
             'https://is1-ssl.mzstatic.com/image/thumb/Music112/v4/31/f0/24/31f02477-8025-a6fa-c146-5e58cfad1bc3/886449984711.jpg/600x600bb.jpg',
+          ),
+          streamUri: Uri.parse(
+            'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/67/10/16/67101606-3869-ca44-6c03-e13d6322cb51/mzaf_1135399237022217274.plus.aac.p.m4a',
           ),
         ),
         Track(
@@ -247,6 +268,9 @@ class SpotifyEmbedScraperService {
           artworkUri: Uri.parse(
             'https://is1-ssl.mzstatic.com/image/thumb/Music113/v4/2e/d0/09/2ed0092f-ef64-9665-27a3-aa04c8fca3cf/196589561726.jpg/600x600bb.jpg',
           ),
+          streamUri: Uri.parse(
+            'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/68/9e/f7/689ef7fe-14fe-a846-c87f-7d3b2d6344b1/mzaf_4167137058064023087.plus.aac.p.m4a',
+          ),
         ),
         Track(
           id: 'tth_06',
@@ -256,6 +280,9 @@ class SpotifyEmbedScraperService {
           expectedDuration: const Duration(minutes: 3, seconds: 23),
           artworkUri: Uri.parse(
             'https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/a4/09/a5/a409a5cb-2292-9337-b648-842cefc3f9e9/190295286101.jpg/600x600bb.jpg',
+          ),
+          streamUri: Uri.parse(
+            'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/59/dc/4d/59dc4dda-93ff-8f1c-c536-f005f6ea6af5/mzaf_3066686759813252385.plus.aac.p.m4a',
           ),
         ),
         Track(
@@ -267,6 +294,9 @@ class SpotifyEmbedScraperService {
           artworkUri: Uri.parse(
             'https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/2b/b9/fe/2bb9fef5-d7f3-8345-25a9-db0e79fde4e4/20UMGIM11048.rgb.jpg/600x600bb.jpg',
           ),
+          streamUri: Uri.parse(
+            'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/8b/38/17/8b3817e4-c0e9-7e02-2654-3e2ecee93603/mzaf_18415642125637540903.plus.aac.p.m4a',
+          ),
         ),
         Track(
           id: 'tth_08',
@@ -276,6 +306,9 @@ class SpotifyEmbedScraperService {
           expectedDuration: const Duration(minutes: 3, seconds: 53),
           artworkUri: Uri.parse(
             'https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/4a/c3/05/4ac30560-60b8-c309-faee-a10c2c31e9c5/190295851286.jpg/600x600bb.jpg',
+          ),
+          streamUri: Uri.parse(
+            'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/44/c7/4f/44c74f0d-72dc-6143-d4d0-ba14d661ca0d/mzaf_9566898362556366703.plus.aac.p.m4a',
           ),
         ),
       ],

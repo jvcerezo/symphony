@@ -13,6 +13,7 @@ void main() {
         album: 'After Hours',
         expectedDuration: const Duration(seconds: 200),
         artworkUri: Uri.parse('https://example.com/cover.jpg'),
+        streamUri: Uri.parse('https://example.com/stream.mp3'),
       );
 
       final mediaItem = track.toMediaItem(actualDuration: const Duration(seconds: 202));
@@ -23,6 +24,11 @@ void main() {
       expect(mediaItem.album, equals('After Hours'));
       expect(mediaItem.duration, equals(const Duration(seconds: 202)));
       expect(mediaItem.artUri, equals(Uri.parse('https://example.com/cover.jpg')));
+      expect(track.streamUri, equals(Uri.parse('https://example.com/stream.mp3')));
+
+      final updated = track.copyWith(title: 'Save Your Tears');
+      expect(updated.title, equals('Save Your Tears'));
+      expect(updated.streamUri, equals(Uri.parse('https://example.com/stream.mp3')));
     });
   });
 
