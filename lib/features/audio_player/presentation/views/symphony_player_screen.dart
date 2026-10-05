@@ -5,6 +5,7 @@ import '../../../../core/theme/symphony_theme.dart';
 import '../../../metadata_search/presentation/views/search_view.dart';
 import '../../../playlist_import/domain/entities/spotify_playlist.dart';
 import '../controllers/audio_player_providers.dart';
+import '../controllers/offline_provider.dart';
 import '../widgets/bottom_player_bar.dart';
 import '../widgets/import_playlist_dialog.dart';
 import '../widgets/sidebar_nav.dart';
@@ -269,9 +270,13 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
     bool isDesktop,
   ) {
     final handler = ref.read(audioHandlerProvider);
+    final offlineState = ref.watch(offlineProvider);
+    final offlineNotifier = ref.read(offlineProvider.notifier);
 
     final isPlaylistActive = playlist.tracks.any((t) => t.title == mediaItem?.title && t.artist == mediaItem?.artist);
     final isThisPlaying = isPlaylistActive && isPlaying;
+    final isPlaylistDownloaded = offlineState.isPlaylistDownloaded(playlist);
+    final isPlaylistDownloading = offlineState.isPlaylistDownloading(playlist.id);
 
     return CustomScrollView(
       slivers: [
@@ -470,6 +475,51 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
                     ),
                     const SizedBox(width: 12),
                     IconButton(
+                      iconSize: 28,
+                      tooltip: isPlaylistDownloaded
+                          ? 'Playlist saved for offline playback'
+                          : isPlaylistDownloading
+                              ? 'Downloading playlist...'
+                              : 'Download playlist for offline listening',
+                      icon: isPlaylistDownloading
+                          ? const SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: SymphonyTheme.secondary,
+                              ),
+                            )
+                          : Icon(
+                              isPlaylistDownloaded ? Icons.download_done_rounded : Icons.arrow_circle_down_outlined,
+                              color: isPlaylistDownloaded ? SymphonyTheme.secondary : SymphonyTheme.textSecondary,
+                            ),
+                      onPressed: () async {
+                        if (isPlaylistDownloading) return;
+                        final messenger = ScaffoldMessenger.of(context);
+                        messenger.showSnackBar(
+                          SnackBar(
+                            backgroundColor: SymphonyTheme.card,
+                            content: Row(
+                              children: [
+                                const Icon(Icons.cloud_download, color: SymphonyTheme.secondary, size: 20),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    'Downloading "${playlist.title}" (${playlist.tracks.length} songs) for offline listening...',
+                                    style: const TextStyle(color: Colors.white),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            duration: const Duration(seconds: 4),
+                          ),
+                        );
+                        await offlineNotifier.downloadPlaylist(playlist);
+                      },
+                    ),
+                    const SizedBox(width: 12),
+                    IconButton(
                       iconSize: 24,
                       icon: const Icon(Icons.more_horiz, color: SymphonyTheme.textSecondary),
                       onPressed: () {},
@@ -531,6 +581,8 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
               (_, index) {
                 final track = playlist.tracks[index];
                 final isCurrent = mediaItem?.title == track.title && mediaItem?.artist == track.artist;
+                final isDownloaded = offlineState.isTrackDownloaded(track);
+                final isDownloading = offlineState.isTrackDownloading(track.id);
 
                 return SpotifyTrackRow(
                   index: index,
@@ -538,6 +590,28 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
                   isPlaying: isPlaying && !isBuffering,
                   isBuffering: isCurrent && isBuffering,
                   isCurrent: isCurrent,
+                  isDownloaded: isDownloaded,
+                  isDownloading: isDownloading,
+                  onDownload: () async {
+                    final messenger = ScaffoldMessenger.of(context);
+                    messenger.showSnackBar(
+                      SnackBar(
+                        backgroundColor: SymphonyTheme.card,
+                        content: Text('Downloading "${track.title}" for offline playback...'),
+                        duration: const Duration(seconds: 2),
+                      ),
+                    );
+                    final ok = await offlineNotifier.downloadTrack(track);
+                    if (ok && mounted) {
+                      messenger.showSnackBar(
+                        SnackBar(
+                          backgroundColor: SymphonyTheme.card,
+                          content: Text('Saved "${track.title}" offline!'),
+                          duration: const Duration(seconds: 2),
+                        ),
+                      );
+                    }
+                  },
                   onTap: () async {
                     try {
                       if (isCurrent) {

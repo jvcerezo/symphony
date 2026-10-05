@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/symphony_theme.dart';
 import '../../../audio_player/domain/entities/track.dart';
 import '../../../audio_player/presentation/controllers/audio_player_providers.dart';
+import '../../../audio_player/presentation/controllers/offline_provider.dart';
 import '../../../audio_player/presentation/widgets/symphony_artwork.dart';
 import '../../../audio_player/presentation/widgets/spotify_track_row.dart';
 
@@ -241,6 +242,8 @@ class _SearchViewState extends ConsumerState<SearchView> {
         final topTrack = tracks.first;
         final remainingTracks = tracks.length > 1 ? tracks.sublist(1) : <Track>[];
         final handler = ref.read(audioHandlerProvider);
+        final offlineState = ref.watch(offlineProvider);
+        final offlineNotifier = ref.read(offlineProvider.notifier);
 
         return ListView(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
@@ -361,6 +364,8 @@ class _SearchViewState extends ConsumerState<SearchView> {
             ...List.generate(remainingTracks.length, (idx) {
               final track = remainingTracks[idx];
               final isCurrent = mediaItem?.title == track.title && mediaItem?.artist == track.artist;
+              final isDownloaded = offlineState.isTrackDownloaded(track);
+              final isDownloading = offlineState.isTrackDownloading(track.id);
 
               return SpotifyTrackRow(
                 index: idx + 1,
@@ -368,6 +373,28 @@ class _SearchViewState extends ConsumerState<SearchView> {
                 isPlaying: isPlaying && !isBuffering,
                 isBuffering: isCurrent && isBuffering,
                 isCurrent: isCurrent,
+                isDownloaded: isDownloaded,
+                isDownloading: isDownloading,
+                onDownload: () async {
+                  final messenger = ScaffoldMessenger.of(context);
+                  messenger.showSnackBar(
+                    SnackBar(
+                      backgroundColor: SymphonyTheme.card,
+                      content: Text('Downloading "${track.title}" for offline playback...'),
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                  final ok = await offlineNotifier.downloadTrack(track);
+                  if (ok && mounted) {
+                    messenger.showSnackBar(
+                      SnackBar(
+                        backgroundColor: SymphonyTheme.card,
+                        content: Text('Saved "${track.title}" offline!'),
+                        duration: const Duration(seconds: 2),
+                      ),
+                    );
+                  }
+                },
                 onTap: () {
                   if (isCurrent) {
                     if (isPlaying) {

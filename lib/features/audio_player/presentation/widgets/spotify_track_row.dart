@@ -10,6 +10,9 @@ class SpotifyTrackRow extends StatefulWidget {
   final bool isPlaying;
   final bool isCurrent;
   final bool isBuffering;
+  final bool isDownloaded;
+  final bool isDownloading;
+  final VoidCallback? onDownload;
   final VoidCallback onTap;
 
   const SpotifyTrackRow({
@@ -19,6 +22,9 @@ class SpotifyTrackRow extends StatefulWidget {
     required this.isPlaying,
     required this.isCurrent,
     this.isBuffering = false,
+    this.isDownloaded = false,
+    this.isDownloading = false,
+    this.onDownload,
     required this.onTap,
   });
 
@@ -129,7 +135,38 @@ class _SpotifyTrackRowState extends State<SpotifyTrackRow> {
                   setState(() => _isLiked = !_isLiked);
                 },
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 6),
+              // Offline Download Indicator / Button
+              if (widget.isDownloading)
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: SymphonyTheme.secondary,
+                  ),
+                )
+              else if (widget.isDownloaded)
+                const Tooltip(
+                  message: 'Saved offline (no internet needed)',
+                  child: Icon(
+                    Icons.check_circle,
+                    size: 16,
+                    color: SymphonyTheme.secondary,
+                  ),
+                )
+              else if (_isHovered && widget.onDownload != null)
+                IconButton(
+                  iconSize: 18,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                  tooltip: 'Download track offline',
+                  icon: const Icon(Icons.arrow_circle_down_outlined, color: SymphonyTheme.textSecondary),
+                  onPressed: widget.onDownload,
+                )
+              else
+                const SizedBox(width: 16),
+              const SizedBox(width: 10),
               // Duration
               Text(
                 _formatDuration(track.expectedDuration ?? Duration.zero),

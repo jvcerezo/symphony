@@ -5,10 +5,55 @@ import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
 final Directory _cacheDir = Directory('.symphony_cache');
 final File _playlistsFile = File('.symphony_cache/playlists.json');
+final File _resolveIndexFile = File('.symphony_cache/resolve_index.json');
 final Map<String, Map<String, dynamic>> _resolveCache = {};
 final Map<String, String> _remoteUrlCache = {};
 final _yt = YoutubeExplode();
 final _httpClient = HttpClient();
+
+String _normalizeKey(String s) {
+  return s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9 ]'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+}
+
+Future<void> _loadResolveIndex() async {
+  if (await _resolveIndexFile.exists()) {
+    try {
+      final content = await _resolveIndexFile.readAsString();
+      final decoded = jsonDecode(content) as Map<String, dynamic>;
+      for (final entry in decoded.entries) {
+        if (entry.value is Map<String, dynamic>) {
+          _resolveCache[entry.key] = entry.value as Map<String, dynamic>;
+        }
+      }
+      print('Loaded ${_resolveCache.length} track mappings from resolve index.');
+    } catch (e) {
+      print('Error reading resolve index: $e');
+    }
+  }
+}
+
+void _saveResolveEntry(String primaryKey, Map<String, dynamic> data, {String? artist, String? title, String? trackId}) {
+  _resolveCache[primaryKey] = data;
+  final vid = data['videoId'] as String?;
+  if (vid != null) {
+    _resolveCache['vid_$vid'] = data;
+    _resolveCache[vid] = data;
+  }
+  if (trackId != null && trackId.isNotEmpty) {
+    _resolveCache['track_$trackId'] = data;
+    _resolveCache[trackId] = data;
+  }
+  if (artist != null && title != null && artist.isNotEmpty && title.isNotEmpty) {
+    final norm = '${_normalizeKey(artist)} - ${_normalizeKey(title)}';
+    _resolveCache[norm] = data;
+    _resolveCache['${artist.toLowerCase()} - ${title.toLowerCase()}'] = data;
+  }
+  try {
+    _resolveIndexFile.writeAsStringSync(jsonEncode(_resolveCache));
+  } catch (e) {
+    print('Error persisting resolve index: $e');
+  }
+}
 
 Future<void> main() async {
   final port = 8080;
@@ -22,6 +67,8 @@ Future<void> main() async {
   if (!await _cacheDir.exists()) {
     await _cacheDir.create(recursive: true);
   }
+
+  await _loadResolveIndex();
 
   final server = await HttpServer.bind(InternetAddress.anyIPv4, port);
   print('Symphony Full-Track Offline Server running on http://localhost:$port');
@@ -77,7 +124,19 @@ Future<void> _handleRequest(HttpRequest request, Directory webDir) async {
     return;
   }
 
-  // 5. Static files from build/web with SPA routing
+  // 5. Offline Status Endpoint: /api/offline/status?ids=id1,id2
+  if (uri.path == '/api/offline/status') {
+    await _handleOfflineStatus(request);
+    return;
+  }
+
+  // 6. Explicit Track/Playlist Download Endpoint: /api/offline/download
+  if (uri.path == '/api/offline/download') {
+    await _handleExplicitDownload(request);
+    return;
+  }
+
+  // 7. Static files from build/web with SPA routing
   String filePath = uri.path;
   if (filePath == '/' || filePath.isEmpty) {
     filePath = '/index.html';
@@ -106,14 +165,20 @@ Future<void> _handleRequest(HttpRequest request, Directory webDir) async {
 Future<void> _handleResolve(HttpRequest request) async {
   final uri = request.uri;
   final directVideoId = uri.queryParameters['videoId'];
+  final artist = uri.queryParameters['artist'] ?? '';
+  final title = uri.queryParameters['title'] ?? '';
+  final trackId = uri.queryParameters['id'] ?? uri.queryParameters['trackId'];
   final query = uri.queryParameters['q'] ??
-      '${uri.queryParameters['artist'] ?? ''} - ${uri.queryParameters['title'] ?? ''} official audio';
+      '${artist.isNotEmpty ? "$artist - " : ""}$title official audio';
   final cleanQuery = query.trim();
   final expectedDurationMs = int.tryParse(uri.queryParameters['durationMs'] ?? '');
 
   final cacheKey = directVideoId != null ? 'vid_$directVideoId' : cleanQuery;
+  final normKey = (artist.isNotEmpty && title.isNotEmpty)
+      ? '${_normalizeKey(artist)} - ${_normalizeKey(title)}'
+      : _normalizeKey(cleanQuery);
 
-  if (cacheKey.isEmpty) {
+  if (cacheKey.isEmpty && normKey.isEmpty) {
     request.response.statusCode = HttpStatus.badRequest;
     request.response.headers.contentType = ContentType.json;
     request.response.write(jsonEncode({'error': 'Missing query parameter q or videoId'}));
@@ -121,9 +186,14 @@ Future<void> _handleResolve(HttpRequest request) async {
     return;
   }
 
-  if (_resolveCache.containsKey(cacheKey)) {
+  // 1. Check in-memory / persistent resolve cache
+  Map<String, dynamic>? cachedData = _resolveCache[cacheKey] ??
+      _resolveCache[normKey] ??
+      (trackId != null ? (_resolveCache['track_$trackId'] ?? _resolveCache[trackId]) : null);
+
+  if (cachedData != null) {
     request.response.headers.contentType = ContentType.json;
-    request.response.write(jsonEncode(_resolveCache[cacheKey]));
+    request.response.write(jsonEncode(cachedData));
     await request.response.close();
     return;
   }
@@ -131,27 +201,51 @@ Future<void> _handleResolve(HttpRequest request) async {
   try {
     String? resolvedVideoId = directVideoId;
     int durationMs = expectedDurationMs ?? 200000;
-    String videoTitle = 'Audio Track';
+    String videoTitle = title.isNotEmpty ? '$artist - $title' : 'Audio Track';
 
     if (resolvedVideoId == null || resolvedVideoId.isEmpty) {
-      final searchResults = await _yt.search.search(cleanQuery);
-      if (searchResults.isNotEmpty) {
-        final candidates = searchResults.where((v) => !v.isLive).take(5).toList();
-        var best = candidates.first;
+      try {
+        final searchResults = await _yt.search.search(cleanQuery);
+        if (searchResults.isNotEmpty) {
+          final candidates = searchResults.where((v) => !v.isLive).take(5).toList();
+          var best = candidates.first;
 
-        for (final c in candidates) {
-          if (expectedDurationMs != null && c.duration != null) {
-            final delta = (c.duration!.inMilliseconds - expectedDurationMs).abs();
-            if (delta < 45000) {
-              best = c;
-              break;
+          for (final c in candidates) {
+            if (expectedDurationMs != null && c.duration != null) {
+              final delta = (c.duration!.inMilliseconds - expectedDurationMs).abs();
+              if (delta < 45000) {
+                best = c;
+                break;
+              }
+            }
+          }
+
+          resolvedVideoId = best.id.value;
+          durationMs = best.duration?.inMilliseconds ?? expectedDurationMs ?? 200000;
+          videoTitle = best.title;
+        }
+      } catch (searchError) {
+        print('YouTube search error (offline?): $searchError');
+        // Offline recovery: search for any entry in _resolveCache matching artist or title
+        for (final entry in _resolveCache.values) {
+          final eTitle = (entry['title'] as String? ?? '').toLowerCase();
+          final eArtist = (entry['artist'] as String? ?? '').toLowerCase();
+          final tLower = title.toLowerCase();
+          final aLower = artist.toLowerCase();
+          if ((tLower.isNotEmpty && eTitle.contains(tLower)) ||
+              (aLower.isNotEmpty && eArtist.contains(aLower))) {
+            final vid = entry['videoId'] as String?;
+            if (vid != null) {
+              final cachedFile = File('${_cacheDir.path}/audio_$vid.webm');
+              if (cachedFile.existsSync() && cachedFile.lengthSync() > 50000) {
+                resolvedVideoId = vid;
+                durationMs = entry['durationMs'] as int? ?? 200000;
+                videoTitle = entry['title'] as String? ?? videoTitle;
+                break;
+              }
             }
           }
         }
-
-        resolvedVideoId = best.id.value;
-        durationMs = best.duration?.inMilliseconds ?? expectedDurationMs ?? 200000;
-        videoTitle = best.title;
       }
     }
 
@@ -164,10 +258,11 @@ Future<void> _handleResolve(HttpRequest request) async {
         'format': 'webm',
         'videoId': resolvedVideoId,
         'title': videoTitle,
+        'artist': artist,
+        if (trackId != null) 'trackId': trackId,
       };
 
-      if (_resolveCache.length > 300) _resolveCache.clear();
-      _resolveCache[cacheKey] = data;
+      _saveResolveEntry(cacheKey, data, artist: artist, title: title, trackId: trackId);
       print('Resolved: "$videoTitle" [${durationMs ~/ 1000}s] -> $streamProxyUrl');
 
       request.response.headers.contentType = ContentType.json;
@@ -311,6 +406,223 @@ Future<void> _streamLocalFile(HttpRequest request, File file) async {
     request.response.contentLength = totalSize;
     await file.openRead().pipe(request.response);
   }
+}
+
+Future<void> _handleOfflineStatus(HttpRequest request) async {
+  request.response.headers.contentType = ContentType.json;
+  final idsParam = request.uri.queryParameters['ids'];
+
+  if (idsParam == null || idsParam.isEmpty) {
+    final cachedVideoIds = <String>[];
+    if (await _cacheDir.exists()) {
+      for (final entity in _cacheDir.listSync()) {
+        if (entity is File &&
+            entity.path.contains('audio_') &&
+            entity.path.endsWith('.webm') &&
+            entity.lengthSync() > 50000) {
+          final base = entity.uri.pathSegments.last;
+          final vid = base.replaceFirst('audio_', '').replaceFirst('.webm', '');
+          cachedVideoIds.add(vid);
+        }
+      }
+    }
+
+    final cachedKeys = <String>[];
+    for (final entry in _resolveCache.entries) {
+      final vid = entry.value['videoId'] as String?;
+      if (vid != null && cachedVideoIds.contains(vid)) {
+        cachedKeys.add(entry.key);
+      }
+    }
+
+    request.response.write(jsonEncode({
+      'cachedVideoIds': cachedVideoIds,
+      'cachedKeys': cachedKeys,
+    }));
+    await request.response.close();
+    return;
+  }
+
+  final ids = idsParam.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+  final statusMap = <String, bool>{};
+
+  for (final id in ids) {
+    bool isCached = false;
+    final directFile = File('${_cacheDir.path}/audio_$id.webm');
+    if (directFile.existsSync() && directFile.lengthSync() > 50000) {
+      isCached = true;
+    } else {
+      final entry = _resolveCache[id] ??
+          _resolveCache['track_$id'] ??
+          _resolveCache['vid_$id'] ??
+          _resolveCache[_normalizeKey(id)];
+      if (entry != null) {
+        final vid = entry['videoId'] as String?;
+        if (vid != null) {
+          final f = File('${_cacheDir.path}/audio_$vid.webm');
+          if (f.existsSync() && f.lengthSync() > 50000) {
+            isCached = true;
+          }
+        }
+      }
+    }
+    statusMap[id] = isCached;
+  }
+
+  request.response.write(jsonEncode(statusMap));
+  await request.response.close();
+}
+
+Future<void> _handleExplicitDownload(HttpRequest request) async {
+  request.response.headers.contentType = ContentType.json;
+  try {
+    final body = await utf8.decodeStream(request);
+    final data = jsonDecode(body) as Map<String, dynamic>;
+
+    // 1. Single track download by videoId
+    if (data.containsKey('videoId')) {
+      final videoId = data['videoId'] as String;
+      final file = File('${_cacheDir.path}/audio_$videoId.webm');
+
+      if (await file.exists() && await file.length() > 50000) {
+        request.response.write(jsonEncode({'success': true, 'videoId': videoId, 'alreadyCached': true}));
+        await request.response.close();
+        return;
+      }
+
+      final success = await _downloadTrackToDisk(videoId);
+      request.response.write(jsonEncode({'success': success, 'videoId': videoId}));
+      await request.response.close();
+      return;
+    }
+
+    // 2. Single track download by track object
+    if (data.containsKey('track')) {
+      final track = data['track'] as Map<String, dynamic>;
+      final videoId = await _resolveAndDownloadSingleTrack(track);
+      request.response.write(jsonEncode({'success': videoId != null, 'videoId': videoId}));
+      await request.response.close();
+      return;
+    }
+
+    // 3. Playlist / batch tracks download
+    if (data.containsKey('tracks')) {
+      final tracks = data['tracks'] as List<dynamic>;
+      _batchDownloadTracks(tracks);
+      request.response.write(jsonEncode({
+        'success': true,
+        'message': 'Downloading ${tracks.length} tracks for offline playback in background',
+        'count': tracks.length,
+      }));
+      await request.response.close();
+      return;
+    }
+
+    request.response.statusCode = HttpStatus.badRequest;
+    request.response.write(jsonEncode({'error': 'Missing videoId, track, or tracks array'}));
+    await request.response.close();
+  } catch (e) {
+    request.response.statusCode = HttpStatus.internalServerError;
+    request.response.write(jsonEncode({'error': e.toString()}));
+    await request.response.close();
+  }
+}
+
+Future<String?> _resolveAndDownloadSingleTrack(Map<String, dynamic> track) async {
+  final artist = track['artist'] as String? ?? '';
+  final title = track['title'] as String? ?? '';
+  final trackId = track['id'] as String? ?? '';
+  final durationMs = track['durationMs'] as int? ?? 200000;
+
+  try {
+    final normKey = '${_normalizeKey(artist)} - ${_normalizeKey(title)}';
+    String? videoId;
+    if (_resolveCache.containsKey(normKey)) {
+      videoId = _resolveCache[normKey]!['videoId'] as String?;
+    } else if (trackId.isNotEmpty && _resolveCache.containsKey('track_$trackId')) {
+      videoId = _resolveCache['track_$trackId']!['videoId'] as String?;
+    }
+
+    if (videoId == null || videoId.isEmpty) {
+      final query = '$artist - $title official audio';
+      final searchResults = await _yt.search.search(query);
+      if (searchResults.isNotEmpty) {
+        final video = searchResults.firstWhere((v) => !v.isLive, orElse: () => searchResults.first);
+        videoId = video.id.value;
+      }
+    }
+
+    if (videoId != null && videoId.isNotEmpty) {
+      final entryData = {
+        'streamUrl': '/api/stream?videoId=$videoId',
+        'durationMs': durationMs,
+        'bitrate': 160,
+        'format': 'webm',
+        'videoId': videoId,
+        'title': title,
+        'artist': artist,
+        if (trackId.isNotEmpty) 'trackId': trackId,
+      };
+      _saveResolveEntry('$artist - $title official audio', entryData, artist: artist, title: title, trackId: trackId);
+      final ok = await _downloadTrackToDisk(videoId);
+      return ok ? videoId : null;
+    }
+  } catch (e) {
+    print('Failed to resolve and download track "$title" by "$artist": $e');
+  }
+  return null;
+}
+
+Future<bool> _downloadTrackToDisk(String videoId) async {
+  final targetFile = File('${_cacheDir.path}/audio_$videoId.webm');
+  if (await targetFile.exists() && await targetFile.length() > 50000) {
+    return true;
+  }
+
+  try {
+    String? streamUrl = _remoteUrlCache[videoId];
+    if (streamUrl == null) {
+      final result = await Process.run('python', [
+        '-m',
+        'yt_dlp',
+        '-f',
+        'ba',
+        '-g',
+        'https://www.youtube.com/watch?v=$videoId',
+      ]);
+
+      if (result.exitCode == 0) {
+        final lines = (result.stdout as String).trim().split('\n');
+        streamUrl = lines.last.trim();
+        _remoteUrlCache[videoId] = streamUrl;
+      }
+    }
+
+    if (streamUrl != null && streamUrl.startsWith('http')) {
+      final req = await _httpClient.getUrl(Uri.parse(streamUrl));
+      req.headers.set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+      final res = await req.close();
+      if (res.statusCode == 200 || res.statusCode == 206) {
+        final sink = targetFile.openWrite();
+        await res.pipe(sink);
+        print('Downloaded and cached: ${targetFile.path} (${await targetFile.length()} bytes)');
+        return true;
+      }
+    }
+  } catch (e) {
+    print('Track download error for $videoId: $e');
+  }
+  return false;
+}
+
+void _batchDownloadTracks(List<dynamic> tracks) async {
+  print('Starting batch playlist download of ${tracks.length} tracks...');
+  for (final track in tracks) {
+    if (track is Map<String, dynamic>) {
+      await _resolveAndDownloadSingleTrack(track);
+    }
+  }
+  print('Finished batch playlist download of ${tracks.length} tracks!');
 }
 
 Future<void> _handlePlaylists(HttpRequest request) async {
