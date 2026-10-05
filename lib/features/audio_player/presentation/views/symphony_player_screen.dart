@@ -411,8 +411,19 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
                       child: IconButton(
                         iconSize: 30,
                         icon: const Icon(Icons.play_arrow, color: Colors.white),
-                        onPressed: () {
-                          handler.playQueue(playlist.tracks, startIndex: 0);
+                        onPressed: () async {
+                          try {
+                            await handler.playQueue(playlist.tracks, startIndex: 0);
+                          } catch (e) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  backgroundColor: SymphonyTheme.card,
+                                  content: Text('Playback error: $e', style: const TextStyle(color: Colors.redAccent)),
+                                ),
+                              );
+                            }
+                          }
                         },
                       ),
                     ),
@@ -482,7 +493,7 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
           ),
           sliver: SliverList(
             delegate: SliverChildBuilderDelegate(
-              (context, index) {
+              (_, index) {
                 final track = playlist.tracks[index];
                 final isCurrent = mediaItem?.title == track.title && mediaItem?.artist == track.artist;
 
@@ -491,8 +502,19 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
                   track: track,
                   isPlaying: isPlaying,
                   isCurrent: isCurrent,
-                  onTap: () {
-                    handler.playQueue(playlist.tracks, startIndex: index);
+                  onTap: () async {
+                    try {
+                      await handler.playQueue(playlist.tracks, startIndex: index);
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            backgroundColor: SymphonyTheme.card,
+                            content: Text('Playback error: $e', style: const TextStyle(color: Colors.redAccent)),
+                          ),
+                        );
+                      }
+                    }
                   },
                 );
               },

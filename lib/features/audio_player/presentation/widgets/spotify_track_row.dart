@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/symphony_theme.dart';
 import '../../domain/entities/track.dart';
 import 'animated_equalizer.dart';
+import 'symphony_artwork.dart';
 
 class SpotifyTrackRow extends StatefulWidget {
   final int index;
@@ -69,17 +70,10 @@ class _SpotifyTrackRowState extends State<SpotifyTrackRow> {
               ),
               const SizedBox(width: 12),
               // Artwork Thumbnail
-              ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: track.artworkUri != null
-                    ? Image.network(
-                        track.artworkUri.toString(),
-                        width: 44,
-                        height: 44,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) => _buildFallbackThumbnail(),
-                      )
-                    : _buildFallbackThumbnail(),
+              SymphonyArtwork(
+                track: track,
+                size: 44,
+                borderRadius: 4,
               ),
               const SizedBox(width: 16),
               // Title & Artist
@@ -135,15 +129,6 @@ class _SpotifyTrackRowState extends State<SpotifyTrackRow> {
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildFallbackThumbnail() {
-    return Container(
-      width: 44,
-      height: 44,
-      color: SymphonyTheme.card,
-      child: const Icon(Icons.music_note, color: SymphonyTheme.textMuted, size: 22),
     );
   }
 

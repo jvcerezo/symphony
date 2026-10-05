@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/symphony_theme.dart';
 import '../controllers/audio_player_providers.dart';
 import 'animated_equalizer.dart';
+import 'symphony_artwork.dart';
 
 class BottomPlayerBar extends ConsumerStatefulWidget {
   const BottomPlayerBar({super.key});
@@ -61,32 +62,11 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
           flex: 3,
           child: Row(
             children: [
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(6),
-                  boxShadow: isPlaying
-                      ? [
-                          BoxShadow(
-                            color: SymphonyTheme.primary.withAlpha(140),
-                            blurRadius: 14,
-                            spreadRadius: 1,
-                          ),
-                        ]
-                      : [],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: mediaItem.artUri != null
-                      ? Image.network(
-                          mediaItem.artUri.toString(),
-                          width: 56,
-                          height: 56,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) => _buildFallbackArt(),
-                        )
-                      : _buildFallbackArt(),
-                ),
+              SymphonyArtwork(
+                artworkUri: mediaItem.artUri,
+                size: 56,
+                borderRadius: 6,
+                hasGlow: isPlaying,
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -326,17 +306,10 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
       children: [
         Row(
           children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: mediaItem.artUri != null
-                  ? Image.network(
-                      mediaItem.artUri.toString(),
-                      width: 44,
-                      height: 44,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) => _buildFallbackArt(),
-                    )
-                  : _buildFallbackArt(),
+            SymphonyArtwork(
+              artworkUri: mediaItem.artUri,
+              size: 44,
+              borderRadius: 6,
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -423,15 +396,6 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
           },
         ),
       ],
-    );
-  }
-
-  Widget _buildFallbackArt() {
-    return Container(
-      width: 56,
-      height: 56,
-      color: SymphonyTheme.card,
-      child: const Icon(Icons.music_note, color: SymphonyTheme.textMuted),
     );
   }
 

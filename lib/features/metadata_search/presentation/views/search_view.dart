@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/symphony_theme.dart';
 import '../../../audio_player/domain/entities/track.dart';
 import '../../../audio_player/presentation/controllers/audio_player_providers.dart';
+import '../../../audio_player/presentation/widgets/symphony_artwork.dart';
 import '../../../audio_player/presentation/widgets/spotify_track_row.dart';
 
 class SearchView extends ConsumerStatefulWidget {
@@ -216,16 +217,10 @@ class _SearchViewState extends ConsumerState<SearchView> {
                 ),
                 child: Row(
                   children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: topTrack.artworkUri != null
-                          ? Image.network(
-                              topTrack.artworkUri.toString(),
-                              width: 80,
-                              height: 80,
-                              fit: BoxFit.cover,
-                            )
-                          : Container(width: 80, height: 80, color: SymphonyTheme.surface),
+                    SymphonyArtwork(
+                      track: topTrack,
+                      size: 80,
+                      borderRadius: 8,
                     ),
                     const SizedBox(width: 20),
                     Expanded(

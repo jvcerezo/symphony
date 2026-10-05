@@ -162,6 +162,13 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
 
   Future<void> _loadAndPlayTrack(Track track) async {
     try {
+      playbackState.add(
+        playbackState.value.copyWith(
+          processingState: AudioProcessingState.buffering,
+          playing: true,
+        ),
+      );
+
       final streamInfo = await _streamResolver.resolveBestAudioStream(track);
       final item = track.toMediaItem(actualDuration: streamInfo.duration);
       mediaItem.add(item);
@@ -176,6 +183,12 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
       );
     } catch (e, st) {
       developer.log('Playback start failure', error: e, stackTrace: st, name: 'AudioHandler');
+      playbackState.add(
+        playbackState.value.copyWith(
+          processingState: AudioProcessingState.idle,
+          playing: false,
+        ),
+      );
       if (e is AudioStreamResolutionException) rethrow;
       throw PlaybackInitializationException('Failed to play "${track.title}"', e);
     }
