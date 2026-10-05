@@ -41,7 +41,7 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
     final isMobile = screenWidth < 750;
 
     return Container(
-      height: isMobile ? 64 : 76,
+      height: isMobile ? 68 : 76,
       margin: isMobile ? const EdgeInsets.fromLTRB(8, 0, 8, 6) : EdgeInsets.zero,
       padding: EdgeInsets.symmetric(horizontal: isMobile ? 10 : 16, vertical: isMobile ? 6 : 0),
       decoration: BoxDecoration(

@@ -29,7 +29,7 @@ class AudioStreamResolverService {
     if (track.id.startsWith('yt_')) {
       final videoId = track.id.replaceFirst('yt_', '');
       if (kIsWeb) {
-        final serverResolved = await _resolveViaWebServer(track, videoId: videoId);
+        final serverResolved = await resolveViaWebServer(track, videoId: videoId);
         if (serverResolved != null) return serverResolved;
       } else {
         try {
@@ -48,14 +48,16 @@ class AudioStreamResolverService {
             );
           }
         } catch (e) {
-          developer.log('Direct YouTube video extraction failed: $e', name: 'AudioStreamResolver');
+          developer.log('Direct YouTube video extraction failed: $e. Falling back to server resolver.', name: 'AudioStreamResolver');
+          final serverResolved = await resolveViaWebServer(track, videoId: videoId);
+          if (serverResolved != null) return serverResolved;
         }
       }
     }
 
     // 2. Full YouTube audio stream extraction (Plays complete 3-4 min master from 0:00:00 intro to end)
     if (kIsWeb) {
-      final serverResolved = await _resolveViaWebServer(track);
+      final serverResolved = await resolveViaWebServer(track);
       if (serverResolved != null) {
         return serverResolved;
       }
@@ -133,6 +135,14 @@ class AudioStreamResolverService {
       } catch (e) {
         developer.log('YouTube on-device extraction failed: $e. Falling back to resilient streams.', name: 'AudioStreamResolver');
       }
+
+      // Try server resolve if on-device search was unable to produce a playable audio stream
+      try {
+        final serverResolved = await resolveViaWebServer(track);
+        if (serverResolved != null) {
+          return serverResolved;
+        }
+      } catch (_) {}
     }
 
     // 3. Direct stream attached to track (if provided and full audio)
@@ -163,7 +173,7 @@ class AudioStreamResolverService {
 
   /// Queries the Symphony server's `/api/resolve` endpoint on Web to extract
   /// full-length YouTube audio stream proxies without 403 or CORS restrictions.
-  Future<ResolvedAudioStream?> _resolveViaWebServer(Track track, {String? videoId}) async {
+  Future<ResolvedAudioStream?> resolveViaWebServer(Track track, {String? videoId}) async {
     final cleanTitle = _cleanSongTitle(track.title);
     final cleanArtist = _cleanSongArtist(track.artist);
     final query = '$cleanArtist - $cleanTitle official audio';

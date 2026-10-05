@@ -268,32 +268,67 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
       final item = enrichedTrack.toMediaItem(actualDuration: streamInfo.duration);
       mediaItem.add(item);
 
-      final streamHeaders = const {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        'Accept': '*/*',
-        'Accept-Encoding': 'identity;q=1, *;q=0',
-        'Referer': 'https://www.youtube.com/',
-      };
+      Map<String, String>? getHeadersForUri(Uri uri) {
+        final host = uri.host.toLowerCase();
+        // Never send YouTube headers to our server or Apple/iTunes CDN
+        if (host.contains('jettimothycerezo.dev') ||
+            host.contains('localhost') ||
+            host.contains('192.168.') ||
+            host.contains('127.0.0.1') ||
+            host.contains('apple.com') ||
+            host.contains('itunes')) {
+          return null;
+        }
+        if (host.contains('googlevideo.com')) {
+          // Clean standard headers without Desktop Windows spoofing that triggers TLS JA3 mismatch on mobile
+          return const {
+            'Accept': '*/*',
+            'Accept-Encoding': 'identity;q=1, *;q=0',
+          };
+        }
+        return null;
+      }
 
       try {
-        final audioSource = AudioSource.uri(streamInfo.streamUri, headers: streamHeaders, tag: item);
+        final headers = getHeadersForUri(streamInfo.streamUri);
+        final audioSource = AudioSource.uri(streamInfo.streamUri, headers: headers, tag: item);
         await _player.setAudioSource(
           audioSource,
           preload: true,
           initialPosition: Duration.zero,
         );
       } catch (loadErr) {
-        developer.log('Primary stream load failed with $loadErr, activating resilient fallback CDN...', name: 'AudioHandler');
-        final fallback = await _streamResolver.resolveFallbackCdn(track);
-        if (fallback != null) {
-          final fallbackSource = AudioSource.uri(fallback.streamUri, headers: streamHeaders, tag: item);
-          await _player.setAudioSource(
-            fallbackSource,
-            preload: true,
-            initialPosition: Duration.zero,
-          );
-        } else {
-          rethrow;
+        developer.log('Primary stream load failed with $loadErr, attempting server proxy resolve...', name: 'AudioHandler');
+        if (requestId != _playRequestId) return;
+
+        bool recovered = false;
+        try {
+          final serverResolved = await _streamResolver.resolveViaWebServer(track);
+          if (serverResolved != null) {
+            final serverSource = AudioSource.uri(serverResolved.streamUri, tag: item);
+            await _player.setAudioSource(
+              serverSource,
+              preload: true,
+              initialPosition: Duration.zero,
+            );
+            recovered = true;
+            developer.log('Recovered playback via Symphony server stream proxy for: "${track.title}"', name: 'AudioHandler');
+          }
+        } catch (_) {}
+
+        if (!recovered) {
+          developer.log('Server resolve also failed, activating resilient fallback CDN...', name: 'AudioHandler');
+          final fallback = await _streamResolver.resolveFallbackCdn(track);
+          if (fallback != null) {
+            final fallbackSource = AudioSource.uri(fallback.streamUri, tag: item);
+            await _player.setAudioSource(
+              fallbackSource,
+              preload: true,
+              initialPosition: Duration.zero,
+            );
+          } else {
+            rethrow;
+          }
         }
       }
       if (requestId != _playRequestId) return;

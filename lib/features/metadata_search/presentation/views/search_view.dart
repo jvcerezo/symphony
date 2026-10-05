@@ -53,17 +53,25 @@ class _SearchViewState extends ConsumerState<SearchView> {
     final isBuffering = playbackState?.processingState == AudioProcessingState.buffering ||
         playbackState?.processingState == AudioProcessingState.loading;
 
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isMobile = screenWidth < 700;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Top Search Header (Spotify Benchmark)
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          padding: EdgeInsets.symmetric(
+            horizontal: isMobile ? 12 : 24,
+            vertical: isMobile ? 10 : 16,
+          ),
           color: SymphonyTheme.panel,
           child: Row(
             children: [
-              const NavHistoryControls(),
-              const SizedBox(width: 12),
+              if (!isMobile) ...[
+                const NavHistoryControls(),
+                const SizedBox(width: 12),
+              ],
               if (query.isNotEmpty) ...[
                 IconButton(
                   icon: const Icon(Icons.arrow_back, color: Colors.white),
@@ -73,7 +81,7 @@ class _SearchViewState extends ConsumerState<SearchView> {
                     _onSearchChanged('');
                   },
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 4),
               ],
               Expanded(
                 child: SizedBox(
@@ -417,6 +425,7 @@ class _SearchViewState extends ConsumerState<SearchView> {
                 },
               );
             }),
+            const SizedBox(height: 100),
           ],
         );
       },

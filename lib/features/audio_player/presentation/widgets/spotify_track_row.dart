@@ -145,7 +145,7 @@ class _SpotifyTrackRowState extends ConsumerState<SpotifyTrackRow> {
     final isCurrent = widget.isCurrent;
     final isBuffering = widget.isBuffering;
     final screenWidth = MediaQuery.of(context).size.width;
-    final isMobile = screenWidth < 700;
+    final isMobile = screenWidth < 800;
 
     if (isMobile) {
       return _buildMobileRow(accent, track, isCurrent, isBuffering);
