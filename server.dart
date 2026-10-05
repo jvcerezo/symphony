@@ -273,6 +273,12 @@ Future<void> _handleRequest(HttpRequest request, Directory webDir) async {
     return;
   }
 
+  // 9. Cleanly Uninstall/Delete Downloaded Playlist Cache: /api/offline/delete-playlist
+  if (uri.path == '/api/offline/delete-playlist') {
+    await _handleDeletePlaylistCache(request);
+    return;
+  }
+
   // 7. Static files from build/web with SPA routing
   String filePath = uri.path;
   if (filePath == '/' || filePath.isEmpty) {
@@ -1353,6 +1359,90 @@ Future<void> _handleClearCache(HttpRequest request) async {
       'success': true,
       'deletedFiles': deletedCount,
       'message': 'Cache cleared successfully',
+    }));
+  } catch (e) {
+    request.response.statusCode = HttpStatus.internalServerError;
+    request.response.write(jsonEncode({'error': e.toString()}));
+  }
+  await request.response.close();
+}
+
+Future<void> _handleDeletePlaylistCache(HttpRequest request) async {
+  request.response.headers.contentType = ContentType.json;
+  try {
+    final body = await utf8.decodeStream(request);
+    final data = jsonDecode(body) as Map<String, dynamic>;
+    final playlistId = data['playlistId'] as String? ?? '';
+    final tracks = (data['tracks'] as List<dynamic>?) ?? [];
+
+    // Find other saved playlists to avoid deleting audio files shared with another playlist
+    final otherPlaylistVideoIds = <String>{};
+    if (await _playlistsFile.exists()) {
+      try {
+        final allPlaylists = jsonDecode(await _playlistsFile.readAsString()) as List<dynamic>;
+        for (final p in allPlaylists) {
+          if (p is Map && p['id'] != playlistId) {
+            final pTracks = (p['tracks'] as List<dynamic>?) ?? [];
+            for (final pt in pTracks) {
+              final id = pt['id'] as String? ?? '';
+              final artist = pt['artist'] as String? ?? '';
+              final title = pt['title'] as String? ?? '';
+              final norm = '${_normalizeKey(artist)} - ${_normalizeKey(title)}';
+              final entry = _resolveCache[id] ?? _resolveCache['track_$id'] ?? _resolveCache[norm];
+              if (entry != null && entry['videoId'] != null) {
+                otherPlaylistVideoIds.add(entry['videoId'] as String);
+              }
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    int deletedAudioCount = 0;
+    int freedBytes = 0;
+
+    for (final t in tracks) {
+      if (t is Map) {
+        final id = t['id'] as String? ?? '';
+        final artist = t['artist'] as String? ?? '';
+        final title = t['title'] as String? ?? '';
+        final norm = '${_normalizeKey(artist)} - ${_normalizeKey(title)}';
+        final entry = _resolveCache[id] ?? _resolveCache['track_$id'] ?? _resolveCache[norm];
+
+        if (entry != null) {
+          final vid = entry['videoId'] as String?;
+          if (vid != null && !otherPlaylistVideoIds.contains(vid)) {
+            final audioFile = File('${_cacheDir.path}/audio_$vid.webm');
+            if (audioFile.existsSync()) {
+              final len = audioFile.lengthSync();
+              try {
+                audioFile.deleteSync();
+                deletedAudioCount++;
+                freedBytes += len;
+              } catch (_) {}
+            }
+            // Remove resolve cache keys if not pinned in another playlist
+            _resolveCache.remove(id);
+            _resolveCache.remove('track_$id');
+            _resolveCache.remove('vid_$vid');
+            _resolveCache.remove(vid);
+            _resolveCache.remove(norm);
+          }
+        }
+      }
+    }
+
+    try {
+      _resolveIndexFile.writeAsStringSync(jsonEncode(_resolveCache));
+    } catch (_) {}
+
+    print('Uninstalled offline playlist "$playlistId": deleted $deletedAudioCount audio files, freed ${(freedBytes / (1024 * 1024)).toStringAsFixed(1)} MB');
+
+    request.response.write(jsonEncode({
+      'success': true,
+      'deletedAudioFiles': deletedAudioCount,
+      'freedBytes': freedBytes,
+      'freedFormatted': '${(freedBytes / (1024 * 1024)).toStringAsFixed(1)} MB',
     }));
   } catch (e) {
     request.response.statusCode = HttpStatus.internalServerError;

@@ -4,11 +4,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/symphony_theme.dart';
 import '../../../metadata_search/presentation/views/search_view.dart';
 import '../../../playlist_import/domain/entities/spotify_playlist.dart';
+import '../../../settings/presentation/controllers/personalization_provider.dart';
+import '../../../settings/presentation/widgets/personalization_dialog.dart';
 import '../../data/services/symphony_audio_handler.dart';
 import '../controllers/audio_player_providers.dart';
 import '../controllers/offline_provider.dart';
 import '../widgets/bottom_player_bar.dart';
 import '../widgets/import_playlist_dialog.dart';
+import '../widgets/realtime_download_toast.dart';
 import '../widgets/sidebar_nav.dart';
 import '../widgets/spotify_track_row.dart';
 
@@ -88,23 +91,39 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
       body: Column(
         children: [
           Expanded(
-            child: Padding(
-              padding: isDesktop ? const EdgeInsets.fromLTRB(8, 8, 8, 0) : EdgeInsets.zero,
-              child: Row(
-                children: [
-                  if (isDesktop) const SidebarNav(),
-                  if (isDesktop) const SizedBox(width: 8),
-                  Expanded(
-                    child: ClipRRect(
-                      borderRadius: isDesktop ? BorderRadius.circular(8) : BorderRadius.zero,
-                      child: Container(
-                        color: SymphonyTheme.panel,
-                        child: _buildCurrentTabContent(activeTab, activePlaylist, mediaItem, isPlaying, isBuffering, isDesktop),
+            child: Stack(
+              children: [
+                Padding(
+                  padding: isDesktop ? const EdgeInsets.fromLTRB(8, 8, 8, 0) : EdgeInsets.zero,
+                  child: Row(
+                    children: [
+                      if (isDesktop) const SidebarNav(),
+                      if (isDesktop) const SizedBox(width: 8),
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: isDesktop ? BorderRadius.circular(8) : BorderRadius.zero,
+                          child: Container(
+                            color: SymphonyTheme.panel,
+                            child: _buildCurrentTabContent(activeTab, activePlaylist, mediaItem, isPlaying, isBuffering, isDesktop),
+                          ),
+                        ),
                       ),
+                    ],
+                  ),
+                ),
+                // Real-time live download toast overlay
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 8,
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 480),
+                      child: const RealtimeDownloadToast(),
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
           const BottomPlayerBar(),
@@ -140,6 +159,10 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
   Widget _buildLibraryView() {
     final importedPlaylists = ref.watch(importedPlaylistsProvider);
     final handler = ref.read(audioHandlerProvider);
+    final personalization = ref.watch(personalizationProvider);
+    final accent = ref.watch(accentThemeProvider);
+    final offlineState = ref.watch(offlineProvider);
+    final offlineNotifier = ref.read(offlineProvider.notifier);
 
     return Padding(
       padding: const EdgeInsets.all(28.0),
@@ -149,26 +172,70 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Playlists',
-                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white, letterSpacing: -0.5),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      personalization.userName.isNotEmpty
+                          ? "${personalization.userName}'s Playlists"
+                          : 'Playlists',
+                      style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white, letterSpacing: -0.5),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Your personal music collection • ${importedPlaylists.length} playlists',
+                      style: const TextStyle(fontSize: 13, color: SymphonyTheme.textSecondary),
+                    ),
+                  ],
+                ),
               ),
-              ElevatedButton.icon(
-                onPressed: () {
-                  showDialog(context: context, builder: (_) => const ImportPlaylistDialog());
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: Colors.black,
-                  elevation: 0,
-                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(500)),
-                ),
-                icon: const Icon(Icons.add, size: 18, color: Colors.black),
-                label: const Text(
-                  'Import Playlist',
-                  style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 13),
-                ),
+              Row(
+                children: [
+                  // Personalize profile button
+                  InkWell(
+                    onTap: () => showDialog(context: context, builder: (_) => const PersonalizationDialog()),
+                    borderRadius: BorderRadius.circular(20),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF282828),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: const Color(0xFF404040)),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.person_outline_rounded, size: 16, color: accent.primary),
+                          const SizedBox(width: 6),
+                          Text(
+                            personalization.displayName,
+                            style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      showDialog(context: context, builder: (_) => const ImportPlaylistDialog());
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: Colors.black,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(500)),
+                    ),
+                    icon: const Icon(Icons.add, size: 18, color: Colors.black),
+                    label: const Text(
+                      'Import Playlist',
+                      style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 13),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -191,10 +258,11 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
                 itemCount: importedPlaylists.length,
                 itemBuilder: (context, index) {
                   final playlist = importedPlaylists[index];
-                  final accent = ref.watch(accentThemeProvider);
+                  final isDownloaded = offlineState.isPlaylistDownloaded(playlist);
                   return _SpotifyPlaylistCard(
                     playlist: playlist,
                     accent: accent,
+                    isDownloaded: isDownloaded,
                     onTap: () {
                       ref.read(activePlaylistProvider.notifier).state = playlist;
                       ref.read(activeNavTabProvider.notifier).state = 'home';
@@ -202,6 +270,38 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
                     onPlay: () {
                       ref.read(activePlaylistProvider.notifier).state = playlist;
                       handler.playQueue(playlist.tracks, startIndex: 0);
+                    },
+                    onDownload: () {
+                      offlineNotifier.downloadPlaylist(playlist);
+                    },
+                    onUninstall: () async {
+                      final freed = await offlineNotifier.removeDownloadedPlaylist(playlist);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            backgroundColor: const Color(0xFF282828),
+                            content: Text('Uninstalled offline songs for "${playlist.title}" (${freed ?? "freed cache"})'),
+                            duration: const Duration(seconds: 3),
+                          ),
+                        );
+                      }
+                    },
+                    onDelete: () async {
+                      await offlineNotifier.removeDownloadedPlaylist(playlist);
+                      ref.read(importedPlaylistsProvider.notifier).removePlaylist(playlist.id);
+                      if (ref.read(activePlaylistProvider)?.id == playlist.id) {
+                        final remaining = ref.read(importedPlaylistsProvider);
+                        ref.read(activePlaylistProvider.notifier).state = remaining.isNotEmpty ? remaining.first : null;
+                      }
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            backgroundColor: const Color(0xFF282828),
+                            content: Text('Removed "${playlist.title}" from library'),
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      }
                     },
                   );
                 },
@@ -823,34 +923,172 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
                       ),
                 onPressed: () async {
                   if (isPlaylistDownloading) return;
-                  final messenger = ScaffoldMessenger.of(context);
-                  messenger.showSnackBar(
-                    SnackBar(
-                      backgroundColor: SymphonyTheme.card,
-                      content: Row(
-                        children: [
-                          Icon(Icons.cloud_download, color: accent.primary, size: 20),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              'Downloading "${playlist.title}" (${playlist.tracks.length} songs) for offline listening...',
-                              style: const TextStyle(color: Colors.white),
-                            ),
-                          ),
-                        ],
-                      ),
-                      duration: const Duration(seconds: 4),
-                    ),
-                  );
                   await offlineNotifier.downloadPlaylist(playlist);
                 },
               ),
               const SizedBox(width: 16),
-              IconButton(
+              PopupMenuButton<String>(
                 iconSize: 30,
                 tooltip: 'More options',
                 icon: const Icon(Icons.more_horiz, color: SymphonyTheme.textSecondary),
-                onPressed: () {},
+                color: const Color(0xFF242424),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                onSelected: (val) async {
+                  if (val == 'download') {
+                    offlineNotifier.downloadPlaylist(playlist);
+                  } else if (val == 'play') {
+                    handler.playQueue(playlist.tracks, startIndex: 0);
+                  } else if (val == 'uninstall_download') {
+                    showDialog(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        backgroundColor: const Color(0xFF242424),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        title: const Text('Uninstall Offline Download?', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        content: Text(
+                          'This will remove all downloaded audio files for "${playlist.title}" from your device to free up storage space. The playlist will remain in your library for online streaming.',
+                          style: const TextStyle(color: SymphonyTheme.textSecondary),
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+                          ),
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+                            onPressed: () async {
+                              Navigator.pop(ctx);
+                              final freed = await offlineNotifier.removeDownloadedPlaylist(playlist);
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    backgroundColor: const Color(0xFF282828),
+                                    content: Text('Uninstalled offline songs for "${playlist.title}" (${freed ?? "freed cache"})'),
+                                    duration: const Duration(seconds: 3),
+                                  ),
+                                );
+                              }
+                            },
+                            child: const Text('Uninstall', style: TextStyle(fontWeight: FontWeight.bold)),
+                          ),
+                        ],
+                      ),
+                    );
+                  } else if (val == 'delete_playlist') {
+                    showDialog(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        backgroundColor: const Color(0xFF242424),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        title: const Text('Delete Playlist?', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        content: Text(
+                          'Are you sure you want to remove "${playlist.title}" from your library? Any downloaded audio files will also be cleanly uninstalled.',
+                          style: const TextStyle(color: SymphonyTheme.textSecondary),
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+                          ),
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+                            onPressed: () async {
+                              Navigator.pop(ctx);
+                              await offlineNotifier.removeDownloadedPlaylist(playlist);
+                              ref.read(importedPlaylistsProvider.notifier).removePlaylist(playlist.id);
+                              final remaining = ref.read(importedPlaylistsProvider);
+                              ref.read(activePlaylistProvider.notifier).state = remaining.isNotEmpty ? remaining.first : null;
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    backgroundColor: const Color(0xFF282828),
+                                    content: Text('Removed "${playlist.title}" from library'),
+                                    duration: const Duration(seconds: 2),
+                                  ),
+                                );
+                              }
+                            },
+                            child: const Text('Delete', style: TextStyle(fontWeight: FontWeight.bold)),
+                          ),
+                        ],
+                      ),
+                    );
+                  } else if (val == 'personalize') {
+                    showDialog(context: context, builder: (_) => const PersonalizationDialog());
+                  } else if (val == 'import') {
+                    showDialog(context: context, builder: (_) => const ImportPlaylistDialog());
+                  }
+                },
+                itemBuilder: (ctx) => [
+                  PopupMenuItem(
+                    value: 'download',
+                    child: Row(
+                      children: [
+                        Icon(
+                          isPlaylistDownloaded ? Icons.check_circle_rounded : Icons.download_rounded,
+                          color: isPlaylistDownloaded ? accent.primary : Colors.white,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          isPlaylistDownloaded ? 'Downloaded (Redownload)' : 'Download Playlist Offline',
+                          style: const TextStyle(color: Colors.white, fontSize: 13),
+                        ),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'play',
+                    child: Row(
+                      children: const [
+                        Icon(Icons.play_arrow_rounded, color: Colors.white, size: 20),
+                        SizedBox(width: 12),
+                        Text('Play from Beginning', style: TextStyle(color: Colors.white, fontSize: 13)),
+                      ],
+                    ),
+                  ),
+                  if (isPlaylistDownloaded)
+                    PopupMenuItem(
+                      value: 'uninstall_download',
+                      child: Row(
+                        children: const [
+                          Icon(Icons.delete_sweep_rounded, color: Colors.redAccent, size: 20),
+                          SizedBox(width: 12),
+                          Text('Uninstall Offline Download', style: TextStyle(color: Colors.redAccent, fontSize: 13)),
+                        ],
+                      ),
+                    ),
+                  PopupMenuItem(
+                    value: 'delete_playlist',
+                    child: Row(
+                      children: const [
+                        Icon(Icons.delete_outline_rounded, color: SymphonyTheme.textSecondary, size: 20),
+                        SizedBox(width: 12),
+                        Text('Delete Playlist from Library', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'personalize',
+                    child: Row(
+                      children: const [
+                        Icon(Icons.person_outline_rounded, color: Colors.white, size: 20),
+                        SizedBox(width: 12),
+                        Text('Personalize App & Name', style: TextStyle(color: Colors.white, fontSize: 13)),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'import',
+                    child: Row(
+                      children: const [
+                        Icon(Icons.add_rounded, color: Colors.white, size: 20),
+                        SizedBox(width: 12),
+                        Text('Import Another Playlist', style: TextStyle(color: Colors.white, fontSize: 13)),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -870,14 +1108,22 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
 class _SpotifyPlaylistCard extends StatefulWidget {
   final SpotifyPlaylist playlist;
   final SymphonyAccent accent;
+  final bool isDownloaded;
   final VoidCallback onTap;
   final VoidCallback onPlay;
+  final VoidCallback? onDownload;
+  final VoidCallback? onUninstall;
+  final VoidCallback? onDelete;
 
   const _SpotifyPlaylistCard({
     required this.playlist,
     required this.accent,
+    this.isDownloaded = false,
     required this.onTap,
     required this.onPlay,
+    this.onDownload,
+    this.onUninstall,
+    this.onDelete,
   });
 
   @override
@@ -906,7 +1152,7 @@ class _SpotifyPlaylistCardState extends State<_SpotifyPlaylistCard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Cover with hover play button
+              // Cover with hover play button & 3-dots choices
               Stack(
                 children: [
                   ClipRRect(
@@ -927,6 +1173,134 @@ class _SpotifyPlaylistCardState extends State<_SpotifyPlaylistCard> {
                               color: const Color(0xFF282828),
                               child: const Icon(Icons.music_note, color: SymphonyTheme.textMuted, size: 40),
                             ),
+                    ),
+                  ),
+                  // 3-dots choice button on the card
+                  Positioned(
+                    top: 6,
+                    right: 6,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.7),
+                        shape: BoxShape.circle,
+                      ),
+                      child: PopupMenuButton<String>(
+                        icon: const Icon(Icons.more_vert_rounded, color: Colors.white, size: 18),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+                        color: const Color(0xFF242424),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        tooltip: 'Playlist choices',
+                        onSelected: (val) {
+                          if (val == 'download') {
+                            widget.onDownload?.call();
+                          } else if (val == 'play') {
+                            widget.onPlay();
+                          } else if (val == 'uninstall') {
+                            showDialog(
+                              context: context,
+                              builder: (ctx) => AlertDialog(
+                                backgroundColor: const Color(0xFF242424),
+                                title: const Text('Uninstall Download?', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                content: Text(
+                                  'Remove downloaded offline audio files for "${widget.playlist.title}"? Tracks shared with other offline playlists will be kept.',
+                                  style: const TextStyle(color: Colors.white70),
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(ctx),
+                                    child: const Text('Cancel', style: TextStyle(color: Colors.white60)),
+                                  ),
+                                  ElevatedButton(
+                                    style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+                                    onPressed: () {
+                                      Navigator.pop(ctx);
+                                      widget.onUninstall?.call();
+                                    },
+                                    child: const Text('Uninstall', style: TextStyle(fontWeight: FontWeight.bold)),
+                                  ),
+                                ],
+                              ),
+                            );
+                          } else if (val == 'delete') {
+                            showDialog(
+                              context: context,
+                              builder: (ctx) => AlertDialog(
+                                backgroundColor: const Color(0xFF242424),
+                                title: const Text('Delete Playlist?', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                content: Text(
+                                  'Are you sure you want to remove "${widget.playlist.title}" from your library?',
+                                  style: const TextStyle(color: Colors.white70),
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(ctx),
+                                    child: const Text('Cancel', style: TextStyle(color: Colors.white60)),
+                                  ),
+                                  ElevatedButton(
+                                    style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+                                    onPressed: () {
+                                      Navigator.pop(ctx);
+                                      widget.onDelete?.call();
+                                    },
+                                    child: const Text('Delete', style: TextStyle(fontWeight: FontWeight.bold)),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }
+                        },
+                        itemBuilder: (ctx) => [
+                          PopupMenuItem(
+                            value: 'download',
+                            child: Row(
+                              children: [
+                                Icon(
+                                  widget.isDownloaded ? Icons.check_circle_rounded : Icons.download_rounded,
+                                  color: widget.isDownloaded ? widget.accent.primary : Colors.white,
+                                  size: 18,
+                                ),
+                                const SizedBox(width: 10),
+                                Text(
+                                  widget.isDownloaded ? 'Downloaded (Redownload)' : 'Download for Offline',
+                                  style: const TextStyle(color: Colors.white, fontSize: 13),
+                                ),
+                              ],
+                            ),
+                          ),
+                          PopupMenuItem(
+                            value: 'play',
+                            child: Row(
+                              children: const [
+                                Icon(Icons.play_arrow_rounded, color: Colors.white, size: 18),
+                                SizedBox(width: 10),
+                                Text('Play Playlist', style: TextStyle(color: Colors.white, fontSize: 13)),
+                              ],
+                            ),
+                          ),
+                          if (widget.isDownloaded)
+                            PopupMenuItem(
+                              value: 'uninstall',
+                              child: Row(
+                                children: const [
+                                  Icon(Icons.delete_sweep_rounded, color: Colors.redAccent, size: 18),
+                                  SizedBox(width: 10),
+                                  Text('Uninstall Offline Download', style: TextStyle(color: Colors.redAccent, fontSize: 13)),
+                                ],
+                              ),
+                            ),
+                          PopupMenuItem(
+                            value: 'delete',
+                            child: Row(
+                              children: const [
+                                Icon(Icons.delete_outline_rounded, color: SymphonyTheme.textSecondary, size: 18),
+                                SizedBox(width: 10),
+                                Text('Delete from Library', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                   Positioned(

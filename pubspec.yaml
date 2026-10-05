@@ -44,6 +44,7 @@ dependencies:
   just_audio_windows: ^0.2.3
   audio_session: ^0.2.4
   rxdart: ^0.28.0
+  shared_preferences: ^2.5.5
 
 dev_dependencies:
   flutter_test:

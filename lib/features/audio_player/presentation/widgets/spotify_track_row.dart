@@ -91,6 +91,17 @@ class _SpotifyTrackRowState extends ConsumerState<SpotifyTrackRow> {
                 const SizedBox(height: 16),
                 const Divider(color: Color(0xFF333333)),
                 ListTile(
+                  leading: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 24),
+                  title: const Text(
+                    'Play this song',
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    widget.onTap();
+                  },
+                ),
+                ListTile(
                   leading: Icon(
                     _isLiked ? Icons.favorite : Icons.favorite_border,
                     color: _isLiked ? accent.primary : Colors.white,
@@ -111,7 +122,7 @@ class _SpotifyTrackRowState extends ConsumerState<SpotifyTrackRow> {
                       color: widget.isDownloaded ? accent.primary : Colors.white,
                     ),
                     title: Text(
-                      widget.isDownloaded ? 'Downloaded for offline' : 'Download song offline',
+                      widget.isDownloaded ? 'Downloaded for offline (Redownload)' : 'Download song offline',
                       style: const TextStyle(color: Colors.white),
                     ),
                     onTap: () {
@@ -260,12 +271,19 @@ class _SpotifyTrackRowState extends ConsumerState<SpotifyTrackRow> {
                 ),
               ),
 
-            IconButton(
-              iconSize: 20,
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-              icon: const Icon(Icons.more_vert, color: SymphonyTheme.textSecondary),
-              onPressed: () => _showMobileTrackOptions(context, accent),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _showMobileTrackOptions(context, accent),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 8.0),
+                child: SizedBox(
+                  width: 32,
+                  height: 32,
+                  child: Center(
+                    child: Icon(Icons.more_vert, color: SymphonyTheme.textSecondary, size: 20),
+                  ),
+                ),
+              ),
             ),
           ],
         ),
@@ -456,12 +474,68 @@ class _SpotifyTrackRowState extends ConsumerState<SpotifyTrackRow> {
               // More options button (visible on hover)
               Opacity(
                 opacity: _isHovered ? 1.0 : 0.0,
-                child: IconButton(
-                  iconSize: 18,
+                child: PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_horiz, color: SymphonyTheme.textSecondary, size: 18),
                   padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
-                  icon: const Icon(Icons.more_horiz, color: SymphonyTheme.textSecondary),
-                  onPressed: () {},
+                  constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                  color: const Color(0xFF242424),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  tooltip: 'More options',
+                  onSelected: (val) {
+                    if (val == 'download') {
+                      widget.onDownload?.call();
+                    } else if (val == 'play') {
+                      widget.onTap();
+                    } else if (val == 'like') {
+                      setState(() => _isLiked = !_isLiked);
+                    }
+                  },
+                  itemBuilder: (ctx) => [
+                    PopupMenuItem(
+                      value: 'download',
+                      child: Row(
+                        children: [
+                          Icon(
+                            widget.isDownloaded ? Icons.check_circle_rounded : Icons.download_rounded,
+                            color: widget.isDownloaded ? accent.primary : Colors.white,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 10),
+                          Text(
+                            widget.isDownloaded ? 'Downloaded Offline' : 'Download Song Offline',
+                            style: const TextStyle(color: Colors.white, fontSize: 13),
+                          ),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'play',
+                      child: Row(
+                        children: const [
+                          Icon(Icons.play_arrow_rounded, color: Colors.white, size: 18),
+                          SizedBox(width: 10),
+                          Text('Play Song', style: TextStyle(color: Colors.white, fontSize: 13)),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'like',
+                      child: Row(
+                        children: [
+                          Icon(
+                            _isLiked ? Icons.favorite : Icons.favorite_border,
+                            color: _isLiked ? accent.primary : Colors.white,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 10),
+                          Text(
+                            _isLiked ? 'Remove from Liked' : 'Save to Your Liked Songs',
+                            style: const TextStyle(color: Colors.white, fontSize: 13),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],

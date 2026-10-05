@@ -152,6 +152,10 @@ class ImportedPlaylistsNotifier extends StateNotifier<List<SpotifyPlaylist>> {
       ...state.where((p) => p.id != playlist.id),
     ];
   }
+
+  void removePlaylist(String playlistId) {
+    state = state.where((p) => p.id != playlistId).toList();
+  }
 }
 
 final importedPlaylistsProvider =

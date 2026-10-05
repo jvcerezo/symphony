@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/symphony_theme.dart';
+import '../../../settings/presentation/controllers/personalization_provider.dart';
+import '../../../settings/presentation/widgets/personalization_dialog.dart';
 import '../controllers/audio_player_providers.dart';
 import '../controllers/offline_provider.dart';
 import 'import_playlist_dialog.dart';
@@ -34,6 +36,7 @@ class _SidebarNavState extends ConsumerState<SidebarNav> {
     final isPlaying = playbackState?.playing ?? false;
     final offlineState = ref.watch(offlineProvider);
     final accent = ref.watch(accentThemeProvider);
+    final personalization = ref.watch(personalizationProvider);
 
     // Filter playlists
     var filteredPlaylists = importedPlaylists;
@@ -62,38 +65,90 @@ class _SidebarNavState extends ConsumerState<SidebarNav> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Symphony Brand Header
+                // Symphony Personalized Brand Header
                 Padding(
-                  padding: const EdgeInsets.only(left: 6.0, top: 4.0, bottom: 16.0),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 32,
-                        height: 32,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(8),
-                          gradient: accent.gradient,
-                          boxShadow: [
-                            BoxShadow(
-                              color: accent.primary.withOpacity(0.35),
-                              blurRadius: 10,
-                              offset: const Offset(0, 2),
+                  padding: const EdgeInsets.only(left: 2.0, top: 4.0, bottom: 16.0),
+                  child: InkWell(
+                    onTap: () {
+                      showDialog(
+                        context: context,
+                        builder: (_) => const PersonalizationDialog(),
+                      );
+                    },
+                    borderRadius: BorderRadius.circular(8),
+                    child: Padding(
+                      padding: const EdgeInsets.all(4.0),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(8),
+                              gradient: accent.gradient,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: accent.primary.withOpacity(0.35),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                        child: const Icon(Icons.music_note_rounded, color: Colors.black, size: 20),
+                            child: Center(
+                              child: Text(
+                                personalization.userName.isNotEmpty
+                                    ? personalization.userName[0].toUpperCase()
+                                    : 'S',
+                                style: const TextStyle(
+                                  color: Colors.black,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  personalization.displayTitle.toUpperCase(),
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 1.2,
+                                    color: Colors.white,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                if (personalization.userName.isNotEmpty)
+                                  Text(
+                                    personalization.userName,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: accent.primary,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                              ],
+                            ),
+                          ),
+                          Tooltip(
+                            message: 'Personalize app',
+                            child: Icon(
+                              Icons.edit_outlined,
+                              size: 14,
+                              color: SymphonyTheme.textMuted.withOpacity(0.8),
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 10),
-                      const Text(
-                        'SYMPHONY',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 1.5,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
 
@@ -428,7 +483,7 @@ class _SidebarNavState extends ConsumerState<SidebarNav> {
   }
 }
 
-class _SidebarPlaylistItem extends StatefulWidget {
+class _SidebarPlaylistItem extends ConsumerStatefulWidget {
   final dynamic playlist;
   final bool isSelected;
   final bool isPlaying;
@@ -446,10 +501,10 @@ class _SidebarPlaylistItem extends StatefulWidget {
   });
 
   @override
-  State<_SidebarPlaylistItem> createState() => _SidebarPlaylistItemState();
+  ConsumerState<_SidebarPlaylistItem> createState() => _SidebarPlaylistItemState();
 }
 
-class _SidebarPlaylistItemState extends State<_SidebarPlaylistItem> {
+class _SidebarPlaylistItemState extends ConsumerState<_SidebarPlaylistItem> {
   bool _isHovered = false;
 
   @override
@@ -530,6 +585,158 @@ class _SidebarPlaylistItemState extends State<_SidebarPlaylistItem> {
                   padding: const EdgeInsets.only(left: 4.0),
                   child: Icon(Icons.volume_up_rounded, color: widget.accent.primary, size: 16),
                 ),
+              // 3-dots popup menu for playlist download & play choices
+              PopupMenuButton<String>(
+                icon: Icon(
+                  widget.isDownloaded
+                      ? Icons.check_circle_rounded
+                      : Icons.more_vert_rounded,
+                  color: widget.isDownloaded
+                      ? widget.accent.primary
+                      : (_isHovered ? Colors.white70 : Colors.transparent),
+                  size: 16,
+                ),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                color: const Color(0xFF242424),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                tooltip: 'Playlist options',
+                onSelected: (val) async {
+                  if (val == 'download') {
+                    ref.read(offlineProvider.notifier).downloadPlaylist(playlist);
+                  } else if (val == 'play') {
+                    ref.read(activePlaylistProvider.notifier).state = playlist;
+                    ref.read(audioHandlerProvider).playQueue(playlist.tracks, startIndex: 0);
+                  } else if (val == 'uninstall_download') {
+                    showDialog(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        backgroundColor: const Color(0xFF242424),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        title: const Text('Uninstall Offline Download?', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        content: Text(
+                          'This will remove all downloaded audio files for "${playlist.title}" from your device to free up storage space. The playlist will remain in your library for online streaming.',
+                          style: const TextStyle(color: SymphonyTheme.textSecondary),
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+                          ),
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+                            onPressed: () async {
+                              Navigator.pop(ctx);
+                              final freed = await ref.read(offlineProvider.notifier).removeDownloadedPlaylist(playlist);
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    backgroundColor: const Color(0xFF282828),
+                                    content: Text('Uninstalled offline songs for "${playlist.title}" (${freed ?? "freed cache"})'),
+                                    duration: const Duration(seconds: 3),
+                                  ),
+                                );
+                              }
+                            },
+                            child: const Text('Uninstall', style: TextStyle(fontWeight: FontWeight.bold)),
+                          ),
+                        ],
+                      ),
+                    );
+                  } else if (val == 'delete_playlist') {
+                    showDialog(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        backgroundColor: const Color(0xFF242424),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        title: const Text('Delete Playlist?', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        content: Text(
+                          'Are you sure you want to remove "${playlist.title}" from your library? Any downloaded audio files will also be cleanly uninstalled.',
+                          style: const TextStyle(color: SymphonyTheme.textSecondary),
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+                          ),
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+                            onPressed: () async {
+                              Navigator.pop(ctx);
+                              await ref.read(offlineProvider.notifier).removeDownloadedPlaylist(playlist);
+                              ref.read(importedPlaylistsProvider.notifier).removePlaylist(playlist.id);
+                              if (ref.read(activePlaylistProvider)?.id == playlist.id) {
+                                final remaining = ref.read(importedPlaylistsProvider);
+                                ref.read(activePlaylistProvider.notifier).state = remaining.isNotEmpty ? remaining.first : null;
+                              }
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    backgroundColor: const Color(0xFF282828),
+                                    content: Text('Removed "${playlist.title}" from library'),
+                                    duration: const Duration(seconds: 2),
+                                  ),
+                                );
+                              }
+                            },
+                            child: const Text('Delete', style: TextStyle(fontWeight: FontWeight.bold)),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+                },
+                itemBuilder: (ctx) => [
+                  PopupMenuItem(
+                    value: 'download',
+                    child: Row(
+                      children: [
+                        Icon(
+                          widget.isDownloaded ? Icons.check_circle_rounded : Icons.download_rounded,
+                          color: widget.isDownloaded ? widget.accent.primary : Colors.white,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          widget.isDownloaded ? 'Downloaded (Redownload)' : 'Download Playlist Offline',
+                          style: const TextStyle(color: Colors.white, fontSize: 13),
+                        ),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'play',
+                    child: Row(
+                      children: const [
+                        Icon(Icons.play_arrow_rounded, color: Colors.white, size: 18),
+                        SizedBox(width: 10),
+                        Text('Play Playlist', style: TextStyle(color: Colors.white, fontSize: 13)),
+                      ],
+                    ),
+                  ),
+                  if (widget.isDownloaded)
+                    PopupMenuItem(
+                      value: 'uninstall_download',
+                      child: Row(
+                        children: const [
+                          Icon(Icons.delete_sweep_rounded, color: Colors.redAccent, size: 18),
+                          SizedBox(width: 10),
+                          Text('Uninstall Offline Download', style: TextStyle(color: Colors.redAccent, fontSize: 13)),
+                        ],
+                      ),
+                    ),
+                  PopupMenuItem(
+                    value: 'delete_playlist',
+                    child: Row(
+                      children: const [
+                        Icon(Icons.delete_outline_rounded, color: SymphonyTheme.textSecondary, size: 18),
+                        SizedBox(width: 10),
+                        Text('Delete from Library', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
