@@ -1,6 +1,9 @@
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../playlist_import/data/services/spotify_embed_scraper_service.dart';
+import '../../../playlist_import/domain/entities/spotify_playlist.dart';
 import '../../data/services/symphony_audio_handler.dart';
+import '../../domain/entities/track.dart';
 
 /// Global provider for the Symphony AudioHandler instance
 final audioHandlerProvider = Provider<SymphonyAudioHandler>((ref) {
@@ -18,3 +21,43 @@ final currentMediaItemStreamProvider = StreamProvider<MediaItem?>((ref) {
   final handler = ref.watch(audioHandlerProvider);
   return handler.mediaItem;
 });
+
+/// Stream provider for current queue index
+final currentQueueIndexStreamProvider = StreamProvider<int>((ref) {
+  final handler = ref.watch(audioHandlerProvider);
+  return handler.currentIndexStream;
+});
+
+/// Stream provider for active queue tracks
+final currentQueueListStreamProvider = StreamProvider<List<Track>>((ref) {
+  final handler = ref.watch(audioHandlerProvider);
+  return handler.playlistQueueStream;
+});
+
+/// Provider for the unauthenticated Spotify Embed Scraper
+final spotifyScraperProvider = Provider<SpotifyEmbedScraperService>((ref) {
+  final service = SpotifyEmbedScraperService();
+  ref.onDispose(() => service.dispose());
+  return service;
+});
+
+/// StateNotifier for managing imported Spotify playlists
+class ImportedPlaylistsNotifier extends StateNotifier<List<SpotifyPlaylist>> {
+  ImportedPlaylistsNotifier() : super([]);
+
+  void addPlaylist(SpotifyPlaylist playlist) {
+    // Avoid duplicates
+    state = [
+      playlist,
+      ...state.where((p) => p.id != playlist.id),
+    ];
+  }
+}
+
+final importedPlaylistsProvider =
+    StateNotifierProvider<ImportedPlaylistsNotifier, List<SpotifyPlaylist>>((ref) {
+  return ImportedPlaylistsNotifier();
+});
+
+/// StateProvider holding the currently viewed Spotify Playlist
+final activePlaylistProvider = StateProvider<SpotifyPlaylist?>((ref) => null);

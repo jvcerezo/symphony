@@ -1,0 +1,153 @@
+import 'package:flutter/material.dart';
+import '../../../../core/theme/symphony_theme.dart';
+import '../../domain/entities/track.dart';
+
+class SpotifyTrackRow extends StatefulWidget {
+  final int index;
+  final Track track;
+  final bool isPlaying;
+  final bool isCurrent;
+  final VoidCallback onTap;
+
+  const SpotifyTrackRow({
+    super.key,
+    required this.index,
+    required this.track,
+    required this.isPlaying,
+    required this.isCurrent,
+    required this.onTap,
+  });
+
+  @override
+  State<SpotifyTrackRow> createState() => _SpotifyTrackRowState();
+}
+
+class _SpotifyTrackRowState extends State<SpotifyTrackRow> {
+  bool _isHovered = false;
+  bool _isLiked = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final track = widget.track;
+    final isCurrent = widget.isCurrent;
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: InkWell(
+        onTap: widget.onTap,
+        borderRadius: BorderRadius.circular(8),
+        hoverColor: SymphonyTheme.cardHover.withAlpha(150),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            color: isCurrent ? SymphonyTheme.primaryDark.withAlpha(40) : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              // Index or Play Icon
+              SizedBox(
+                width: 32,
+                child: _isHovered || isCurrent
+                    ? Icon(
+                        isCurrent && widget.isPlaying ? Icons.pause : Icons.play_arrow,
+                        color: isCurrent ? SymphonyTheme.primaryLight : Colors.white,
+                        size: 20,
+                      )
+                    : Text(
+                        '${widget.index + 1}',
+                        style: TextStyle(
+                          color: isCurrent ? SymphonyTheme.primaryLight : SymphonyTheme.textMuted,
+                          fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+                          fontSize: 14,
+                        ),
+                      ),
+              ),
+              const SizedBox(width: 12),
+              // Artwork Thumbnail
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: track.artworkUri != null
+                    ? Image.network(
+                        track.artworkUri.toString(),
+                        width: 44,
+                        height: 44,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) => _buildFallbackThumbnail(),
+                      )
+                    : _buildFallbackThumbnail(),
+              ),
+              const SizedBox(width: 16),
+              // Title & Artist
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      track.title,
+                      style: TextStyle(
+                        color: isCurrent ? SymphonyTheme.primaryLight : SymphonyTheme.textPrimary,
+                        fontWeight: isCurrent ? FontWeight.w600 : FontWeight.w500,
+                        fontSize: 15,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      track.artist,
+                      style: const TextStyle(
+                        color: SymphonyTheme.textSecondary,
+                        fontSize: 13,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              // Like Button
+              IconButton(
+                iconSize: 20,
+                icon: Icon(
+                  _isLiked ? Icons.favorite : Icons.favorite_border,
+                  color: _isLiked ? SymphonyTheme.primaryLight : SymphonyTheme.textMuted,
+                ),
+                onPressed: () {
+                  setState(() => _isLiked = !_isLiked);
+                },
+              ),
+              const SizedBox(width: 16),
+              // Duration
+              Text(
+                _formatDuration(track.expectedDuration ?? Duration.zero),
+                style: TextStyle(
+                  color: isCurrent ? SymphonyTheme.primaryLight : SymphonyTheme.textMuted,
+                  fontSize: 13,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFallbackThumbnail() {
+    return Container(
+      width: 44,
+      height: 44,
+      color: SymphonyTheme.card,
+      child: const Icon(Icons.music_note, color: SymphonyTheme.textMuted, size: 22),
+    );
+  }
+
+  String _formatDuration(Duration d) {
+    if (d.inSeconds == 0) return '--:--';
+    final minutes = d.inMinutes.remainder(60).toString();
+    final seconds = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
+}

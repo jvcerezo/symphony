@@ -4,6 +4,7 @@ import 'package:audio_service/audio_service.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:rxdart/rxdart.dart';
 import '../../../../core/errors/exceptions.dart';
 import '../../domain/entities/track.dart';
 import 'audio_stream_resolver_service.dart';
@@ -12,10 +13,12 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   final AudioPlayer _player;
   final AudioStreamResolverService _streamResolver;
 
-  final List<Track> _queue = [];
-  int _currentIndex = -1;
+  final List<Track> _playlistQueue = [];
+  final BehaviorSubject<int> _currentIndexSubject = BehaviorSubject<int>.seeded(-1);
+  final BehaviorSubject<List<Track>> _queueSubject = BehaviorSubject<List<Track>>.seeded([]);
 
   StreamSubscription<PlaybackEvent>? _playbackEventSub;
+  StreamSubscription<PlayerState>? _playerStateSub;
   StreamSubscription<AudioInterruptionEvent>? _interruptionSub;
   StreamSubscription<void>? _noisySub;
 
@@ -26,11 +29,21 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
         _streamResolver = streamResolver ?? AudioStreamResolverService() {
     _initAudioSession();
     _broadcastPlaybackState();
+    _listenToCompletion();
   }
 
-  /// Configures platform-specific audio session (audio focus, interruptions, noisy headphones)
+  ValueStream<int> get currentIndexStream => _currentIndexSubject.stream;
+  ValueStream<List<Track>> get playlistQueueStream => _queueSubject.stream;
+
+  int get currentIndex => _currentIndexSubject.value;
+  List<Track> get currentQueue => _playlistQueue;
+
+  Track? get currentTrack => (currentIndex >= 0 && currentIndex < _playlistQueue.length)
+      ? _playlistQueue[currentIndex]
+      : null;
+
   Future<void> _initAudioSession() async {
-    if (kIsWeb) return; // AudioSession is handled by the browser on Web
+    if (kIsWeb) return;
 
     try {
       final session = await AudioSession.instance;
@@ -61,17 +74,15 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
         }
       });
 
-      // Automatically pause when headphones are unplugged
       _noisySub = session.becomingNoisyEventStream.listen((_) {
-        developer.log('Headphones disconnected. Pausing playback.', name: 'AudioHandler');
+        developer.log('Audio output unplugged. Pausing playback.', name: 'AudioHandler');
         pause();
       });
     } catch (e) {
-      developer.log('Could not initialize AudioSession: $e', name: 'AudioHandler');
+      developer.log('AudioSession init error: $e', name: 'AudioHandler');
     }
   }
 
-  /// Maps just_audio events to audio_service PlaybackState for Android/iOS/Web system controls
   void _broadcastPlaybackState() {
     _playbackEventSub = _player.playbackEventStream.listen((PlaybackEvent event) {
       final isPlaying = _player.playing;
@@ -96,9 +107,18 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
           updatePosition: _player.position,
           bufferedPosition: _player.bufferedPosition,
           speed: _player.speed,
-          queueIndex: _currentIndex >= 0 ? _currentIndex : null,
+          queueIndex: currentIndex >= 0 ? currentIndex : null,
         ),
       );
+    });
+  }
+
+  void _listenToCompletion() {
+    _playerStateSub = _player.playerStateStream.listen((state) {
+      if (state.processingState == ProcessingState.completed) {
+        developer.log('Track completed. Auto-skipping to next...', name: 'AudioHandler');
+        skipToNext();
+      }
     });
   }
 
@@ -117,38 +137,45 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
     }
   }
 
-  Track? get currentTrack =>
-      (_currentIndex >= 0 && _currentIndex < _queue.length) ? _queue[_currentIndex] : null;
+  /// Sets an entire playlist queue and starts playback at [startIndex].
+  Future<void> playQueue(List<Track> tracks, {int startIndex = 0}) async {
+    if (tracks.isEmpty) return;
+    _playlistQueue
+      ..clear()
+      ..addAll(tracks);
+    _queueSubject.add(List.unmodifiable(_playlistQueue));
 
-  /// Loads and plays a given [Track].
+    final targetIndex = startIndex.clamp(0, _playlistQueue.length - 1);
+    _currentIndexSubject.add(targetIndex);
+    await _loadAndPlayTrack(_playlistQueue[targetIndex]);
+  }
+
+  /// Plays a single [Track], updating the current queue.
   Future<void> playTrack(Track track) async {
-    try {
-      // 1. Resolve audio stream on-device
-      final streamInfo = await _streamResolver.resolveBestAudioStream(track);
+    _playlistQueue
+      ..clear()
+      ..add(track);
+    _queueSubject.add(List.unmodifiable(_playlistQueue));
+    _currentIndexSubject.add(0);
+    await _loadAndPlayTrack(track);
+  }
 
-      // 2. Sync system notification metadata
+  Future<void> _loadAndPlayTrack(Track track) async {
+    try {
+      final streamInfo = await _streamResolver.resolveBestAudioStream(track);
       final item = track.toMediaItem(actualDuration: streamInfo.duration);
       mediaItem.add(item);
 
-      // 3. Update queue
-      _queue
-        ..clear()
-        ..add(track);
-      _currentIndex = 0;
-
-      // 4. Load audio stream into engine
       final audioSource = AudioSource.uri(streamInfo.streamUri, tag: item);
       await _player.setAudioSource(audioSource, preload: true);
-
-      // 5. Play
       await _player.play();
 
       developer.log(
-        'Started playback: "${track.title}" [${streamInfo.bitrateKbps}kbps, ${streamInfo.format}]',
+        'Started: "${track.title}" by "${track.artist}" [${streamInfo.bitrateKbps}kbps]',
         name: 'AudioHandler',
       );
     } catch (e, st) {
-      developer.log('Error starting playback', error: e, stackTrace: st, name: 'AudioHandler');
+      developer.log('Playback start failure', error: e, stackTrace: st, name: 'AudioHandler');
       if (e is AudioStreamResolutionException) rethrow;
       throw PlaybackInitializationException('Failed to play "${track.title}"', e);
     }
@@ -171,9 +198,10 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> skipToNext() async {
-    if (_currentIndex + 1 < _queue.length) {
-      _currentIndex++;
-      await playTrack(_queue[_currentIndex]);
+    if (currentIndex + 1 < _playlistQueue.length) {
+      final nextIdx = currentIndex + 1;
+      _currentIndexSubject.add(nextIdx);
+      await _loadAndPlayTrack(_playlistQueue[nextIdx]);
     }
   }
 
@@ -181,9 +209,10 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   Future<void> skipToPrevious() async {
     if (_player.position.inSeconds > 3) {
       await seek(Duration.zero);
-    } else if (_currentIndex > 0) {
-      _currentIndex--;
-      await playTrack(_queue[_currentIndex]);
+    } else if (currentIndex > 0) {
+      final prevIdx = currentIndex - 1;
+      _currentIndexSubject.add(prevIdx);
+      await _loadAndPlayTrack(_playlistQueue[prevIdx]);
     }
   }
 
@@ -191,8 +220,11 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
 
   Future<void> release() async {
     await _playbackEventSub?.cancel();
+    await _playerStateSub?.cancel();
     await _interruptionSub?.cancel();
     await _noisySub?.cancel();
+    await _currentIndexSubject.close();
+    await _queueSubject.close();
     _streamResolver.dispose();
     await _player.dispose();
   }
