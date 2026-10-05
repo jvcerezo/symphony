@@ -17,52 +17,50 @@ class AudioStreamResolverService {
   })  : _yt = ytClient ?? YoutubeExplode(),
         _httpClient = httpClient ?? http.Client();
 
-  /// Resolves a playable audio stream for a [Track].
+  /// Resolves a playable full-length audio stream for a [Track].
   ///
-  /// On Web (`kIsWeb`), resolves via high-speed, CORS-compliant audio CDNs
-  /// ensuring 100% browser audio compatibility without browser security blocks.
+  /// On Web (`kIsWeb`), queries the backend `/api/resolve` service running
+  /// in Symphony's pure Dart HTTP server to extract full master YouTube audio
+  /// without browser CORS limitations.
   /// On Native, extracts on-device YouTube streams via `youtube_explode_dart`,
   /// falling back to the global CDN if YouTube blocks or restricts the device.
   Future<ResolvedAudioStream> resolveBestAudioStream(Track track) async {
     // 1. Direct YouTube video ID resolution if available (e.g. YouTube imported playlists)
     if (track.id.startsWith('yt_')) {
       final videoId = track.id.replaceFirst('yt_', '');
-      try {
-        final manifest = await _yt.videos.streamsClient.getManifest(videoId);
-        final audioStreams = manifest.audioOnly;
-        if (audioStreams.isNotEmpty) {
-          final bestAudio = audioStreams.withHighestBitrate();
-          developer.log('Resolved direct YouTube stream for video: $videoId', name: 'AudioStreamResolver');
-          return ResolvedAudioStream(
-            streamUri: bestAudio.url,
-            duration: track.expectedDuration ?? Duration.zero,
-            bitrateKbps: bestAudio.bitrate.kiloBitsPerSecond.round(),
-            format: bestAudio.container.name,
-            sourceVideoId: videoId,
-          );
+      if (kIsWeb) {
+        final serverResolved = await _resolveViaWebServer(track, videoId: videoId);
+        if (serverResolved != null) return serverResolved;
+      } else {
+        try {
+          final manifest = await _yt.videos.streamsClient.getManifest(videoId);
+          final audioStreams = manifest.audioOnly;
+          if (audioStreams.isNotEmpty) {
+            final bestAudio = audioStreams.withHighestBitrate();
+            developer.log('Resolved direct YouTube stream for video: $videoId', name: 'AudioStreamResolver');
+            return ResolvedAudioStream(
+              streamUri: bestAudio.url,
+              duration: track.expectedDuration ?? Duration.zero,
+              bitrateKbps: bestAudio.bitrate.kiloBitsPerSecond.round(),
+              format: bestAudio.container.name,
+              sourceVideoId: videoId,
+            );
+          }
+        } catch (e) {
+          developer.log('Direct YouTube video extraction failed: $e', name: 'AudioStreamResolver');
         }
-      } catch (e) {
-        developer.log('Direct YouTube video extraction failed: $e', name: 'AudioStreamResolver');
       }
     }
 
-    // 2. Full YouTube audio stream extraction on Native (Android / iOS / Windows desktop)
-    // Streams the full 3-4 minute master audio from 0:00:00 intro to end
-    if (!kIsWeb) {
-      final cleanTitle = track.title
-          .replaceAll(RegExp(r'\(feat\.[^)]*\)', caseSensitive: false), '')
-          .replaceAll(RegExp(r'\[feat\.[^\]]*\]', caseSensitive: false), '')
-          .replaceAll(RegExp(r'\(remix[^)]*\)', caseSensitive: false), '')
-          .replaceAll(RegExp(r'\(.*remaster.*?\)', caseSensitive: false), '')
-          .replaceAll(RegExp(r'- .*remaster.*', caseSensitive: false), '')
-          .replaceAll(RegExp(r'- .*version.*', caseSensitive: false), '')
-          .trim();
-
-      final cleanArtist = track.artist
-          .split(RegExp(r'[,/&]|ft\.|feat\.', caseSensitive: false))
-          .first
-          .trim();
-
+    // 2. Full YouTube audio stream extraction (Plays complete 3-4 min master from 0:00:00 intro to end)
+    if (kIsWeb) {
+      final serverResolved = await _resolveViaWebServer(track);
+      if (serverResolved != null) {
+        return serverResolved;
+      }
+    } else {
+      final cleanTitle = _cleanSongTitle(track.title);
+      final cleanArtist = _cleanSongArtist(track.artist);
       final query = '$cleanArtist - $cleanTitle official audio';
       developer.log('Resolving full YouTube audio via client: "$query"', name: 'AudioStreamResolver');
 
@@ -106,14 +104,14 @@ class AudioStreamResolverService {
           }
         }
       } catch (e) {
-        developer.log('YouTube on-device extraction failed: $e. Falling back to master CDN stream.', name: 'AudioStreamResolver');
+        developer.log('YouTube on-device extraction failed: $e. Falling back to resilient streams.', name: 'AudioStreamResolver');
       }
     }
 
-    // 3. Direct stream attached to track
+    // 3. Direct stream attached to track (if provided and full audio)
     if (track.streamUri != null) {
       developer.log(
-        'Direct streamUri found on track: "${track.title}" -> ${track.streamUri}',
+        'Direct streamUri fallback for: "${track.title}" -> ${track.streamUri}',
         name: 'AudioStreamResolver',
       );
       return ResolvedAudioStream(
@@ -136,10 +134,74 @@ class AudioStreamResolverService {
     );
   }
 
-  /// Resolves an unauthenticated, zero-cost high-fidelity AAC stream via Apple CDN.
-  Future<ResolvedAudioStream?> _resolveDirectCdnAudio(Track track) async {
-    // Sanitize query components to maximize search hit-rates
-    final cleanTitle = track.title
+  /// Queries the Symphony server's `/api/resolve` endpoint on Web to extract
+  /// full-length YouTube audio streams without CORS restrictions.
+  Future<ResolvedAudioStream?> _resolveViaWebServer(Track track, {String? videoId}) async {
+    final cleanTitle = _cleanSongTitle(track.title);
+    final cleanArtist = _cleanSongArtist(track.artist);
+    final query = '$cleanArtist - $cleanTitle official audio';
+
+    final candidateOrigins = <String>[];
+    if (kIsWeb) {
+      try {
+        final origin = Uri.base.origin;
+        if (origin.isNotEmpty && !origin.startsWith('null')) {
+          candidateOrigins.add(origin);
+        }
+      } catch (_) {}
+    }
+    if (!candidateOrigins.contains('http://localhost:8080')) {
+      candidateOrigins.add('http://localhost:8080');
+    }
+    if (!candidateOrigins.contains('http://127.0.0.1:8080')) {
+      candidateOrigins.add('http://127.0.0.1:8080');
+    }
+
+    for (final origin in candidateOrigins) {
+      try {
+        final queryParams = <String, String>{};
+        if (videoId != null && videoId.isNotEmpty) {
+          queryParams['videoId'] = videoId;
+        } else {
+          queryParams['q'] = query;
+          queryParams['artist'] = cleanArtist;
+          queryParams['title'] = cleanTitle;
+        }
+        if (track.expectedDuration != null) {
+          queryParams['durationMs'] = track.expectedDuration!.inMilliseconds.toString();
+        }
+
+        final uri = Uri.parse('$origin/api/resolve').replace(queryParameters: queryParams);
+        final response = await _httpClient.get(uri).timeout(const Duration(seconds: 8));
+
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body) as Map<String, dynamic>;
+          final streamUrl = data['streamUrl'] as String?;
+          final durationMs = data['durationMs'] as int?;
+
+          if (streamUrl != null && streamUrl.isNotEmpty) {
+            developer.log(
+              'Resolved full master YouTube stream via server API ($origin): "${track.title}" [${durationMs != null ? durationMs ~/ 1000 : 0}s]',
+              name: 'AudioStreamResolver',
+            );
+            return ResolvedAudioStream(
+              streamUri: Uri.parse(streamUrl),
+              duration: durationMs != null ? Duration(milliseconds: durationMs) : (track.expectedDuration ?? Duration.zero),
+              bitrateKbps: (data['bitrate'] as num?)?.round() ?? 160,
+              format: (data['format'] as String?) ?? 'webm',
+              sourceVideoId: (data['videoId'] as String?) ?? track.id,
+            );
+          }
+        }
+      } catch (e) {
+        developer.log('Server resolve attempt failed on $origin: $e', name: 'AudioStreamResolver');
+      }
+    }
+    return null;
+  }
+
+  String _cleanSongTitle(String title) {
+    return title
         .replaceAll(RegExp(r'\(feat\.[^)]*\)', caseSensitive: false), '')
         .replaceAll(RegExp(r'\[feat\.[^\]]*\]', caseSensitive: false), '')
         .replaceAll(RegExp(r'\(remix[^)]*\)', caseSensitive: false), '')
@@ -147,11 +209,19 @@ class AudioStreamResolverService {
         .replaceAll(RegExp(r'- .*remaster.*', caseSensitive: false), '')
         .replaceAll(RegExp(r'- .*version.*', caseSensitive: false), '')
         .trim();
+  }
 
-    final cleanArtist = track.artist
+  String _cleanSongArtist(String artist) {
+    return artist
         .split(RegExp(r'[,/&]|ft\.|feat\.', caseSensitive: false))
         .first
         .trim();
+  }
+
+  /// Resolves an unauthenticated, zero-cost high-fidelity AAC stream via Apple CDN.
+  Future<ResolvedAudioStream?> _resolveDirectCdnAudio(Track track) async {
+    final cleanTitle = _cleanSongTitle(track.title);
+    final cleanArtist = _cleanSongArtist(track.artist);
 
     final queryVariations = [
       '$cleanArtist $cleanTitle'.trim(),

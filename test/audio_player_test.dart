@@ -63,5 +63,19 @@ void main() {
       final exception = PlaybackInitializationException('Hardware failure');
       expect(exception.toString(), contains('Hardware failure'));
     });
+
+    test('Track toMediaItem uses expectedDuration when actualDuration is null', () {
+      final track = Track(
+        id: 't1',
+        title: 'Starboy',
+        artist: 'The Weeknd',
+        expectedDuration: const Duration(minutes: 3, seconds: 50),
+      );
+      final media = track.toMediaItem();
+      expect(media.duration, equals(const Duration(minutes: 3, seconds: 50)));
+      expect(media.title, equals('Starboy'));
+      expect(media.artist, equals('The Weeknd'));
+    });
   });
 }
+

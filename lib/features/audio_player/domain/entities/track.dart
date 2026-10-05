@@ -19,13 +19,13 @@ class Track {
     this.streamUri,
   });
 
-  MediaItem toMediaItem({required Duration actualDuration}) {
+  MediaItem toMediaItem({Duration? actualDuration}) {
     return MediaItem(
       id: id,
       title: title,
       artist: artist,
       album: album ?? '',
-      duration: actualDuration,
+      duration: actualDuration ?? expectedDuration ?? const Duration(minutes: 3),
       artUri: artworkUri,
     );
   }

@@ -24,7 +24,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   StreamSubscription<AudioInterruptionEvent>? _interruptionSub;
   StreamSubscription<void>? _noisySub;
 
-  bool _isLoadingTrack = false;
+  int _playRequestId = 0;
   bool _isAutoSkipping = false;
 
   SymphonyAudioHandler({
@@ -122,13 +122,17 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
 
   void _listenToCompletion() {
     _playerStateSub = _player.playerStateStream.listen((state) async {
-      if (state.processingState == ProcessingState.completed && !_isAutoSkipping && !_isLoadingTrack) {
+      // Only auto-skip when player actually finishes playing a track to completion,
+      // not when stopping/transitioning or at 0 position.
+      if (state.processingState == ProcessingState.completed &&
+          !_isAutoSkipping &&
+          _player.position > const Duration(seconds: 3)) {
         _isAutoSkipping = true;
         developer.log('Track completed. Auto-skipping to next...', name: 'AudioHandler');
         try {
           await skipToNext();
         } finally {
-          await Future.delayed(const Duration(milliseconds: 600));
+          await Future.delayed(const Duration(milliseconds: 800));
           _isAutoSkipping = false;
         }
       }
@@ -174,23 +178,33 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   }
 
   Future<void> _loadAndPlayTrack(Track track) async {
-    if (_isLoadingTrack) return;
-    _isLoadingTrack = true;
+    final requestId = ++_playRequestId;
+
+    // 1. Immediately cut off previous audio with zero latency
     try {
-      // 1. MUST stop existing playback to reset browser HTML5 audio element
-      // and prevent "DOMException: The play() request was interrupted by a new load request"
+      _player.pause();
+    } catch (_) {}
+
+    // 2. Immediately update the UI media item & buffering state so the user sees the new track in < 1ms
+    mediaItem.add(track.toMediaItem());
+    playbackState.add(
+      playbackState.value.copyWith(
+        processingState: AudioProcessingState.buffering,
+        playing: true,
+        updatePosition: Duration.zero,
+        bufferedPosition: Duration.zero,
+        queueIndex: currentIndex >= 0 ? currentIndex : null,
+      ),
+    );
+
+    try {
+      // 3. Stop existing playback to reset browser HTML5 audio element cleanly
       await _player.stop();
       await _player.seek(Duration.zero);
-
-      playbackState.add(
-        playbackState.value.copyWith(
-          processingState: AudioProcessingState.buffering,
-          playing: true,
-          updatePosition: Duration.zero,
-        ),
-      );
+      if (requestId != _playRequestId) return; // Superceded by another user tap
 
       final streamInfo = await _streamResolver.resolveBestAudioStream(track);
+      if (requestId != _playRequestId) return;
 
       // Resolve artwork if track doesn't have one yet, ensuring rich lock-screen and bottom bar
       Uri? resolvedArt = track.artworkUri;
@@ -199,6 +213,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
           resolvedArt = await _artworkResolver.resolveArtwork(track);
         } catch (_) {}
       }
+      if (requestId != _playRequestId) return;
 
       final enrichedTrack = resolvedArt != null ? track.copyWith(artworkUri: resolvedArt) : track;
       final item = enrichedTrack.toMediaItem(actualDuration: streamInfo.duration);
@@ -210,13 +225,16 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
         preload: true,
         initialPosition: Duration.zero,
       );
+      if (requestId != _playRequestId) return;
+
       await _player.play();
 
       developer.log(
-        'Started: "${track.title}" by "${track.artist}" [${streamInfo.bitrateKbps}kbps]',
+        'Started: "${track.title}" by "${track.artist}" [${streamInfo.bitrateKbps}kbps, duration: ${streamInfo.duration.inSeconds}s]',
         name: 'AudioHandler',
       );
     } catch (e, st) {
+      if (requestId != _playRequestId) return; // Ignore errors from superseded requests
       developer.log('Playback start failure', error: e, stackTrace: st, name: 'AudioHandler');
       playbackState.add(
         playbackState.value.copyWith(
@@ -226,8 +244,6 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
       );
       if (e is AudioStreamResolutionException) rethrow;
       throw PlaybackInitializationException('Failed to play "${track.title}"', e);
-    } finally {
-      _isLoadingTrack = false;
     }
   }
 
@@ -253,7 +269,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> skipToNext() async {
-    if (_playlistQueue.isEmpty || _isLoadingTrack) return;
+    if (_playlistQueue.isEmpty) return;
     final nextIdx = (currentIndex + 1) % _playlistQueue.length;
     _currentIndexSubject.add(nextIdx);
     await _loadAndPlayTrack(_playlistQueue[nextIdx]);
@@ -261,7 +277,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> skipToPrevious() async {
-    if (_playlistQueue.isEmpty || _isLoadingTrack) return;
+    if (_playlistQueue.isEmpty) return;
     if (_player.position.inSeconds > 3) {
       await seek(Duration.zero);
     } else {
