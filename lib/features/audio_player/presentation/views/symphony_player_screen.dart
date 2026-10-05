@@ -2,6 +2,7 @@ import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/symphony_theme.dart';
+import '../../../metadata_search/presentation/views/search_view.dart';
 import '../../../playlist_import/domain/entities/spotify_playlist.dart';
 import '../controllers/audio_player_providers.dart';
 import '../widgets/bottom_player_bar.dart';
@@ -20,7 +21,6 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
   @override
   void initState() {
     super.initState();
-    // Pre-populate with default Spotify curated playlist if empty
     WidgetsBinding.instance.addPostFrameCallback((_) => _initDefaultPlaylist());
   }
 
@@ -30,20 +30,20 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
 
     try {
       final scraper = ref.read(spotifyScraperProvider);
-      // Auto-load Today's Top Hits public playlist
       final playlist = await scraper.importPlaylist('37i9dQZF1DXcBWIGoYBM5M');
       if (mounted) {
         ref.read(importedPlaylistsProvider.notifier).addPlaylist(playlist);
         ref.read(activePlaylistProvider.notifier).state = playlist;
       }
     } catch (_) {
-      // Offline or network error gracefully handled
+      // Gracefully handled by scraper fallback
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final activePlaylist = ref.watch(activePlaylistProvider);
+    final activeTab = ref.watch(activeNavTabProvider);
     final mediaItemAsync = ref.watch(currentMediaItemStreamProvider);
     final playbackStateAsync = ref.watch(playbackStateStreamProvider);
 
@@ -56,6 +56,31 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
 
     return Scaffold(
       backgroundColor: SymphonyTheme.obsidian,
+      bottomNavigationBar: !isDesktop
+          ? BottomNavigationBar(
+              currentIndex: activeTab == 'home'
+                  ? 0
+                  : activeTab == 'search'
+                      ? 1
+                      : 2,
+              onTap: (idx) {
+                final tab = idx == 0
+                    ? 'home'
+                    : idx == 1
+                        ? 'search'
+                        : 'library';
+                ref.read(activeNavTabProvider.notifier).state = tab;
+              },
+              backgroundColor: SymphonyTheme.obsidian,
+              selectedItemColor: SymphonyTheme.primaryLight,
+              unselectedItemColor: SymphonyTheme.textSecondary,
+              items: const [
+                BottomNavigationBarItem(icon: Icon(Icons.home_filled), label: 'Home'),
+                BottomNavigationBarItem(icon: Icon(Icons.search), label: 'Search'),
+                BottomNavigationBarItem(icon: Icon(Icons.library_music), label: 'Your Library'),
+              ],
+            )
+          : null,
       body: Column(
         children: [
           Expanded(
@@ -65,15 +90,139 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
                 Expanded(
                   child: Container(
                     color: SymphonyTheme.midnight,
-                    child: activePlaylist == null
-                        ? _buildLoadingState()
-                        : _buildPlaylistContent(activePlaylist, mediaItem, isPlaying, isDesktop),
+                    child: _buildCurrentTabContent(activeTab, activePlaylist, mediaItem, isPlaying, isDesktop),
                   ),
                 ),
               ],
             ),
           ),
           const BottomPlayerBar(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCurrentTabContent(
+    String activeTab,
+    SpotifyPlaylist? activePlaylist,
+    MediaItem? mediaItem,
+    bool isPlaying,
+    bool isDesktop,
+  ) {
+    if (activeTab == 'search') {
+      return const SearchView();
+    }
+
+    if (activeTab == 'library') {
+      return _buildLibraryView();
+    }
+
+    // Default 'home' tab
+    if (activePlaylist == null) {
+      return _buildLoadingState();
+    }
+
+    return _buildPlaylistContent(activePlaylist, mediaItem, isPlaying, isDesktop);
+  }
+
+  Widget _buildLibraryView() {
+    final importedPlaylists = ref.watch(importedPlaylistsProvider);
+
+    return Padding(
+      padding: const EdgeInsets.all(28.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Your Library',
+                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
+              ),
+              ElevatedButton.icon(
+                onPressed: () {
+                  showDialog(context: context, builder: (_) => const ImportPlaylistDialog());
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: SymphonyTheme.primary,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Import Spotify'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          if (importedPlaylists.isEmpty)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.only(top: 80.0),
+                child: Text('No playlists imported yet', style: TextStyle(color: SymphonyTheme.textMuted)),
+              ),
+            )
+          else
+            Expanded(
+              child: GridView.builder(
+                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: 220,
+                  mainAxisExtent: 260,
+                  crossAxisSpacing: 16,
+                  mainAxisSpacing: 16,
+                ),
+                itemCount: importedPlaylists.length,
+                itemBuilder: (context, index) {
+                  final playlist = importedPlaylists[index];
+                  return InkWell(
+                    onTap: () {
+                      ref.read(activePlaylistProvider.notifier).state = playlist;
+                      ref.read(activeNavTabProvider.notifier).state = 'home';
+                    },
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: SymphonyTheme.card,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: SymphonyTheme.divider),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: playlist.coverUrl != null
+                                ? Image.network(
+                                    playlist.coverUrl!,
+                                    width: double.infinity,
+                                    height: 150,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stackTrace) => _buildFallbackCover(),
+                                  )
+                                : _buildFallbackCover(),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            playlist.title,
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.white),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${playlist.trackCount} songs • By ${playlist.ownerName ?? "Spotify"}',
+                            style: const TextStyle(fontSize: 12, color: SymphonyTheme.textSecondary),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
         ],
       ),
     );
@@ -95,27 +244,13 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
           ),
           const SizedBox(height: 18),
           const Text(
-            'Importing Spotify Showcase...',
+            'Loading Symphony Player...',
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
           ),
           const SizedBox(height: 8),
           const Text(
-            'Extracting tracks directly on-device with zero logins',
+            'Instant zero-login streaming experience',
             style: TextStyle(fontSize: 13, color: SymphonyTheme.textSecondary),
-          ),
-          const SizedBox(height: 24),
-          ElevatedButton.icon(
-            onPressed: () {
-              showDialog(context: context, builder: (_) => const ImportPlaylistDialog());
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: SymphonyTheme.primary,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-            icon: const Icon(Icons.link, size: 18),
-            label: const Text('Paste Spotify Link Manually'),
           ),
         ],
       ),
@@ -187,7 +322,6 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    // Playlist Artwork with drop shadow
                     Container(
                       width: isDesktop ? 190 : 130,
                       height: isDesktop ? 190 : 130,
@@ -213,7 +347,6 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
                       ),
                     ),
                     const SizedBox(width: 24),
-                    // Metadata
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,

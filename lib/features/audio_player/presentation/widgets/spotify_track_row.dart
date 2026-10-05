@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../core/theme/symphony_theme.dart';
 import '../../domain/entities/track.dart';
+import 'animated_equalizer.dart';
 
 class SpotifyTrackRow extends StatefulWidget {
   final int index;
@@ -46,23 +47,25 @@ class _SpotifyTrackRowState extends State<SpotifyTrackRow> {
           ),
           child: Row(
             children: [
-              // Index or Play Icon
+              // Index, Animated Equalizer, or Play/Pause Icon
               SizedBox(
                 width: 32,
-                child: _isHovered || isCurrent
-                    ? Icon(
-                        isCurrent && widget.isPlaying ? Icons.pause : Icons.play_arrow,
-                        color: isCurrent ? SymphonyTheme.primaryLight : Colors.white,
-                        size: 20,
-                      )
-                    : Text(
-                        '${widget.index + 1}',
-                        style: TextStyle(
-                          color: isCurrent ? SymphonyTheme.primaryLight : SymphonyTheme.textMuted,
-                          fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
-                          fontSize: 14,
-                        ),
-                      ),
+                child: isCurrent && widget.isPlaying && !_isHovered
+                    ? const Center(child: AnimatedEqualizer(isPlaying: true, height: 14))
+                    : (_isHovered || isCurrent
+                        ? Icon(
+                            isCurrent && widget.isPlaying ? Icons.pause : Icons.play_arrow,
+                            color: isCurrent ? SymphonyTheme.primaryLight : Colors.white,
+                            size: 20,
+                          )
+                        : Text(
+                            '${widget.index + 1}',
+                            style: TextStyle(
+                              color: isCurrent ? SymphonyTheme.primaryLight : SymphonyTheme.textMuted,
+                              fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+                              fontSize: 14,
+                            ),
+                          )),
               ),
               const SizedBox(width: 12),
               // Artwork Thumbnail

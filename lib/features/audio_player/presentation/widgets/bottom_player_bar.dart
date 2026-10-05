@@ -1,9 +1,9 @@
-import 'dart:ui';
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/symphony_theme.dart';
 import '../controllers/audio_player_providers.dart';
+import 'animated_equalizer.dart';
 
 class BottomPlayerBar extends ConsumerStatefulWidget {
   const BottomPlayerBar({super.key});
@@ -35,23 +35,19 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
     final screenWidth = MediaQuery.of(context).size.width;
     final isMobile = screenWidth < 700;
 
-    return ClipRRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-        child: Container(
-          height: isMobile ? 76 : 90,
-          padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 24, vertical: 8),
-          decoration: BoxDecoration(
-            color: SymphonyTheme.midnight.withAlpha(235),
-            border: const Border(
-              top: BorderSide(color: SymphonyTheme.divider, width: 1),
-            ),
-          ),
-          child: isMobile
-              ? _buildMobileLayout(mediaItem, isPlaying, isBuffering)
-              : _buildDesktopLayout(mediaItem, isPlaying, isBuffering),
+    // Use zero-overhead solid background for 60+ FPS on Web and native
+    return Container(
+      height: isMobile ? 76 : 90,
+      padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 24, vertical: 8),
+      decoration: BoxDecoration(
+        color: SymphonyTheme.surface.withAlpha(245),
+        border: const Border(
+          top: BorderSide(color: SymphonyTheme.divider, width: 1),
         ),
       ),
+      child: isMobile
+          ? _buildMobileLayout(mediaItem, isPlaying, isBuffering)
+          : _buildDesktopLayout(mediaItem, isPlaying, isBuffering),
     );
   }
 
@@ -60,22 +56,37 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
 
     return Row(
       children: [
-        // Left Column: Artwork + Metadata
+        // Left Column: Artwork with animated pulse glow + Metadata
         Expanded(
           flex: 3,
           child: Row(
             children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: mediaItem.artUri != null
-                    ? Image.network(
-                        mediaItem.artUri.toString(),
-                        width: 56,
-                        height: 56,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) => _buildFallbackArt(),
-                      )
-                    : _buildFallbackArt(),
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(6),
+                  boxShadow: isPlaying
+                      ? [
+                          BoxShadow(
+                            color: SymphonyTheme.primary.withAlpha(140),
+                            blurRadius: 14,
+                            spreadRadius: 1,
+                          ),
+                        ]
+                      : [],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: mediaItem.artUri != null
+                      ? Image.network(
+                          mediaItem.artUri.toString(),
+                          width: 56,
+                          height: 56,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) => _buildFallbackArt(),
+                        )
+                      : _buildFallbackArt(),
+                ),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -139,33 +150,37 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
                     onPressed: () => handler.skipToPrevious(),
                   ),
                   const SizedBox(width: 8),
-                  Container(
-                    width: 38,
-                    height: 38,
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: SymphonyTheme.brandGradient,
-                    ),
-                    child: IconButton(
-                      padding: EdgeInsets.zero,
-                      iconSize: 22,
-                      icon: isBuffering
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                            )
-                          : Icon(
-                              isPlaying ? Icons.pause : Icons.play_arrow,
-                              color: Colors.white,
-                            ),
-                      onPressed: () {
-                        if (isPlaying) {
-                          handler.pause();
-                        } else {
-                          handler.play();
-                        }
-                      },
+                  AnimatedScale(
+                    scale: isPlaying ? 1.05 : 1.0,
+                    duration: const Duration(milliseconds: 200),
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: SymphonyTheme.brandGradient,
+                      ),
+                      child: IconButton(
+                        padding: EdgeInsets.zero,
+                        iconSize: 24,
+                        icon: isBuffering
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                              )
+                            : Icon(
+                                isPlaying ? Icons.pause : Icons.play_arrow,
+                                color: Colors.white,
+                              ),
+                        onPressed: () {
+                          if (isPlaying) {
+                            handler.pause();
+                          } else {
+                            handler.play();
+                          }
+                        },
+                      ),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -227,12 +242,14 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
           ),
         ),
 
-        // Right Column: Quality Badge + Volume Controls
+        // Right Column: Animated Equalizer + Quality Badge + Volume Controls
         Expanded(
           flex: 3,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
+              AnimatedEqualizer(isPlaying: isPlaying, height: 16),
+              const SizedBox(width: 14),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
@@ -346,6 +363,8 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
                 ],
               ),
             ),
+            AnimatedEqualizer(isPlaying: isPlaying, height: 14),
+            const SizedBox(width: 8),
             IconButton(
               iconSize: 28,
               icon: const Icon(Icons.skip_previous, color: Colors.white),

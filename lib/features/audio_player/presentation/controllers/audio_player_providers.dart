@@ -1,5 +1,6 @@
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../metadata_search/data/services/search_service.dart';
 import '../../../playlist_import/data/services/spotify_embed_scraper_service.dart';
 import '../../../playlist_import/domain/entities/spotify_playlist.dart';
 import '../../data/services/symphony_audio_handler.dart';
@@ -41,12 +42,18 @@ final spotifyScraperProvider = Provider<SpotifyEmbedScraperService>((ref) {
   return service;
 });
 
+/// Provider for unauthenticated iTunes / Deezer search
+final searchServiceProvider = Provider<SearchService>((ref) {
+  final service = SearchService();
+  ref.onDispose(() => service.dispose());
+  return service;
+});
+
 /// StateNotifier for managing imported Spotify playlists
 class ImportedPlaylistsNotifier extends StateNotifier<List<SpotifyPlaylist>> {
   ImportedPlaylistsNotifier() : super([]);
 
   void addPlaylist(SpotifyPlaylist playlist) {
-    // Avoid duplicates
     state = [
       playlist,
       ...state.where((p) => p.id != playlist.id),
@@ -61,3 +68,18 @@ final importedPlaylistsProvider =
 
 /// StateProvider holding the currently viewed Spotify Playlist
 final activePlaylistProvider = StateProvider<SpotifyPlaylist?>((ref) => null);
+
+/// Active navigation tab: 'home' | 'search' | 'library'
+final activeNavTabProvider = StateProvider<String>((ref) => 'home');
+
+/// Active search query string
+final searchQueryProvider = StateProvider<String>((ref) => '');
+
+/// Async provider for live search results
+final searchResultsProvider = FutureProvider<List<Track>>((ref) async {
+  final query = ref.watch(searchQueryProvider);
+  if (query.trim().isEmpty) return [];
+
+  final searchService = ref.watch(searchServiceProvider);
+  return searchService.searchTracks(query);
+});

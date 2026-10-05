@@ -11,6 +11,7 @@ class SidebarNav extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final importedPlaylists = ref.watch(importedPlaylistsProvider);
     final activePlaylist = ref.watch(activePlaylistProvider);
+    final activeTab = ref.watch(activeNavTabProvider);
 
     return Container(
       width: 250,
@@ -48,9 +49,24 @@ class SidebarNav extends ConsumerWidget {
           ),
 
           // Primary Navigation Links
-          _buildNavItem(icon: Icons.home_filled, label: 'Home', isSelected: true, onTap: () {}),
-          _buildNavItem(icon: Icons.search, label: 'Search', isSelected: false, onTap: () {}),
-          _buildNavItem(icon: Icons.library_music, label: 'Your Library', isSelected: false, onTap: () {}),
+          _buildNavItem(
+            icon: Icons.home_filled,
+            label: 'Home',
+            isSelected: activeTab == 'home',
+            onTap: () => ref.read(activeNavTabProvider.notifier).state = 'home',
+          ),
+          _buildNavItem(
+            icon: Icons.search,
+            label: 'Search',
+            isSelected: activeTab == 'search',
+            onTap: () => ref.read(activeNavTabProvider.notifier).state = 'search',
+          ),
+          _buildNavItem(
+            icon: Icons.library_music,
+            label: 'Your Library',
+            isSelected: activeTab == 'library',
+            onTap: () => ref.read(activeNavTabProvider.notifier).state = 'library',
+          ),
 
           const SizedBox(height: 16),
 
