@@ -96,6 +96,89 @@ void _saveResolveEntry(String primaryKey, Map<String, dynamic> data, {String? ar
   }
 }
 
+const int _defaultCacheQuotaBytes = 3 * 1024 * 1024 * 1024; // 3 GB quota
+
+Future<void> _cleanStaleTempFiles() async {
+  if (await _cacheDir.exists()) {
+    int count = 0;
+    for (final entity in _cacheDir.listSync()) {
+      if (entity is File && entity.path.endsWith('.tmp')) {
+        try {
+          entity.deleteSync();
+          count++;
+        } catch (_) {}
+      }
+    }
+    if (count > 0) {
+      print('Cleaned up $count stale temporary download files.');
+    }
+  }
+}
+
+Future<void> _enforceCacheQuota({int quotaBytes = _defaultCacheQuotaBytes}) async {
+  if (!await _cacheDir.exists()) return;
+
+  final audioFiles = <File>[];
+  int totalBytes = 0;
+
+  for (final entity in _cacheDir.listSync()) {
+    if (entity is File && entity.path.contains('audio_') && entity.path.endsWith('.webm')) {
+      audioFiles.add(entity);
+      totalBytes += entity.lengthSync();
+    }
+  }
+
+  if (totalBytes <= quotaBytes) return;
+
+  // Protect pinned tracks from user's saved playlists from eviction
+  final pinnedVideoIds = <String>{};
+  if (await _playlistsFile.exists()) {
+    try {
+      final playlists = jsonDecode(await _playlistsFile.readAsString()) as List<dynamic>;
+      for (final p in playlists) {
+        final tracks = (p['tracks'] as List<dynamic>?) ?? [];
+        for (final t in tracks) {
+          final id = t['id'] as String? ?? '';
+          final title = t['title'] as String? ?? '';
+          final artist = t['artist'] as String? ?? '';
+          final norm = '${_normalizeKey(artist)} - ${_normalizeKey(title)}';
+          final entry = _resolveCache[id] ?? _resolveCache['track_$id'] ?? _resolveCache[norm];
+          if (entry != null && entry['videoId'] != null) {
+            pinnedVideoIds.add(entry['videoId'] as String);
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
+  // Transient files (cached during streaming, not in any saved playlist)
+  final transientFiles = audioFiles.where((f) {
+    final base = f.uri.pathSegments.last;
+    final vid = base.replaceFirst('audio_', '').replaceFirst('.webm', '');
+    return !pinnedVideoIds.contains(vid);
+  }).toList();
+
+  // Sort LRU: oldest modified first
+  transientFiles.sort((a, b) => a.lastModifiedSync().compareTo(b.lastModifiedSync()));
+
+  final targetBytes = (quotaBytes * 0.8).round();
+  int evictedCount = 0;
+
+  for (final file in transientFiles) {
+    if (totalBytes <= targetBytes) break;
+    final size = file.lengthSync();
+    try {
+      file.deleteSync();
+      totalBytes -= size;
+      evictedCount++;
+    } catch (_) {}
+  }
+
+  if (evictedCount > 0) {
+    print('LRU Cache quota enforced: evicted $evictedCount transient tracks. New cache size: ${(totalBytes / (1024 * 1024)).toStringAsFixed(1)} MB');
+  }
+}
+
 Future<void> main() async {
   final port = 8080;
   final webDir = Directory('build/web');
@@ -109,7 +192,9 @@ Future<void> main() async {
     await _cacheDir.create(recursive: true);
   }
 
+  await _cleanStaleTempFiles();
   await _loadResolveIndex();
+  await _enforceCacheQuota();
 
   final server = await HttpServer.bind(InternetAddress.anyIPv4, port);
   print('Symphony Full-Track Offline Server running on http://localhost:$port');
@@ -174,6 +259,18 @@ Future<void> _handleRequest(HttpRequest request, Directory webDir) async {
   // 6. Explicit Track/Playlist Download Endpoint: /api/offline/download
   if (uri.path == '/api/offline/download') {
     await _handleExplicitDownload(request);
+    return;
+  }
+
+  // 7. Cache Info & Data Retention Status: /api/offline/cache-info
+  if (uri.path == '/api/offline/cache-info') {
+    await _handleCacheInfo(request);
+    return;
+  }
+
+  // 8. User Cache Eviction & Cleanup: /api/offline/clear
+  if (uri.path == '/api/offline/clear') {
+    await _handleClearCache(request);
     return;
   }
 
@@ -1155,4 +1252,58 @@ ContentType? _getContentType(String path) {
   if (path.endsWith('.wasm')) return ContentType('application', 'wasm');
   if (path.endsWith('.webp')) return ContentType('image', 'webp');
   return null;
+}
+
+Future<void> _handleCacheInfo(HttpRequest request) async {
+  request.response.headers.contentType = ContentType.json;
+  int totalBytes = 0;
+  int trackCount = 0;
+
+  if (await _cacheDir.exists()) {
+    for (final entity in _cacheDir.listSync()) {
+      if (entity is File && entity.path.contains('audio_') && entity.path.endsWith('.webm')) {
+        totalBytes += entity.lengthSync();
+        trackCount++;
+      }
+    }
+  }
+
+  request.response.write(jsonEncode({
+    'totalBytes': totalBytes,
+    'formattedSize': '${(totalBytes / (1024 * 1024)).toStringAsFixed(1)} MB',
+    'trackCount': trackCount,
+    'quotaBytes': _defaultCacheQuotaBytes,
+    'quotaFormatted': '${(_defaultCacheQuotaBytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB',
+  }));
+  await request.response.close();
+}
+
+Future<void> _handleClearCache(HttpRequest request) async {
+  request.response.headers.contentType = ContentType.json;
+  try {
+    int deletedCount = 0;
+    if (await _cacheDir.exists()) {
+      for (final entity in _cacheDir.listSync()) {
+        if (entity is File && (entity.path.contains('audio_') || entity.path.endsWith('.tmp'))) {
+          try {
+            entity.deleteSync();
+            deletedCount++;
+          } catch (_) {}
+        }
+      }
+    }
+    _resolveCache.clear();
+    if (await _resolveIndexFile.exists()) {
+      await _resolveIndexFile.writeAsString('{}');
+    }
+    request.response.write(jsonEncode({
+      'success': true,
+      'deletedFiles': deletedCount,
+      'message': 'Cache cleared successfully',
+    }));
+  } catch (e) {
+    request.response.statusCode = HttpStatus.internalServerError;
+    request.response.write(jsonEncode({'error': e.toString()}));
+  }
+  await request.response.close();
 }
