@@ -24,7 +24,93 @@ class AudioStreamResolverService {
   /// On Native, extracts on-device YouTube streams via `youtube_explode_dart`,
   /// falling back to the global CDN if YouTube blocks or restricts the device.
   Future<ResolvedAudioStream> resolveBestAudioStream(Track track) async {
-    // 0. Direct stream attached to track (Spotify preview, Deezer, Apple, Smart Mix)
+    // 1. Direct YouTube video ID resolution if available (e.g. YouTube imported playlists)
+    if (track.id.startsWith('yt_')) {
+      final videoId = track.id.replaceFirst('yt_', '');
+      try {
+        final manifest = await _yt.videos.streamsClient.getManifest(videoId);
+        final audioStreams = manifest.audioOnly;
+        if (audioStreams.isNotEmpty) {
+          final bestAudio = audioStreams.withHighestBitrate();
+          developer.log('Resolved direct YouTube stream for video: $videoId', name: 'AudioStreamResolver');
+          return ResolvedAudioStream(
+            streamUri: bestAudio.url,
+            duration: track.expectedDuration ?? Duration.zero,
+            bitrateKbps: bestAudio.bitrate.kiloBitsPerSecond.round(),
+            format: bestAudio.container.name,
+            sourceVideoId: videoId,
+          );
+        }
+      } catch (e) {
+        developer.log('Direct YouTube video extraction failed: $e', name: 'AudioStreamResolver');
+      }
+    }
+
+    // 2. Full YouTube audio stream extraction on Native (Android / iOS / Windows desktop)
+    // Streams the full 3-4 minute master audio from 0:00:00 intro to end
+    if (!kIsWeb) {
+      final cleanTitle = track.title
+          .replaceAll(RegExp(r'\(feat\.[^)]*\)', caseSensitive: false), '')
+          .replaceAll(RegExp(r'\[feat\.[^\]]*\]', caseSensitive: false), '')
+          .replaceAll(RegExp(r'\(remix[^)]*\)', caseSensitive: false), '')
+          .replaceAll(RegExp(r'\(.*remaster.*?\)', caseSensitive: false), '')
+          .replaceAll(RegExp(r'- .*remaster.*', caseSensitive: false), '')
+          .replaceAll(RegExp(r'- .*version.*', caseSensitive: false), '')
+          .trim();
+
+      final cleanArtist = track.artist
+          .split(RegExp(r'[,/&]|ft\.|feat\.', caseSensitive: false))
+          .first
+          .trim();
+
+      final query = '$cleanArtist - $cleanTitle official audio';
+      developer.log('Resolving full YouTube audio via client: "$query"', name: 'AudioStreamResolver');
+
+      try {
+        final searchResults = await _yt.search.search(query);
+        if (searchResults.isNotEmpty) {
+          final candidates = searchResults
+              .where((video) => !video.isLive)
+              .take(5)
+              .toList();
+
+          for (final candidate in candidates) {
+            if (track.expectedDuration != null && candidate.duration != null) {
+              final delta = (candidate.duration! - track.expectedDuration!).inSeconds.abs();
+              if (delta > 60) continue;
+            }
+
+            try {
+              final manifest = await _yt.videos.streamsClient.getManifest(candidate.id);
+              final audioStreams = manifest.audioOnly;
+
+              if (audioStreams.isNotEmpty) {
+                final bestAudio = audioStreams.withHighestBitrate();
+                developer.log(
+                  'Resolved full YouTube stream: ${candidate.id.value} [${bestAudio.bitrate.kiloBitsPerSecond.round()} kbps, duration: ${candidate.duration}]',
+                  name: 'AudioStreamResolver',
+                );
+
+                return ResolvedAudioStream(
+                  streamUri: bestAudio.url,
+                  duration: candidate.duration ?? track.expectedDuration ?? Duration.zero,
+                  bitrateKbps: bestAudio.bitrate.kiloBitsPerSecond.round(),
+                  format: bestAudio.container.name,
+                  sourceVideoId: candidate.id.value,
+                );
+              }
+            } catch (e) {
+              developer.log('Candidate ${candidate.id.value} manifest extraction failed: $e', name: 'AudioStreamResolver');
+              continue;
+            }
+          }
+        }
+      } catch (e) {
+        developer.log('YouTube on-device extraction failed: $e. Falling back to master CDN stream.', name: 'AudioStreamResolver');
+      }
+    }
+
+    // 3. Direct stream attached to track
     if (track.streamUri != null) {
       developer.log(
         'Direct streamUri found on track: "${track.title}" -> ${track.streamUri}',
@@ -39,61 +125,7 @@ class AudioStreamResolverService {
       );
     }
 
-    // 1. Web environment: Browser CORS requires CDN streaming endpoints
-    if (kIsWeb) {
-      developer.log('Web environment detected: routing to high-speed CDN audio stream', name: 'AudioStreamResolver');
-      final cdnStream = await _resolveDirectCdnAudio(track);
-      if (cdnStream != null) return cdnStream;
-    }
-
-    // 2. Native resolution via youtube_explode_dart
-    final query = '${track.artist} - ${track.title} official audio';
-    developer.log('Resolving audio stream via YouTube client: "$query"', name: 'AudioStreamResolver');
-
-    try {
-      final searchResults = await _yt.search.search(query);
-      if (searchResults.isNotEmpty) {
-        final candidates = searchResults
-            .where((video) => !video.isLive)
-            .take(5)
-            .toList();
-
-        for (final candidate in candidates) {
-          if (track.expectedDuration != null && candidate.duration != null) {
-            final delta = (candidate.duration! - track.expectedDuration!).inSeconds.abs();
-            if (delta > 60) continue;
-          }
-
-          try {
-            final manifest = await _yt.videos.streamsClient.getManifest(candidate.id);
-            final audioStreams = manifest.audioOnly;
-
-            if (audioStreams.isNotEmpty) {
-              final bestAudio = audioStreams.withHighestBitrate();
-              developer.log(
-                'Resolved YouTube stream: ${candidate.id.value} [${bestAudio.bitrate.kiloBitsPerSecond.round()} kbps]',
-                name: 'AudioStreamResolver',
-              );
-
-              return ResolvedAudioStream(
-                streamUri: bestAudio.url,
-                duration: candidate.duration ?? track.expectedDuration ?? Duration.zero,
-                bitrateKbps: bestAudio.bitrate.kiloBitsPerSecond.round(),
-                format: bestAudio.container.name,
-                sourceVideoId: candidate.id.value,
-              );
-            }
-          } catch (e) {
-            developer.log('Candidate ${candidate.id.value} manifest extraction failed: $e', name: 'AudioStreamResolver');
-            continue;
-          }
-        }
-      }
-    } catch (e) {
-      developer.log('YouTube on-device extraction failed: $e. Falling back to CDN stream.', name: 'AudioStreamResolver');
-    }
-
-    // 3. Fallback to resilient CDN stream
+    // 4. Fallback to resilient CDN stream (with candidate scoring to pick original studio master)
     final fallbackCdn = await _resolveDirectCdnAudio(track);
     if (fallbackCdn != null) {
       return fallbackCdn;

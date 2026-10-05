@@ -161,11 +161,11 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
                                 isPlaying ? Icons.pause : Icons.play_arrow,
                                 color: Colors.white,
                               ),
-                        onPressed: () {
+                        onPressed: () async {
                           if (isPlaying) {
-                            handler.pause();
+                            await handler.pause();
                           } else {
-                            handler.play();
+                            await handler.play();
                           }
                         },
                       ),
@@ -375,11 +375,11 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
                         child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                       )
                     : Icon(isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.white),
-                onPressed: () {
+                onPressed: () async {
                   if (isPlaying) {
-                    handler.pause();
+                    await handler.pause();
                   } else {
-                    handler.play();
+                    await handler.play();
                   }
                 },
               ),

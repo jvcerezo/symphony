@@ -24,6 +24,9 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   StreamSubscription<AudioInterruptionEvent>? _interruptionSub;
   StreamSubscription<void>? _noisySub;
 
+  bool _isLoadingTrack = false;
+  bool _isAutoSkipping = false;
+
   SymphonyAudioHandler({
     AudioPlayer? player,
     AudioStreamResolverService? streamResolver,
@@ -118,10 +121,16 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   }
 
   void _listenToCompletion() {
-    _playerStateSub = _player.playerStateStream.listen((state) {
-      if (state.processingState == ProcessingState.completed) {
+    _playerStateSub = _player.playerStateStream.listen((state) async {
+      if (state.processingState == ProcessingState.completed && !_isAutoSkipping && !_isLoadingTrack) {
+        _isAutoSkipping = true;
         developer.log('Track completed. Auto-skipping to next...', name: 'AudioHandler');
-        skipToNext();
+        try {
+          await skipToNext();
+        } finally {
+          await Future.delayed(const Duration(milliseconds: 600));
+          _isAutoSkipping = false;
+        }
       }
     });
   }
@@ -165,15 +174,19 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   }
 
   Future<void> _loadAndPlayTrack(Track track) async {
+    if (_isLoadingTrack) return;
+    _isLoadingTrack = true;
     try {
       // 1. MUST stop existing playback to reset browser HTML5 audio element
       // and prevent "DOMException: The play() request was interrupted by a new load request"
       await _player.stop();
+      await _player.seek(Duration.zero);
 
       playbackState.add(
         playbackState.value.copyWith(
           processingState: AudioProcessingState.buffering,
           playing: true,
+          updatePosition: Duration.zero,
         ),
       );
 
@@ -192,7 +205,11 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
       mediaItem.add(item);
 
       final audioSource = AudioSource.uri(streamInfo.streamUri, tag: item);
-      await _player.setAudioSource(audioSource, preload: true);
+      await _player.setAudioSource(
+        audioSource,
+        preload: true,
+        initialPosition: Duration.zero,
+      );
       await _player.play();
 
       developer.log(
@@ -209,11 +226,18 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
       );
       if (e is AudioStreamResolutionException) rethrow;
       throw PlaybackInitializationException('Failed to play "${track.title}"', e);
+    } finally {
+      _isLoadingTrack = false;
     }
   }
 
   @override
-  Future<void> play() => _player.play();
+  Future<void> play() async {
+    if (_player.processingState == ProcessingState.completed) {
+      await seek(Duration.zero);
+    }
+    await _player.play();
+  }
 
   @override
   Future<void> pause() => _player.pause();
@@ -229,7 +253,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> skipToNext() async {
-    if (_playlistQueue.isEmpty) return;
+    if (_playlistQueue.isEmpty || _isLoadingTrack) return;
     final nextIdx = (currentIndex + 1) % _playlistQueue.length;
     _currentIndexSubject.add(nextIdx);
     await _loadAndPlayTrack(_playlistQueue[nextIdx]);
@@ -237,7 +261,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> skipToPrevious() async {
-    if (_playlistQueue.isEmpty) return;
+    if (_playlistQueue.isEmpty || _isLoadingTrack) return;
     if (_player.position.inSeconds > 3) {
       await seek(Duration.zero);
     } else {
