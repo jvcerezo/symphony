@@ -58,6 +58,7 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
 
   Widget _buildDesktopLayout(MediaItem mediaItem, bool isPlaying, bool isBuffering) {
     final handler = ref.read(audioHandlerProvider);
+    final accent = ref.watch(accentThemeProvider);
 
     return Row(
       children: [
@@ -118,7 +119,7 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
                 tooltip: _isLiked ? 'Remove from Your Library' : 'Save to Your Library',
                 icon: Icon(
                   _isLiked ? Icons.favorite : Icons.favorite_border,
-                  color: _isLiked ? SymphonyTheme.spotifyGreen : SymphonyTheme.textSecondary,
+                  color: _isLiked ? accent.primary : SymphonyTheme.textSecondary,
                 ),
                 onPressed: () => setState(() => _isLiked = !_isLiked),
               ),
@@ -143,7 +144,7 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
                     tooltip: 'Enable shuffle',
                     icon: Icon(
                       Icons.shuffle,
-                      color: _isShuffle ? SymphonyTheme.spotifyGreen : SymphonyTheme.textSecondary,
+                      color: _isShuffle ? accent.primary : SymphonyTheme.textSecondary,
                     ),
                     onPressed: () => setState(() => _isShuffle = !_isShuffle),
                   ),
@@ -207,7 +208,7 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
                     tooltip: 'Enable repeat',
                     icon: Icon(
                       Icons.repeat,
-                      color: _isRepeat ? SymphonyTheme.spotifyGreen : SymphonyTheme.textSecondary,
+                      color: _isRepeat ? accent.primary : SymphonyTheme.textSecondary,
                     ),
                     onPressed: () => setState(() => _isRepeat = !_isRepeat),
                   ),
@@ -251,7 +252,7 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
                                 overlayRadius: _isScrubberHovered ? 12.0 : 0.0,
                               ),
                               activeTrackColor: _isScrubberHovered
-                                  ? SymphonyTheme.spotifyGreen
+                                  ? accent.primary
                                   : Colors.white,
                               inactiveTrackColor: const Color(0xFF4D4D4D),
                               thumbColor: Colors.white,
@@ -337,7 +338,7 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
                         overlayRadius: _isVolumeHovered ? 10.0 : 0.0,
                       ),
                       activeTrackColor: _isVolumeHovered
-                          ? SymphonyTheme.spotifyGreen
+                          ? accent.primary
                           : Colors.white,
                       inactiveTrackColor: const Color(0xFF4D4D4D),
                       thumbColor: Colors.white,
@@ -375,6 +376,7 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
 
   Widget _buildMobileLayout(MediaItem mediaItem, bool isPlaying, bool isBuffering) {
     final handler = ref.read(audioHandlerProvider);
+    final accent = ref.watch(accentThemeProvider);
 
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -425,7 +427,7 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
               iconSize: 20,
               icon: Icon(
                 _isLiked ? Icons.favorite : Icons.favorite_border,
-                color: _isLiked ? SymphonyTheme.spotifyGreen : SymphonyTheme.textSecondary,
+                color: _isLiked ? accent.primary : SymphonyTheme.textSecondary,
               ),
               onPressed: () => setState(() => _isLiked = !_isLiked),
             ),
@@ -477,7 +479,7 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
             return LinearProgressIndicator(
               value: progress,
               backgroundColor: const Color(0xFF4D4D4D),
-              valueColor: const AlwaysStoppedAnimation<Color>(SymphonyTheme.spotifyGreen),
+              valueColor: AlwaysStoppedAnimation<Color>(accent.primary),
               minHeight: 2,
             );
           },

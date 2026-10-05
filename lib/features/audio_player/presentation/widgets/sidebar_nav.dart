@@ -33,6 +33,7 @@ class _SidebarNavState extends ConsumerState<SidebarNav> {
     final playbackState = ref.watch(playbackStateStreamProvider).asData?.value;
     final isPlaying = playbackState?.playing ?? false;
     final offlineState = ref.watch(offlineProvider);
+    final accent = ref.watch(accentThemeProvider);
 
     // Filter playlists
     var filteredPlaylists = importedPlaylists;
@@ -71,10 +72,10 @@ class _SidebarNavState extends ConsumerState<SidebarNav> {
                         height: 32,
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(8),
-                          gradient: SymphonyTheme.brandGradient,
+                          gradient: accent.gradient,
                           boxShadow: [
                             BoxShadow(
-                              color: SymphonyTheme.spotifyGreen.withOpacity(0.3),
+                              color: accent.primary.withOpacity(0.35),
                               blurRadius: 10,
                               offset: const Offset(0, 2),
                             ),
@@ -177,9 +178,9 @@ class _SidebarNavState extends ConsumerState<SidebarNav> {
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                     child: Row(
                       children: [
-                        _buildFilterChip('Playlists', 'all'),
+                        _buildFilterChip('Playlists', 'all', accent),
                         const SizedBox(width: 8),
-                        _buildFilterChip('Downloaded', 'downloaded', icon: Icons.download_done_rounded),
+                        _buildFilterChip('Downloaded', 'downloaded', accent, icon: Icons.download_done_rounded),
                       ],
                     ),
                   ),
@@ -273,6 +274,7 @@ class _SidebarNavState extends ConsumerState<SidebarNav> {
                                 isSelected: isSelected,
                                 isPlaying: isThisPlaylistPlaying,
                                 isDownloaded: isDownloaded,
+                                accent: accent,
                                 onTap: () {
                                   ref.read(activePlaylistProvider.notifier).state = playlist;
                                   ref.read(activeNavTabProvider.notifier).state = 'home';
@@ -280,6 +282,62 @@ class _SidebarNavState extends ConsumerState<SidebarNav> {
                               );
                             },
                           ),
+                  ),
+
+                  // Symphony Theme Accent Picker
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: const BoxDecoration(
+                      border: Border(top: BorderSide(color: Color(0xFF242424), width: 1)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Text(
+                          'ACCENT',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.8,
+                            color: SymphonyTheme.textMuted,
+                          ),
+                        ),
+                        const Spacer(),
+                        Row(
+                          children: SymphonyTheme.accents.map((acc) {
+                            final isCurrent = acc.name == accent.name;
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 3),
+                              child: Tooltip(
+                                message: acc.name,
+                                child: InkWell(
+                                  onTap: () => ref.read(accentThemeProvider.notifier).state = acc,
+                                  borderRadius: BorderRadius.circular(10),
+                                  child: Container(
+                                    width: isCurrent ? 16 : 12,
+                                    height: isCurrent ? 16 : 12,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: acc.primary,
+                                      border: isCurrent
+                                          ? Border.all(color: Colors.white, width: 2)
+                                          : null,
+                                      boxShadow: isCurrent
+                                          ? [
+                                              BoxShadow(
+                                                color: acc.primary.withOpacity(0.6),
+                                                blurRadius: 6,
+                                              ),
+                                            ]
+                                          : null,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -324,7 +382,7 @@ class _SidebarNavState extends ConsumerState<SidebarNav> {
     );
   }
 
-  Widget _buildFilterChip(String label, String value, {IconData? icon}) {
+  Widget _buildFilterChip(String label, String value, SymphonyAccent accent, {IconData? icon}) {
     final isSelected = _selectedFilter == value;
     return InkWell(
       onTap: () {
@@ -343,7 +401,7 @@ class _SidebarNavState extends ConsumerState<SidebarNav> {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (icon != null) ...[
-              Icon(icon, size: 14, color: isSelected ? Colors.black : SymphonyTheme.spotifyGreen),
+              Icon(icon, size: 14, color: isSelected ? Colors.black : accent.primary),
               const SizedBox(width: 4),
             ],
             Text(
@@ -366,6 +424,7 @@ class _SidebarPlaylistItem extends StatefulWidget {
   final bool isSelected;
   final bool isPlaying;
   final bool isDownloaded;
+  final SymphonyAccent accent;
   final VoidCallback onTap;
 
   const _SidebarPlaylistItem({
@@ -373,6 +432,7 @@ class _SidebarPlaylistItem extends StatefulWidget {
     required this.isSelected,
     required this.isPlaying,
     required this.isDownloaded,
+    required this.accent,
     required this.onTap,
   });
 
@@ -425,7 +485,7 @@ class _SidebarPlaylistItemState extends State<_SidebarPlaylistItem> {
                       playlist.title,
                       style: TextStyle(
                         color: widget.isPlaying
-                            ? SymphonyTheme.spotifyGreen
+                            ? widget.accent.primary
                             : (widget.isSelected ? Colors.white : Colors.white),
                         fontWeight: FontWeight.bold,
                         fontSize: 14,
@@ -437,12 +497,12 @@ class _SidebarPlaylistItemState extends State<_SidebarPlaylistItem> {
                     Row(
                       children: [
                         if (widget.isDownloaded) ...[
-                          const Icon(Icons.download_done_rounded, size: 13, color: SymphonyTheme.spotifyGreen),
+                          Icon(Icons.download_done_rounded, size: 13, color: widget.accent.primary),
                           const SizedBox(width: 4),
                         ],
                         Expanded(
                           child: Text(
-                            'Playlist • ${playlist.ownerName ?? "Spotify"}',
+                            'Playlist • ${playlist.ownerName ?? "Symphony"}',
                             style: const TextStyle(
                               fontSize: 12,
                               color: SymphonyTheme.textSecondary,
@@ -457,9 +517,9 @@ class _SidebarPlaylistItemState extends State<_SidebarPlaylistItem> {
                 ),
               ),
               if (widget.isPlaying)
-                const Padding(
-                  padding: EdgeInsets.only(left: 4.0),
-                  child: Icon(Icons.volume_up_rounded, color: SymphonyTheme.spotifyGreen, size: 16),
+                Padding(
+                  padding: const EdgeInsets.only(left: 4.0),
+                  child: Icon(Icons.volume_up_rounded, color: widget.accent.primary, size: 16),
                 ),
             ],
           ),

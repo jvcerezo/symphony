@@ -198,9 +198,11 @@ class _SearchViewState extends ConsumerState<SearchView> {
     bool isPlaying,
     bool isBuffering,
   ) {
+    final accent = ref.watch(accentThemeProvider);
+
     return resultsAsync.when(
-      loading: () => const Center(
-        child: CircularProgressIndicator(color: SymphonyTheme.spotifyGreen),
+      loading: () => Center(
+        child: CircularProgressIndicator(color: accent.primary),
       ),
       error: (e, _) => Center(
         child: Column(
@@ -215,7 +217,7 @@ class _SearchViewState extends ConsumerState<SearchView> {
               },
               icon: const Icon(Icons.arrow_back, size: 18),
               label: const Text('Back to Browse'),
-              style: TextButton.styleFrom(foregroundColor: SymphonyTheme.spotifyGreen),
+              style: TextButton.styleFrom(foregroundColor: accent.primary),
             ),
           ],
         ),
@@ -235,7 +237,7 @@ class _SearchViewState extends ConsumerState<SearchView> {
                   },
                   icon: const Icon(Icons.arrow_back, size: 18),
                   label: const Text('Back to Browse'),
-                  style: TextButton.styleFrom(foregroundColor: SymphonyTheme.spotifyGreen),
+                  style: TextButton.styleFrom(foregroundColor: accent.primary),
                 ),
               ],
             ),
@@ -295,7 +297,7 @@ class _SearchViewState extends ConsumerState<SearchView> {
                             style: TextStyle(
                               fontSize: 22,
                               fontWeight: FontWeight.bold,
-                              color: isTopCurrent ? SymphonyTheme.spotifyGreen : Colors.white,
+                              color: isTopCurrent ? accent.primary : Colors.white,
                               letterSpacing: -0.5,
                             ),
                             maxLines: 1,
@@ -338,7 +340,7 @@ class _SearchViewState extends ConsumerState<SearchView> {
                       height: 48,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: SymphonyTheme.spotifyGreen,
+                        color: accent.primary,
                         boxShadow: [
                           BoxShadow(
                             color: Colors.black.withOpacity(0.35),

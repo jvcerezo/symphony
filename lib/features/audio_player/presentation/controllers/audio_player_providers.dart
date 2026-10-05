@@ -5,11 +5,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import '../../../metadata_search/data/services/artwork_resolver_service.dart';
 import '../../../metadata_search/data/services/search_service.dart';
+import '../../../../core/theme/symphony_theme.dart';
 import '../../../playlist_import/data/services/spotify_embed_scraper_service.dart';
 import '../../../playlist_import/data/services/universal_playlist_importer_service.dart';
 import '../../../playlist_import/domain/entities/spotify_playlist.dart';
 import '../../data/services/symphony_audio_handler.dart';
 import '../../domain/entities/track.dart';
+
+/// Symphony Brand & User Accent Theme Provider (Defaults to signature Symphony Violet #8B5CF6)
+final accentThemeProvider = StateProvider<SymphonyAccent>((ref) => SymphonyTheme.violet);
 
 /// Global provider for the Symphony AudioHandler instance
 final audioHandlerProvider = Provider<SymphonyAudioHandler>((ref) {

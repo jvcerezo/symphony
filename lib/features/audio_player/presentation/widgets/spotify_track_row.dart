@@ -1,11 +1,13 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/symphony_theme.dart';
 import '../../domain/entities/track.dart';
+import '../controllers/audio_player_providers.dart';
 import 'animated_equalizer.dart';
 import 'symphony_artwork.dart';
 
-class SpotifyTrackRow extends StatefulWidget {
+class SpotifyTrackRow extends ConsumerStatefulWidget {
   final int index;
   final Track track;
   final bool isPlaying;
@@ -30,15 +32,16 @@ class SpotifyTrackRow extends StatefulWidget {
   });
 
   @override
-  State<SpotifyTrackRow> createState() => _SpotifyTrackRowState();
+  ConsumerState<SpotifyTrackRow> createState() => _SpotifyTrackRowState();
 }
 
-class _SpotifyTrackRowState extends State<SpotifyTrackRow> {
+class _SpotifyTrackRowState extends ConsumerState<SpotifyTrackRow> {
   bool _isHovered = false;
   bool _isLiked = false;
 
   @override
   Widget build(BuildContext context) {
+    final accent = ref.watch(accentThemeProvider);
     final track = widget.track;
     final isCurrent = widget.isCurrent;
     final isBuffering = widget.isBuffering;
@@ -67,29 +70,29 @@ class _SpotifyTrackRowState extends State<SpotifyTrackRow> {
               SizedBox(
                 width: 32,
                 child: isCurrent && isBuffering
-                    ? const Center(
+                    ? Center(
                         child: SizedBox(
                           width: 14,
                           height: 14,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            color: SymphonyTheme.spotifyGreen,
+                            color: accent.primary,
                           ),
                         ),
                       )
                     : isCurrent && widget.isPlaying && !_isHovered
-                        ? const Center(child: AnimatedEqualizer(isPlaying: true, height: 14))
+                        ? Center(child: AnimatedEqualizer(isPlaying: true, height: 14, color: accent.primary))
                         : (_isHovered || isCurrent
                             ? Icon(
                                 isCurrent && widget.isPlaying ? Icons.pause : Icons.play_arrow,
-                                color: isCurrent ? SymphonyTheme.spotifyGreen : Colors.white,
+                                color: isCurrent ? accent.primary : Colors.white,
                                 size: 20,
                               )
                             : Text(
                                 '${widget.index + 1}',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
-                                  color: isCurrent ? SymphonyTheme.spotifyGreen : SymphonyTheme.textSecondary,
+                                  color: isCurrent ? accent.primary : SymphonyTheme.textSecondary,
                                   fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
                                   fontSize: 14,
                                 ),
@@ -115,7 +118,7 @@ class _SpotifyTrackRowState extends State<SpotifyTrackRow> {
                     Text(
                       track.title,
                       style: TextStyle(
-                        color: isCurrent ? SymphonyTheme.spotifyGreen : Colors.white,
+                        color: isCurrent ? accent.primary : Colors.white,
                         fontWeight: FontWeight.w600,
                         fontSize: 14,
                       ),
@@ -153,7 +156,7 @@ class _SpotifyTrackRowState extends State<SpotifyTrackRow> {
                 ),
               ],
 
-              // Like / Heart Button (Only appears on hover or if liked, matching Spotify)
+              // Like / Heart Button (Only appears on hover or if liked)
               Opacity(
                 opacity: (_isLiked || _isHovered) ? 1.0 : 0.0,
                 child: IconButton(
@@ -163,7 +166,7 @@ class _SpotifyTrackRowState extends State<SpotifyTrackRow> {
                   tooltip: _isLiked ? 'Remove from Your Library' : 'Save to Your Library',
                   icon: Icon(
                     _isLiked ? Icons.favorite : Icons.favorite_border,
-                    color: _isLiked ? SymphonyTheme.spotifyGreen : SymphonyTheme.textSecondary,
+                    color: _isLiked ? accent.primary : SymphonyTheme.textSecondary,
                   ),
                   onPressed: () {
                     setState(() => _isLiked = !_isLiked);
@@ -175,21 +178,21 @@ class _SpotifyTrackRowState extends State<SpotifyTrackRow> {
 
               // Offline Download Indicator / Button
               if (widget.isDownloading)
-                const SizedBox(
+                SizedBox(
                   width: 16,
                   height: 16,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    color: SymphonyTheme.spotifyGreen,
+                    color: accent.primary,
                   ),
                 )
               else if (widget.isDownloaded)
-                const Tooltip(
+                Tooltip(
                   message: 'Saved offline (no internet needed)',
                   child: Icon(
                     Icons.check_circle,
                     size: 16,
-                    color: SymphonyTheme.spotifyGreen,
+                    color: accent.primary,
                   ),
                 )
               else if (_isHovered && widget.onDownload != null)
@@ -213,7 +216,7 @@ class _SpotifyTrackRowState extends State<SpotifyTrackRow> {
                   _formatDuration(track.expectedDuration ?? Duration.zero),
                   textAlign: TextAlign.right,
                   style: TextStyle(
-                    color: isCurrent ? SymphonyTheme.spotifyGreen : SymphonyTheme.textSecondary,
+                    color: isCurrent ? accent.primary : SymphonyTheme.textSecondary,
                     fontSize: 13,
                     fontFeatures: const [FontFeature.tabularFigures()],
                   ),

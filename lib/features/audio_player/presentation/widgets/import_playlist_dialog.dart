@@ -73,6 +73,8 @@ class _ImportPlaylistDialogState extends ConsumerState<ImportPlaylistDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final accent = ref.watch(accentThemeProvider);
+
     return Dialog(
       backgroundColor: const Color(0xFF282828),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -90,10 +92,10 @@ class _ImportPlaylistDialogState extends ConsumerState<ImportPlaylistDialog> {
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: SymphonyTheme.spotifyGreen.withOpacity(0.15),
+                      color: accent.primary.withOpacity(0.15),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: const Icon(Icons.add_to_photos_rounded, color: SymphonyTheme.spotifyGreen, size: 26),
+                    child: Icon(Icons.add_to_photos_rounded, color: accent.primary, size: 26),
                   ),
                   const SizedBox(width: 14),
                   const Expanded(
@@ -177,7 +179,7 @@ class _ImportPlaylistDialogState extends ConsumerState<ImportPlaylistDialog> {
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(4),
-                    borderSide: const BorderSide(color: SymphonyTheme.spotifyGreen, width: 1.5),
+                    borderSide: BorderSide(color: accent.primary, width: 1.5),
                   ),
                 ),
               ),
@@ -200,7 +202,7 @@ class _ImportPlaylistDialogState extends ConsumerState<ImportPlaylistDialog> {
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
-                children: _getFilteredPresets().map((p) => _buildPresetChip(p.name, p.url, p.source)).toList(),
+                children: _getFilteredPresets().map((p) => _buildPresetChip(p.name, p.url, p.source, accent)).toList(),
               ),
 
               const SizedBox(height: 24),
@@ -215,7 +217,7 @@ class _ImportPlaylistDialogState extends ConsumerState<ImportPlaylistDialog> {
                   ElevatedButton(
                     onPressed: _isLoading ? null : _handleImport,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: SymphonyTheme.spotifyGreen,
+                      backgroundColor: accent.primary,
                       foregroundColor: Colors.black,
                       elevation: 0,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(500)),
@@ -230,6 +232,29 @@ class _ImportPlaylistDialogState extends ConsumerState<ImportPlaylistDialog> {
                         : const Text('Import & Play Ad-Free', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                   ),
                 ],
+              ),
+
+              // Open-Source Independent Client Disclaimer
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF222222),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.info_outline, size: 14, color: SymphonyTheme.textMuted),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Symphony is an independent open-source music player not affiliated with, endorsed by, or sponsored by Spotify AB or any streaming platform.',
+                        style: TextStyle(fontSize: 11, color: SymphonyTheme.textMuted, height: 1.3),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -253,7 +278,7 @@ class _ImportPlaylistDialogState extends ConsumerState<ImportPlaylistDialog> {
     return all.where((p) => p.source == _selectedCategory).toList();
   }
 
-  Widget _buildPresetChip(String label, String url, String source) {
+  Widget _buildPresetChip(String label, String url, String source, SymphonyAccent accent) {
     return ActionChip(
       avatar: Icon(
         source == 'Spotify'
@@ -266,7 +291,7 @@ class _ImportPlaylistDialogState extends ConsumerState<ImportPlaylistDialog> {
                         ? Icons.music_note
                         : Icons.auto_awesome,
         size: 16,
-        color: SymphonyTheme.spotifyGreen,
+        color: accent.primary,
       ),
       label: Text(label, style: const TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.w500)),
       backgroundColor: const Color(0xFF333333),

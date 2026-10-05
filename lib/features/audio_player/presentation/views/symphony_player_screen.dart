@@ -190,8 +190,10 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
                 itemCount: importedPlaylists.length,
                 itemBuilder: (context, index) {
                   final playlist = importedPlaylists[index];
+                  final accent = ref.watch(accentThemeProvider);
                   return _SpotifyPlaylistCard(
                     playlist: playlist,
+                    accent: accent,
                     onTap: () {
                       ref.read(activePlaylistProvider.notifier).state = playlist;
                       ref.read(activeNavTabProvider.notifier).state = 'home';
@@ -210,6 +212,7 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
   }
 
   Widget _buildLoadingState() {
+    final accent = ref.watch(accentThemeProvider);
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -217,9 +220,9 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
           Container(
             width: 56,
             height: 56,
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: SymphonyTheme.spotifyGreen,
+              color: accent.primary,
             ),
             child: const Icon(Icons.graphic_eq_rounded, color: Colors.black, size: 30),
           ),
@@ -248,6 +251,7 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
     final handler = ref.read(audioHandlerProvider);
     final offlineState = ref.watch(offlineProvider);
     final offlineNotifier = ref.read(offlineProvider.notifier);
+    final accent = ref.watch(accentThemeProvider);
 
     final isPlaylistActive = playlist.tracks.any((t) => t.title == mediaItem?.title && t.artist == mediaItem?.artist);
     final isThisPlaying = isPlaylistActive && isPlaying;
@@ -363,7 +367,7 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
-                            'PUBLIC PLAYLIST',
+                            'PLAYLIST',
                             style: TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.w700,
@@ -399,15 +403,15 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
                               Container(
                                 width: 22,
                                 height: 22,
-                                decoration: const BoxDecoration(
+                                decoration: BoxDecoration(
                                   shape: BoxShape.circle,
-                                  color: SymphonyTheme.spotifyGreen,
+                                  color: accent.primary,
                                 ),
                                 child: const Icon(Icons.music_note, size: 14, color: Colors.black),
                               ),
                               const SizedBox(width: 8),
                               Text(
-                                playlist.ownerName ?? 'Spotify',
+                                playlist.ownerName ?? 'Symphony',
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.bold,
@@ -429,7 +433,7 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
 
                 const SizedBox(height: 28),
 
-                // Action Bar: Big Spotify Green Play Button + Actions
+                // Action Bar: Big Accent Play Button + Actions
                 Row(
                   children: [
                     AnimatedScale(
@@ -440,7 +444,7 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
                         height: 56,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: SymphonyTheme.spotifyGreen,
+                          color: accent.primary,
                           boxShadow: [
                             BoxShadow(
                               color: Colors.black.withOpacity(0.35),
@@ -495,17 +499,17 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
                               ? 'Downloading playlist...'
                               : 'Download playlist for offline listening',
                       icon: isPlaylistDownloading
-                          ? const SizedBox(
+                          ? SizedBox(
                               width: 24,
                               height: 24,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2.5,
-                                color: SymphonyTheme.spotifyGreen,
+                                color: accent.primary,
                               ),
                             )
                           : Icon(
                               isPlaylistDownloaded ? Icons.download_done_rounded : Icons.arrow_circle_down_outlined,
-                              color: isPlaylistDownloaded ? SymphonyTheme.spotifyGreen : SymphonyTheme.textSecondary,
+                              color: isPlaylistDownloaded ? accent.primary : SymphonyTheme.textSecondary,
                             ),
                       onPressed: () async {
                         if (isPlaylistDownloading) return;
@@ -515,7 +519,7 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
                             backgroundColor: SymphonyTheme.card,
                             content: Row(
                               children: [
-                                const Icon(Icons.cloud_download, color: SymphonyTheme.spotifyGreen, size: 20),
+                                Icon(Icons.cloud_download, color: accent.primary, size: 20),
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Text(
@@ -688,11 +692,13 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
 
 class _SpotifyPlaylistCard extends StatefulWidget {
   final SpotifyPlaylist playlist;
+  final SymphonyAccent accent;
   final VoidCallback onTap;
   final VoidCallback onPlay;
 
   const _SpotifyPlaylistCard({
     required this.playlist,
+    required this.accent,
     required this.onTap,
     required this.onPlay,
   });
@@ -762,7 +768,7 @@ class _SpotifyPlaylistCardState extends State<_SpotifyPlaylistCard> {
                             height: 48,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              color: SymphonyTheme.spotifyGreen,
+                              color: widget.accent.primary,
                               boxShadow: [
                                 BoxShadow(
                                   color: Colors.black.withOpacity(0.4),
@@ -790,7 +796,7 @@ class _SpotifyPlaylistCardState extends State<_SpotifyPlaylistCard> {
               Text(
                 playlist.description != null && playlist.description!.isNotEmpty
                     ? playlist.description!
-                    : 'By ${playlist.ownerName ?? "Spotify"} • ${playlist.trackCount} songs',
+                    : 'By ${playlist.ownerName ?? "Symphony"} • ${playlist.trackCount} songs',
                 style: const TextStyle(fontSize: 13, color: SymphonyTheme.textSecondary, height: 1.2),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,

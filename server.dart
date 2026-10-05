@@ -25,6 +25,39 @@ Future<void> _loadResolveIndex() async {
           _resolveCache[entry.key] = entry.value as Map<String, dynamic>;
         }
       }
+
+      // Sanitize cache: automatically purge any bad entries (> 11 mins or gaming/podcast redflags)
+      final keysToRemove = <String>[];
+      for (final entry in _resolveCache.entries) {
+        final val = entry.value;
+        final dMs = val['durationMs'] as int? ?? 0;
+        final t = (val['title'] as String? ?? '').toLowerCase();
+        final vid = val['videoId'] as String?;
+        bool isBad = false;
+        if (dMs > 660000) isBad = true; // > 11 mins
+        for (final rf in ['gameplay', 'walkthrough', 'playthrough', 'podcast', 'elden ring', '1shotplays', 'part 23', 'live stream']) {
+          if (t.contains(rf)) isBad = true;
+        }
+        if (isBad) {
+          keysToRemove.add(entry.key);
+          if (vid != null) {
+            final f = File('${_cacheDir.path}/audio_$vid.webm');
+            if (f.existsSync()) {
+              try { f.deleteSync(); } catch (_) {}
+            }
+          }
+        }
+      }
+      for (final k in keysToRemove) {
+        _resolveCache.remove(k);
+      }
+      if (keysToRemove.isNotEmpty) {
+        print('Purged ${keysToRemove.length} invalid entries from resolve cache.');
+        try {
+          _resolveIndexFile.writeAsStringSync(jsonEncode(_resolveCache));
+        } catch (_) {}
+      }
+
       print('Loaded ${_resolveCache.length} track mappings from resolve index.');
     } catch (e) {
       print('Error reading resolve index: $e');
@@ -33,6 +66,14 @@ Future<void> _loadResolveIndex() async {
 }
 
 void _saveResolveEntry(String primaryKey, Map<String, dynamic> data, {String? artist, String? title, String? trackId}) {
+  final dMs = data['durationMs'] as int? ?? 0;
+  final vTitle = (data['title'] as String? ?? '').toLowerCase();
+  // Never save tracks > 11 minutes or tracks with red flag keywords into cache
+  if (dMs > 660000) return;
+  for (final rf in ['gameplay', 'walkthrough', 'playthrough', 'podcast', 'elden ring', '1shotplays', 'part 23', 'live stream']) {
+    if (vTitle.contains(rf)) return;
+  }
+
   _resolveCache[primaryKey] = data;
   final vid = data['videoId'] as String?;
   if (vid != null) {
@@ -162,6 +203,191 @@ Future<void> _handleRequest(HttpRequest request, Directory webDir) async {
   }
 }
 
+int _scoreVideoCandidate({
+  required String videoTitle,
+  required String videoAuthor,
+  required int durationSec,
+  required String targetTitle,
+  required String targetArtist,
+  int? expectedDurationMs,
+}) {
+  final vTitle = videoTitle.toLowerCase();
+  final vAuthor = videoAuthor.toLowerCase();
+  final tTitle = targetTitle.toLowerCase();
+  final tArtist = targetArtist.toLowerCase();
+  final expectedSec = expectedDurationMs != null ? (expectedDurationMs ~/ 1000) : 210;
+
+  // 1. Hard disqualification: Videos > 11 minutes (660s) when expected track is normal song (< 9 mins)
+  if (durationSec > 660 && expectedSec < 540) {
+    return -9999;
+  }
+  // If expected duration is known, any video differing by > 80 seconds is rejected
+  if (expectedDurationMs != null && expectedSec > 30 && (durationSec - expectedSec).abs() > 80 && expectedSec < 600) {
+    return -9999;
+  }
+  // Videos < 45 seconds when expected track is > 60s
+  if (durationSec < 45 && expectedSec > 60) {
+    return -9999;
+  }
+
+  // 2. Disqualify obvious gameplay, walkthroughs, podcasts, non-music
+  final redFlags = [
+    'gameplay',
+    'walkthrough',
+    'playthrough',
+    'lets play',
+    'let\'s play',
+    'podcast',
+    'full album',
+    'part 1',
+    'part 2',
+    'part 3',
+    'part 4',
+    'part 5',
+    'part 6',
+    'part 7',
+    'part 8',
+    'part 9',
+    'part 10',
+    'part 11',
+    'part 12',
+    'part 13',
+    'part 14',
+    'part 15',
+    'part 16',
+    'part 17',
+    'part 18',
+    'part 19',
+    'part 20',
+    'part 21',
+    'part 22',
+    'part 23',
+    'episode ',
+    'ep 1',
+    'ep 2',
+    'ep 3',
+    'ep 4',
+    'ep 5',
+    'live stream',
+    'livestream',
+    'stream vod',
+    'vod',
+    'reaction',
+    'reacts to',
+    'reacting to',
+    'elden ring',
+    '1shotplays',
+    'roblox',
+    'minecraft',
+    'fortnite',
+    'gta',
+    'review',
+    'tier list',
+    'unboxing',
+    'speedrun',
+    'boss fight',
+    'cutscenes',
+    'tutorial',
+    '10 hours',
+    '10 hour',
+    '1 hour loop',
+    'hour loop',
+    '100 hours',
+    'extended loop',
+    'nightcore',
+    'slowed + reverb',
+    'slowed and reverb',
+    '8d audio',
+    'bass boosted',
+    'pitch shifted',
+    'parody',
+    'cover by',
+    'karaoke',
+    'synthesia',
+    'piano tutorial',
+    'guitar tutorial',
+    'guitar tab',
+    'ai cover',
+  ];
+  for (final rf in redFlags) {
+    if (vTitle.contains(rf) || vAuthor.contains(rf)) return -9999;
+  }
+
+  int score = 0;
+
+  // 3. Match title keywords (MANDATORY)
+  final cleanTTitle = tTitle.replaceAll(RegExp(r'[^a-z0-9 ]'), ' ').trim();
+  final titleWords = cleanTTitle.split(RegExp(r'\s+')).where((w) => w.length >= 3).toList();
+  int matchedTitleWords = 0;
+  for (final w in titleWords) {
+    if (vTitle.contains(w)) matchedTitleWords++;
+  }
+  if (titleWords.isNotEmpty) {
+    if (matchedTitleWords == titleWords.length) {
+      score += 70; // All title words matched
+    } else if (matchedTitleWords > 0) {
+      score += ((matchedTitleWords / titleWords.length) * 50).round();
+    } else {
+      // NONE of the title words matched: absolute disqualification
+      return -9999;
+    }
+  }
+
+  // Exact clean title substring match bonus
+  if (cleanTTitle.isNotEmpty && vTitle.contains(cleanTTitle)) {
+    score += 30;
+  }
+
+  // 4. Match artist keywords & Topic Channel
+  final cleanTArtist = tArtist.replaceAll(RegExp(r'[^a-z0-9 ]'), ' ').trim();
+  final artistWords = cleanTArtist.split(RegExp(r'\s+')).where((w) => w.length >= 3).toList();
+  int matchedArtistWords = 0;
+  for (final w in artistWords) {
+    if (vTitle.contains(w) || vAuthor.contains(w)) {
+      matchedArtistWords++;
+    }
+  }
+  if (artistWords.isNotEmpty) {
+    if (matchedArtistWords > 0) {
+      score += 35;
+    } else if (!vAuthor.contains('topic')) {
+      score -= 30; // Artist name not found in title or channel
+    }
+  }
+
+  // YouTube Music Topic Channel (official automated aggregator release: TuneCore, DistroKid, etc.)
+  if (vAuthor.endsWith(' - topic') || vAuthor.contains('topic')) {
+    score += 85;
+  }
+
+  // 5. Official audio indicators
+  if (vTitle.contains('official audio')) {
+    score += 45;
+  } else if (vTitle.contains('official lyric video') || vTitle.contains('official visualizer')) {
+    score += 40;
+  } else if (vTitle.contains('official music video') || vTitle.contains('official video')) {
+    score += 35;
+  } else if (vTitle.contains('audio')) {
+    score += 15;
+  }
+
+  // 6. Duration proximity
+  final diffSec = (durationSec - expectedSec).abs();
+  if (diffSec <= 5) {
+    score += 50;
+  } else if (diffSec <= 15) {
+    score += 35;
+  } else if (diffSec <= 35) {
+    score += 15;
+  } else if (diffSec > 50) {
+    score -= 30;
+  } else if (diffSec > 70) {
+    score -= 100;
+  }
+
+  return score;
+}
+
 Future<void> _handleResolve(HttpRequest request) async {
   final uri = request.uri;
   final directVideoId = uri.queryParameters['videoId'];
@@ -205,35 +431,67 @@ Future<void> _handleResolve(HttpRequest request) async {
 
     if (resolvedVideoId == null || resolvedVideoId.isEmpty) {
       try {
-        final searchResults = await _yt.search.search(cleanQuery);
-        if (searchResults.isNotEmpty) {
-          final candidates = searchResults.where((v) => !v.isLive).take(5).toList();
-          var best = candidates.first;
+        final searchQueries = <String>[];
+        if (artist.isNotEmpty && title.isNotEmpty) {
+          searchQueries.add('$artist $title topic');
+          searchQueries.add('$artist - $title official audio');
+          searchQueries.add('$artist - $title');
+          searchQueries.add('$title $artist');
+        } else {
+          searchQueries.add(cleanQuery);
+        }
 
-          for (final c in candidates) {
-            if (expectedDurationMs != null && c.duration != null) {
-              final delta = (c.duration!.inMilliseconds - expectedDurationMs).abs();
-              if (delta < 45000) {
-                best = c;
-                break;
+        final seenVideoIds = <String>{};
+        final scoredCandidates = <({Video video, int score})>[];
+
+        for (final sq in searchQueries) {
+          try {
+            final results = await _yt.search.search(sq);
+            for (final v in results.take(6)) {
+              if (v.isLive) continue;
+              if (seenVideoIds.add(v.id.value)) {
+                final sc = _scoreVideoCandidate(
+                  videoTitle: v.title,
+                  videoAuthor: v.author,
+                  durationSec: v.duration?.inSeconds ?? 0,
+                  targetTitle: title.isNotEmpty ? title : cleanQuery,
+                  targetArtist: artist,
+                  expectedDurationMs: expectedDurationMs,
+                );
+                if (sc > 0) {
+                  scoredCandidates.add((video: v, score: sc));
+                }
               }
             }
-          }
+            if (scoredCandidates.isNotEmpty && scoredCandidates.any((c) => c.score >= 120)) {
+              break;
+            }
+          } catch (_) {}
+        }
 
-          resolvedVideoId = best.id.value;
-          durationMs = best.duration?.inMilliseconds ?? expectedDurationMs ?? 200000;
-          videoTitle = best.title;
+        if (scoredCandidates.isNotEmpty) {
+          scoredCandidates.sort((a, b) => b.score.compareTo(a.score));
+          final topCandidate = scoredCandidates.first;
+          if (topCandidate.score >= 50) {
+            final best = topCandidate.video;
+            resolvedVideoId = best.id.value;
+            durationMs = best.duration?.inMilliseconds ?? expectedDurationMs ?? 200000;
+            videoTitle = best.title;
+          } else {
+            print('Top candidate rejected due to low confidence score (${topCandidate.score}): "${topCandidate.video.title}"');
+          }
         }
       } catch (searchError) {
         print('YouTube search error (offline?): $searchError');
-        // Offline recovery: search for any entry in _resolveCache matching artist or title
+        // Offline recovery: search for any entry in _resolveCache matching artist AND title
         for (final entry in _resolveCache.values) {
           final eTitle = (entry['title'] as String? ?? '').toLowerCase();
           final eArtist = (entry['artist'] as String? ?? '').toLowerCase();
           final tLower = title.toLowerCase();
           final aLower = artist.toLowerCase();
-          if ((tLower.isNotEmpty && eTitle.contains(tLower)) ||
-              (aLower.isNotEmpty && eArtist.contains(aLower))) {
+          final titleMatches = tLower.isNotEmpty && (eTitle.contains(tLower) || tLower.contains(eTitle));
+          final artistMatches = aLower.isEmpty || eArtist.contains(aLower) || aLower.contains(eArtist);
+          if (titleMatches && artistMatches) {
             final vid = entry['videoId'] as String?;
             if (vid != null) {
               final cachedFile = File('${_cacheDir.path}/audio_$vid.webm');
@@ -570,11 +828,52 @@ Future<String?> _resolveAndDownloadSingleTrack(Map<String, dynamic> track) async
     }
 
     if (videoId == null || videoId.isEmpty) {
-      final query = '$artist - $title official audio';
-      final searchResults = await _yt.search.search(query);
-      if (searchResults.isNotEmpty) {
-        final video = searchResults.firstWhere((v) => !v.isLive, orElse: () => searchResults.first);
-        videoId = video.id.value;
+      final searchQueries = <String>[];
+      if (artist.isNotEmpty && title.isNotEmpty) {
+        searchQueries.add('$artist $title topic');
+        searchQueries.add('$artist - $title official audio');
+        searchQueries.add('$artist - $title');
+        searchQueries.add('$title $artist');
+      } else {
+        searchQueries.add('$artist $title');
+      }
+
+      final seenVideoIds = <String>{};
+      final scoredCandidates = <({Video video, int score})>[];
+
+      for (final sq in searchQueries) {
+        try {
+          final searchResults = await _yt.search.search(sq);
+          for (final v in searchResults.take(6)) {
+            if (v.isLive) continue;
+            if (seenVideoIds.add(v.id.value)) {
+              final sc = _scoreVideoCandidate(
+                videoTitle: v.title,
+                videoAuthor: v.author,
+                durationSec: v.duration?.inSeconds ?? 0,
+                targetTitle: title,
+                targetArtist: artist,
+                expectedDurationMs: durationMs,
+              );
+              if (sc > 0) {
+                scoredCandidates.add((video: v, score: sc));
+              }
+            }
+          }
+          if (scoredCandidates.isNotEmpty && scoredCandidates.any((c) => c.score >= 120)) {
+            break;
+          }
+        } catch (_) {}
+      }
+
+      if (scoredCandidates.isNotEmpty) {
+        scoredCandidates.sort((a, b) => b.score.compareTo(a.score));
+        final topCandidate = scoredCandidates.first;
+        if (topCandidate.score >= 50) {
+          videoId = topCandidate.video.id.value;
+        } else {
+          print('Single track download rejected due to low confidence score (${topCandidate.score}): "${topCandidate.video.title}"');
+        }
       }
     }
 
