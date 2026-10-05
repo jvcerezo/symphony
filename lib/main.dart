@@ -1,122 +1,315 @@
+import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'features/audio_player/data/services/symphony_audio_handler.dart';
+import 'features/audio_player/domain/entities/track.dart';
+import 'features/audio_player/presentation/controllers/audio_player_providers.dart';
 
-void main() {
-  runApp(const MyApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize background AudioService singleton
+  final audioHandler = await AudioService.init(
+    builder: () => SymphonyAudioHandler(),
+    config: const AudioServiceConfig(
+      androidNotificationChannelId: 'com.symphony.symphony.audio',
+      androidNotificationChannelName: 'Symphony Playback',
+      androidNotificationOngoing: true,
+      androidStopForegroundOnPause: true,
+      androidNotificationIcon: 'mipmap/ic_launcher',
+    ),
+  );
+
+  runApp(
+    ProviderScope(
+      overrides: [
+        audioHandlerProvider.overrideWithValue(audioHandler),
+      ],
+      child: const SymphonyApp(),
+    ),
+  );
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class SymphonyApp extends StatelessWidget {
+  const SymphonyApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: .fromSeed(seedColor: Colors.deepPurple),
+      title: 'Symphony',
+      debugShowCheckedModeBanner: false,
+      themeMode: ThemeMode.dark,
+      darkTheme: ThemeData.dark().copyWith(
+        scaffoldBackgroundColor: const Color(0xFF121212),
+        colorScheme: const ColorScheme.dark(
+          primary: Color(0xFF1DB954),
+          surface: Color(0xFF1E1E1E),
+        ),
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: const SymphonyHomeScreen(),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
+class SymphonyHomeScreen extends ConsumerStatefulWidget {
+  const SymphonyHomeScreen({super.key});
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  ConsumerState<SymphonyHomeScreen> createState() => _SymphonyHomeScreenState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class _SymphonyHomeScreenState extends ConsumerState<SymphonyHomeScreen> {
+  final _titleController = TextEditingController(text: 'Blinding Lights');
+  final _artistController = TextEditingController(text: 'The Weeknd');
+  bool _isLoading = false;
+  String? _statusMessage;
 
-  void _incrementCounter() {
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _artistController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _triggerPlayback() async {
+    final title = _titleController.text.trim();
+    final artist = _artistController.text.trim();
+    if (title.isEmpty || artist.isEmpty) return;
+
     setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+      _isLoading = true;
+      _statusMessage = 'Resolving audio stream...';
     });
+
+    final track = Track(
+      id: '${artist}_$title'.replaceAll(' ', '_').toLowerCase(),
+      title: title,
+      artist: artist,
+    );
+
+    try {
+      final handler = ref.read(audioHandlerProvider);
+      await handler.playTrack(track);
+      setState(() {
+        _statusMessage = 'Now streaming';
+      });
+    } catch (e) {
+      setState(() {
+        _statusMessage = 'Resolution error: $e';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
+    final mediaItemAsync = ref.watch(currentMediaItemStreamProvider);
+    final playbackStateAsync = ref.watch(playbackStateStreamProvider);
+
+    final mediaItem = mediaItemAsync.asData?.value;
+    final playbackState = playbackStateAsync.asData?.value;
+    final isPlaying = playbackState?.playing ?? false;
+
     return Scaffold(
       appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
+        title: const Text('Symphony Audio Player', style: TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        centerTitle: true,
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: .center,
-          children: [
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-          ],
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Card(
+                color: const Color(0xFF1E1E1E),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                child: Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Direct Stream Resolution',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: _titleController,
+                        decoration: InputDecoration(
+                          labelText: 'Track Title',
+                          filled: true,
+                          fillColor: const Color(0xFF2A2A2A),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _artistController,
+                        decoration: InputDecoration(
+                          labelText: 'Artist',
+                          filled: true,
+                          fillColor: const Color(0xFF2A2A2A),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 48,
+                        child: ElevatedButton.icon(
+                          onPressed: _isLoading ? null : _triggerPlayback,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF1DB954),
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          icon: _isLoading
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                                )
+                              : const Icon(Icons.play_arrow),
+                          label: Text(_isLoading ? 'Resolving...' : 'Play Stream'),
+                        ),
+                      ),
+                      if (_statusMessage != null) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          _statusMessage!,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: _statusMessage!.contains('error') ? Colors.redAccent : Colors.grey,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              const Spacer(),
+              // Player Controls Card
+              if (mediaItem != null)
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF242424),
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withAlpha(100),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 56,
+                            height: 56,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF333333),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(Icons.music_note, color: Color(0xFF1DB954), size: 32),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  mediaItem.title,
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  mediaItem.artist ?? 'Unknown Artist',
+                                  style: const TextStyle(color: Colors.grey, fontSize: 14),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            iconSize: 42,
+                            icon: Icon(
+                              isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled,
+                              color: const Color(0xFF1DB954),
+                            ),
+                            onPressed: () {
+                              final handler = ref.read(audioHandlerProvider);
+                              if (isPlaying) {
+                                handler.pause();
+                              } else {
+                                handler.play();
+                              }
+                            },
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      // Position timeline
+                      StreamBuilder<Duration>(
+                        stream: AudioService.position,
+                        builder: (context, snapshot) {
+                          final position = snapshot.data ?? Duration.zero;
+                          final total = mediaItem.duration ?? Duration.zero;
+                          final totalMs = total.inMilliseconds.toDouble();
+                          final posMs = position.inMilliseconds.toDouble().clamp(0.0, totalMs > 0 ? totalMs : 1.0);
+
+                          return Column(
+                            children: [
+                              Slider(
+                                value: posMs,
+                                max: totalMs > 0 ? totalMs : 1.0,
+                                activeColor: const Color(0xFF1DB954),
+                                inactiveColor: Colors.white24,
+                                onChanged: (value) {
+                                  ref.read(audioHandlerProvider).seek(Duration(milliseconds: value.round()));
+                                },
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(_formatDuration(position), style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                                    Text(_formatDuration(total), style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ),
     );
+  }
+
+  String _formatDuration(Duration d) {
+    final minutes = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final seconds = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
   }
 }

@@ -1,23 +1,36 @@
 import 'dart:developer' as developer;
+import 'package:flutter/foundation.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart' hide AudioStreamInfo;
 import '../../../../core/errors/exceptions.dart';
 import '../../domain/entities/resolved_audio_stream.dart';
 import '../../domain/entities/track.dart';
+import 'piped_stream_resolver.dart';
 
 class AudioStreamResolverService {
   final YoutubeExplode _yt;
+  final PipedStreamResolver _pipedResolver;
 
-  AudioStreamResolverService({YoutubeExplode? ytClient})
-      : _yt = ytClient ?? YoutubeExplode();
+  AudioStreamResolverService({
+    YoutubeExplode? ytClient,
+    PipedStreamResolver? pipedResolver,
+  })  : _yt = ytClient ?? YoutubeExplode(),
+        _pipedResolver = pipedResolver ?? PipedStreamResolver();
 
   /// Resolves the optimal audio-only stream URI for a given [Track].
   ///
-  /// Searches YouTube using an optimized query heuristic, evaluates candidate
-  /// results against duration bounds, and extracts high-bitrate audio streams
-  /// with automated fallback across candidates in case of manifest errors or restrictions.
+  /// On Web (`kIsWeb`), delegates to CORS-compliant public streaming APIs.
+  /// On Native (Android, iOS, Desktop), queries YouTube on-device via `youtube_explode_dart`,
+  /// falling back to Piped if YouTube rate-limits or throws cipher extraction errors.
   Future<ResolvedAudioStream> resolveBestAudioStream(Track track) async {
+    // 1. Browser environments cannot make arbitrary cross-origin requests to YouTube
+    if (kIsWeb) {
+      developer.log('Web environment detected: routing through CORS-compliant resolver', name: 'AudioStreamResolver');
+      return _pipedResolver.resolve(track);
+    }
+
+    // 2. Native resolution via youtube_explode_dart
     final query = '${track.artist} - ${track.title} official audio';
-    developer.log('Resolving audio stream for query: "$query"', name: 'AudioStreamResolver');
+    developer.log('Resolving audio stream on native client: "$query"', name: 'AudioStreamResolver');
 
     try {
       final searchResults = await _yt.search.search(query);
@@ -40,7 +53,7 @@ class AudioStreamResolverService {
       }
 
       for (final candidate in candidates) {
-        // Guard against duration discrepancies if an expected duration is available (>60s delta)
+        // Guard against duration discrepancies (>60s delta)
         if (track.expectedDuration != null && candidate.duration != null) {
           final delta = (candidate.duration! - track.expectedDuration!).inSeconds.abs();
           if (delta > 60) {
@@ -64,7 +77,6 @@ class AudioStreamResolverService {
             continue;
           }
 
-          // Prioritize highest bitrate audio stream
           final bestAudio = audioStreams.withHighestBitrate();
 
           developer.log(
@@ -81,7 +93,7 @@ class AudioStreamResolverService {
           );
         } catch (e, st) {
           developer.log(
-            'Failed extracting manifest for candidate: ${candidate.id.value}. Falling back to next candidate.',
+            'Failed extracting manifest for candidate: ${candidate.id.value}. Falling back.',
             error: e,
             stackTrace: st,
             name: 'AudioStreamResolver',
@@ -90,11 +102,21 @@ class AudioStreamResolverService {
         }
       }
 
-      throw AudioStreamResolutionException(
-        'Exhausted all search candidates without finding a playable audio stream for "$query".',
+      // 3. If native candidates failed due to cipher/restriction, attempt secondary fallback
+      developer.log(
+        'Native extraction exhausted for "$query". Attempting secondary fallback resolver...',
+        name: 'AudioStreamResolver',
       );
+      return await _pipedResolver.resolve(track);
     } catch (e) {
-      if (e is AudioStreamResolutionException) rethrow;
+      if (e is AudioStreamResolutionException) {
+        // Attempt secondary fallback before giving up
+        try {
+          return await _pipedResolver.resolve(track);
+        } catch (_) {
+          rethrow;
+        }
+      }
       throw AudioStreamResolutionException(
         'Unexpected stream resolution failure for track: ${track.title}',
         e,
@@ -104,5 +126,6 @@ class AudioStreamResolverService {
 
   void dispose() {
     _yt.close();
+    _pipedResolver.dispose();
   }
 }
