@@ -135,30 +135,36 @@ class _SidebarNavState extends ConsumerState<SidebarNav> {
                     padding: const EdgeInsets.fromLTRB(16, 14, 8, 8),
                     child: Row(
                       children: [
-                        InkWell(
-                          onTap: () => ref.read(activeNavTabProvider.notifier).state = 'library',
-                          borderRadius: BorderRadius.circular(4),
-                          child: Row(
-                            children: [
-                              Icon(
-                                activeTab == 'library' ? Icons.library_music : Icons.library_music_outlined,
-                                color: activeTab == 'library' ? Colors.white : SymphonyTheme.textSecondary,
-                                size: 24,
-                              ),
-                              const SizedBox(width: 12),
-                              Text(
-                                'Your Library',
-                                style: TextStyle(
+                        Expanded(
+                          child: InkWell(
+                            onTap: () => ref.read(activeNavTabProvider.notifier).state = 'library',
+                            borderRadius: BorderRadius.circular(4),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  activeTab == 'library' ? Icons.library_music : Icons.library_music_outlined,
                                   color: activeTab == 'library' ? Colors.white : SymphonyTheme.textSecondary,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 15,
+                                  size: 24,
                                 ),
-                              ),
-                            ],
+                                const SizedBox(width: 12),
+                                Flexible(
+                                  child: Text(
+                                    'Your Library',
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: activeTab == 'library' ? Colors.white : SymphonyTheme.textSecondary,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
-                        const Spacer(),
                         IconButton(
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
                           icon: const Icon(Icons.add, color: SymphonyTheme.textSecondary, size: 22),
                           tooltip: 'Import or Create Playlist',
                           hoverColor: SymphonyTheme.cardHover,
@@ -176,12 +182,15 @@ class _SidebarNavState extends ConsumerState<SidebarNav> {
                   // Filter Chips (Pills)
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                    child: Row(
-                      children: [
-                        _buildFilterChip('Playlists', 'all', accent),
-                        const SizedBox(width: 8),
-                        _buildFilterChip('Downloaded', 'downloaded', accent, icon: Icons.download_done_rounded),
-                      ],
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          _buildFilterChip('Playlists', 'all', accent),
+                          const SizedBox(width: 8),
+                          _buildFilterChip('Downloaded', 'downloaded', accent, icon: Icons.download_done_rounded),
+                        ],
+                      ),
                     ),
                   ),
 

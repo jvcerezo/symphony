@@ -657,25 +657,47 @@ Future<void> _streamAudioBytes(HttpRequest request, String videoId) async {
       return;
     }
 
-    // 2. Resolve direct URL via yt-dlp -g
+    // 2. Resolve direct URL via yt-dlp -g with youtube_explode fallback
     String? remoteStreamUrl = _remoteUrlCache[videoId];
     if (remoteStreamUrl == null) {
-      final result = await Process.run('python', [
-        '-m',
-        'yt_dlp',
-        '-f',
-        'ba',
-        '-g',
-        'https://www.youtube.com/watch?v=$videoId',
-      ]);
+      try {
+        final result = await Process.run('python', [
+          '-m',
+          'yt_dlp',
+          '-f',
+          'ba',
+          '-g',
+          'https://www.youtube.com/watch?v=$videoId',
+        ]);
 
-      if (result.exitCode == 0) {
-        final lines = (result.stdout as String).trim().split('\n');
-        final candidateUrl = lines.last.trim();
-        if (candidateUrl.startsWith('http')) {
-          remoteStreamUrl = candidateUrl;
+        if (result.exitCode == 0) {
+          final lines = (result.stdout as String).trim().split('\n');
+          final candidateUrl = lines.last.trim();
+          if (candidateUrl.startsWith('http')) {
+            remoteStreamUrl = candidateUrl;
+            _remoteUrlCache[videoId] = remoteStreamUrl;
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (remoteStreamUrl == null) {
+      try {
+        final manifest = await _yt.videos.streamsClient.getManifest(videoId);
+        final audioStreams = manifest.audioOnly;
+        if (audioStreams.isNotEmpty) {
+          final aacStreams = audioStreams.where((s) =>
+              s.container.name == 'mp4' ||
+              s.codec.mimeType.contains('mp4') ||
+              s.codec.mimeType.contains('aac'));
+          final bestAudio = aacStreams.isNotEmpty
+              ? aacStreams.withHighestBitrate()
+              : audioStreams.withHighestBitrate();
+          remoteStreamUrl = bestAudio.url.toString();
           _remoteUrlCache[videoId] = remoteStreamUrl;
         }
+      } catch (ytErr) {
+        print('YoutubeExplode direct stream extraction fallback failed for $videoId: $ytErr');
       }
     }
 
@@ -1012,19 +1034,41 @@ Future<bool> _downloadTrackToDisk(String videoId) async {
   try {
     String? streamUrl = _remoteUrlCache[videoId];
     if (streamUrl == null) {
-      final result = await Process.run('python', [
-        '-m',
-        'yt_dlp',
-        '-f',
-        'ba',
-        '-g',
-        'https://www.youtube.com/watch?v=$videoId',
-      ]);
+      try {
+        final result = await Process.run('python', [
+          '-m',
+          'yt_dlp',
+          '-f',
+          'ba',
+          '-g',
+          'https://www.youtube.com/watch?v=$videoId',
+        ]);
 
-      if (result.exitCode == 0) {
-        final lines = (result.stdout as String).trim().split('\n');
-        streamUrl = lines.last.trim();
-        _remoteUrlCache[videoId] = streamUrl;
+        if (result.exitCode == 0) {
+          final lines = (result.stdout as String).trim().split('\n');
+          streamUrl = lines.last.trim();
+          _remoteUrlCache[videoId] = streamUrl;
+        }
+      } catch (_) {}
+    }
+
+    if (streamUrl == null) {
+      try {
+        final manifest = await _yt.videos.streamsClient.getManifest(videoId);
+        final audioStreams = manifest.audioOnly;
+        if (audioStreams.isNotEmpty) {
+          final aacStreams = audioStreams.where((s) =>
+              s.container.name == 'mp4' ||
+              s.codec.mimeType.contains('mp4') ||
+              s.codec.mimeType.contains('aac'));
+          final bestAudio = aacStreams.isNotEmpty
+              ? aacStreams.withHighestBitrate()
+              : audioStreams.withHighestBitrate();
+          streamUrl = bestAudio.url.toString();
+          _remoteUrlCache[videoId] = streamUrl;
+        }
+      } catch (ytErr) {
+        print('YoutubeExplode direct stream extraction download fallback failed for $videoId: $ytErr');
       }
     }
 
