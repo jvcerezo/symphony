@@ -286,6 +286,15 @@ Future<void> _handleRequest(HttpRequest request, Directory webDir) async {
     if (mime != null) {
       request.response.headers.contentType = mime;
     }
+    final length = await file.length();
+    request.response.headers.contentLength = length;
+    if (filePath.endsWith('.apk')) {
+      request.response.headers.add('Content-Disposition', 'attachment; filename="symphony.apk"');
+    }
+    if (request.method == 'HEAD') {
+      await request.response.close();
+      return;
+    }
     await file.openRead().pipe(request.response);
   } else {
     // SPA fallback to index.html
@@ -1251,6 +1260,7 @@ ContentType? _getContentType(String path) {
   if (path.endsWith('.svg')) return ContentType('image', 'svg+xml');
   if (path.endsWith('.wasm')) return ContentType('application', 'wasm');
   if (path.endsWith('.webp')) return ContentType('image', 'webp');
+  if (path.endsWith('.apk')) return ContentType('application', 'vnd.android.package-archive');
   return null;
 }
 
