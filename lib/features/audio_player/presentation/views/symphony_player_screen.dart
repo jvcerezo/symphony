@@ -29,8 +29,8 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
     if (active != null) return;
 
     try {
-      final scraper = ref.read(spotifyScraperProvider);
-      final playlist = await scraper.importPlaylist('37i9dQZF1DXcBWIGoYBM5M');
+      final importer = ref.read(universalPlaylistImporterProvider);
+      final playlist = await importer.importPlaylist('37i9dQZF1DXcBWIGoYBM5M');
       if (mounted) {
         ref.read(importedPlaylistsProvider.notifier).addPlaylist(playlist);
         ref.read(activePlaylistProvider.notifier).state = playlist;
@@ -150,7 +150,7 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
                 icon: const Icon(Icons.add, size: 18),
-                label: const Text('Import Spotify'),
+                label: const Text('Import Playlist'),
               ),
             ],
           ),
@@ -198,6 +198,7 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
                                     width: double.infinity,
                                     height: 150,
                                     fit: BoxFit.cover,
+                                    filterQuality: FilterQuality.high,
                                     errorBuilder: (context, error, stackTrace) => _buildFallbackCover(),
                                   )
                                 : _buildFallbackCover(),
@@ -265,6 +266,9 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
   ) {
     final handler = ref.read(audioHandlerProvider);
 
+    final isPlaylistActive = playlist.tracks.any((t) => t.title == mediaItem?.title && t.artist == mediaItem?.artist);
+    final isThisPlaying = isPlaylistActive && isPlaying;
+
     return CustomScrollView(
       slivers: [
         // Top Bar & Hero Header
@@ -286,7 +290,7 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
                     if (!isDesktop) ...[
                       IconButton(
                         icon: const Icon(Icons.add_circle_outline, color: SymphonyTheme.secondary),
-                        tooltip: 'Import Spotify Playlist',
+                        tooltip: 'Import Playlist',
                         onPressed: () {
                           showDialog(
                             context: context,
@@ -304,7 +308,7 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
                     if (isDesktop) ...[
                       IconButton(
                         icon: const Icon(Icons.add_link, color: SymphonyTheme.secondary),
-                        tooltip: 'Import Spotify Link',
+                        tooltip: 'Import Playlist',
                         onPressed: () {
                           showDialog(
                             context: context,
@@ -341,6 +345,7 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
                             ? Image.network(
                                 playlist.coverUrl!,
                                 fit: BoxFit.cover,
+                                filterQuality: FilterQuality.high,
                                 errorBuilder: (context, error, stackTrace) => _buildFallbackCover(),
                               )
                             : _buildFallbackCover(),
@@ -351,10 +356,10 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'PUBLIC PLAYLIST',
-                            style: TextStyle(
-                              color: SymphonyTheme.textPrimary,
+                          Text(
+                            '${playlist.source.toUpperCase()} PLAYLIST',
+                            style: const TextStyle(
+                              color: SymphonyTheme.primaryLight,
                               fontWeight: FontWeight.w800,
                               fontSize: 11,
                               letterSpacing: 1.0,
@@ -401,19 +406,45 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
                 // Action Bar: Big Play Button
                 Row(
                   children: [
-                    Container(
-                      width: 54,
-                      height: 54,
-                      decoration: const BoxDecoration(
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         gradient: SymphonyTheme.brandGradient,
+                        boxShadow: isThisPlaying
+                            ? [
+                                BoxShadow(
+                                  color: SymphonyTheme.primary.withAlpha(160),
+                                  blurRadius: 18,
+                                  spreadRadius: 2,
+                                ),
+                              ]
+                            : [
+                                BoxShadow(
+                                  color: Colors.black.withAlpha(80),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
                       ),
                       child: IconButton(
-                        iconSize: 30,
-                        icon: const Icon(Icons.play_arrow, color: Colors.white),
+                        iconSize: 32,
+                        tooltip: isThisPlaying ? 'Pause' : 'Play',
+                        icon: Icon(
+                          isThisPlaying ? Icons.pause : Icons.play_arrow,
+                          color: Colors.white,
+                        ),
                         onPressed: () async {
                           try {
-                            await handler.playQueue(playlist.tracks, startIndex: 0);
+                            if (isThisPlaying) {
+                              await handler.pause();
+                            } else if (isPlaylistActive) {
+                              await handler.play();
+                            } else {
+                              await handler.playQueue(playlist.tracks, startIndex: 0);
+                            }
                           } catch (e) {
                             if (mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(

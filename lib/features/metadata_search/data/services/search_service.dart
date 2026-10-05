@@ -34,8 +34,8 @@ class SearchService {
         final album = item['collectionName'] as String? ?? '';
         final durationMs = item['trackTimeMillis'] as int? ?? 0;
         final rawArt = item['artworkUrl100'] as String?;
-        // Request higher resolution artwork
-        final highResArt = rawArt?.replaceAll('100x100bb.jpg', '500x500bb.jpg');
+        // Request ultra high resolution master artwork
+        final highResArt = rawArt?.replaceAll(RegExp(r'\d+x\d+bb'), '1000x1000bb');
 
         return Track(
           id: 'itunes_${item['trackId'] ?? title}',

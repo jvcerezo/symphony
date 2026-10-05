@@ -28,6 +28,24 @@ class Track {
     );
   }
 
+  Track copyWith({
+    String? id,
+    String? title,
+    String? artist,
+    String? album,
+    Duration? expectedDuration,
+    Uri? artworkUri,
+  }) {
+    return Track(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      artist: artist ?? this.artist,
+      album: album ?? this.album,
+      expectedDuration: expectedDuration ?? this.expectedDuration,
+      artworkUri: artworkUri ?? this.artworkUri,
+    );
+  }
+
   @override
   String toString() => 'Track(id: $id, title: "$title", artist: "$artist")';
 }

@@ -1,7 +1,9 @@
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../metadata_search/data/services/artwork_resolver_service.dart';
 import '../../../metadata_search/data/services/search_service.dart';
 import '../../../playlist_import/data/services/spotify_embed_scraper_service.dart';
+import '../../../playlist_import/data/services/universal_playlist_importer_service.dart';
 import '../../../playlist_import/domain/entities/spotify_playlist.dart';
 import '../../data/services/symphony_audio_handler.dart';
 import '../../domain/entities/track.dart';
@@ -35,9 +37,29 @@ final currentQueueListStreamProvider = StreamProvider<List<Track>>((ref) {
   return handler.playlistQueueStream;
 });
 
+/// Provider for the shared high-resolution ArtworkResolverService instance
+final artworkResolverProvider = Provider<ArtworkResolverService>((ref) {
+  final service = ArtworkResolverService();
+  ref.onDispose(() => service.dispose());
+  return service;
+});
+
 /// Provider for the unauthenticated Spotify Embed Scraper
 final spotifyScraperProvider = Provider<SpotifyEmbedScraperService>((ref) {
-  final service = SpotifyEmbedScraperService();
+  final resolver = ref.watch(artworkResolverProvider);
+  final service = SpotifyEmbedScraperService(artworkResolver: resolver);
+  ref.onDispose(() => service.dispose());
+  return service;
+});
+
+/// Provider for multi-source playlist importing (Spotify, YouTube, Deezer, Apple Music, Smart Mix)
+final universalPlaylistImporterProvider = Provider<UniversalPlaylistImporterService>((ref) {
+  final resolver = ref.watch(artworkResolverProvider);
+  final spotify = ref.watch(spotifyScraperProvider);
+  final service = UniversalPlaylistImporterService(
+    artworkResolver: resolver,
+    spotifyScraper: spotify,
+  );
   ref.onDispose(() => service.dispose());
   return service;
 });

@@ -1,14 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/symphony_theme.dart';
-import '../../../metadata_search/data/services/artwork_resolver_service.dart';
+import '../controllers/audio_player_providers.dart';
 import '../../domain/entities/track.dart';
-
-final artworkResolverProvider = Provider<ArtworkResolverService>((ref) {
-  final service = ArtworkResolverService();
-  ref.onDispose(() => service.dispose());
-  return service;
-});
 
 class SymphonyArtwork extends ConsumerStatefulWidget {
   final Track? track;
@@ -32,7 +26,7 @@ class SymphonyArtwork extends ConsumerStatefulWidget {
 
 class _SymphonyArtworkState extends ConsumerState<SymphonyArtwork> {
   Uri? _resolvedUri;
-  bool _isResolving = false;
+  String? _resolvingTrackId;
 
   @override
   void initState() {
@@ -43,7 +37,11 @@ class _SymphonyArtworkState extends ConsumerState<SymphonyArtwork> {
   @override
   void didUpdateWidget(covariant SymphonyArtwork oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.track?.id != oldWidget.track?.id || widget.artworkUri != oldWidget.artworkUri) {
+    if (widget.track?.id != oldWidget.track?.id ||
+        widget.artworkUri != oldWidget.artworkUri ||
+        widget.track?.artworkUri != oldWidget.track?.artworkUri) {
+      _resolvedUri = widget.artworkUri ?? widget.track?.artworkUri;
+      _resolvingTrackId = null;
       _checkArtwork();
     }
   }
@@ -51,25 +49,41 @@ class _SymphonyArtworkState extends ConsumerState<SymphonyArtwork> {
   void _checkArtwork() {
     if (widget.artworkUri != null) {
       _resolvedUri = widget.artworkUri;
+      _resolvingTrackId = null;
       return;
     }
 
     if (widget.track?.artworkUri != null) {
       _resolvedUri = widget.track!.artworkUri;
+      _resolvingTrackId = null;
       return;
     }
 
-    if (widget.track != null && !_isResolving) {
-      _isResolving = true;
-      ref.read(artworkResolverProvider).resolveArtwork(widget.track!).then((uri) {
-        if (mounted && uri != null) {
-          setState(() {
-            _resolvedUri = uri;
-            _isResolving = false;
-          });
-        }
-      });
+    final track = widget.track;
+    if (track == null) {
+      _resolvedUri = null;
+      _resolvingTrackId = null;
+      return;
     }
+
+    final targetId = track.id;
+    _resolvedUri = null;
+    _resolvingTrackId = targetId;
+
+    ref.read(artworkResolverProvider).resolveArtwork(track).then((uri) {
+      if (mounted && _resolvingTrackId == targetId) {
+        setState(() {
+          _resolvedUri = uri;
+          _resolvingTrackId = null;
+        });
+      }
+    }).catchError((_) {
+      if (mounted && _resolvingTrackId == targetId) {
+        setState(() {
+          _resolvingTrackId = null;
+        });
+      }
+    });
   }
 
   @override
@@ -104,9 +118,11 @@ class _SymphonyArtworkState extends ConsumerState<SymphonyArtwork> {
         child: _resolvedUri != null
             ? Image.network(
                 _resolvedUri.toString(),
+                key: ValueKey(_resolvedUri.toString()),
                 width: size,
                 height: size,
                 fit: BoxFit.cover,
+                filterQuality: FilterQuality.high,
                 errorBuilder: (context, error, stackTrace) => _buildVibrantFallback(size),
               )
             : _buildVibrantFallback(size),

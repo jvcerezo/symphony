@@ -7,11 +7,13 @@ import 'package:just_audio/just_audio.dart';
 import 'package:rxdart/rxdart.dart';
 import '../../../../core/errors/exceptions.dart';
 import '../../domain/entities/track.dart';
+import '../../../metadata_search/data/services/artwork_resolver_service.dart';
 import 'audio_stream_resolver_service.dart';
 
 class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   final AudioPlayer _player;
   final AudioStreamResolverService _streamResolver;
+  final ArtworkResolverService _artworkResolver;
 
   final List<Track> _playlistQueue = [];
   final BehaviorSubject<int> _currentIndexSubject = BehaviorSubject<int>.seeded(-1);
@@ -25,8 +27,10 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   SymphonyAudioHandler({
     AudioPlayer? player,
     AudioStreamResolverService? streamResolver,
+    ArtworkResolverService? artworkResolver,
   })  : _player = player ?? AudioPlayer(),
-        _streamResolver = streamResolver ?? AudioStreamResolverService() {
+        _streamResolver = streamResolver ?? AudioStreamResolverService(),
+        _artworkResolver = artworkResolver ?? ArtworkResolverService() {
     _initAudioSession();
     _broadcastPlaybackState();
     _listenToCompletion();
@@ -170,7 +174,17 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
       );
 
       final streamInfo = await _streamResolver.resolveBestAudioStream(track);
-      final item = track.toMediaItem(actualDuration: streamInfo.duration);
+
+      // Resolve artwork if track doesn't have one yet, ensuring rich lock-screen and bottom bar
+      Uri? resolvedArt = track.artworkUri;
+      if (resolvedArt == null) {
+        try {
+          resolvedArt = await _artworkResolver.resolveArtwork(track);
+        } catch (_) {}
+      }
+
+      final enrichedTrack = resolvedArt != null ? track.copyWith(artworkUri: resolvedArt) : track;
+      final item = enrichedTrack.toMediaItem(actualDuration: streamInfo.duration);
       mediaItem.add(item);
 
       final audioSource = AudioSource.uri(streamInfo.streamUri, tag: item);

@@ -80,7 +80,7 @@ class SidebarNav extends ConsumerWidget {
             },
             icon: const Icon(Icons.add_circle, color: SymphonyTheme.secondary, size: 18),
             label: const Text(
-              'Import Spotify',
+              'Import Playlist',
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
             ),
             style: ElevatedButton.styleFrom(

@@ -56,6 +56,17 @@ class _SearchViewState extends ConsumerState<SearchView> {
           color: SymphonyTheme.obsidian,
           child: Row(
             children: [
+              if (query.isNotEmpty) ...[
+                IconButton(
+                  icon: const Icon(Icons.arrow_back, color: Colors.white),
+                  tooltip: 'Back to Explore Genres',
+                  onPressed: () {
+                    _searchController.clear();
+                    _onSearchChanged('');
+                  },
+                ),
+                const SizedBox(width: 8),
+              ],
               Expanded(
                 child: TextField(
                   controller: _searchController,
@@ -183,12 +194,42 @@ class _SearchViewState extends ConsumerState<SearchView> {
         child: CircularProgressIndicator(color: SymphonyTheme.primaryLight),
       ),
       error: (e, _) => Center(
-        child: Text('Search error: $e', style: const TextStyle(color: Colors.redAccent)),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Search error: $e', style: const TextStyle(color: Colors.redAccent)),
+            const SizedBox(height: 16),
+            TextButton.icon(
+              onPressed: () {
+                _searchController.clear();
+                _onSearchChanged('');
+              },
+              icon: const Icon(Icons.arrow_back, size: 18),
+              label: const Text('Back to Explore Genres'),
+              style: TextButton.styleFrom(foregroundColor: SymphonyTheme.primaryLight),
+            ),
+          ],
+        ),
       ),
       data: (tracks) {
         if (tracks.isEmpty) {
-          return const Center(
-            child: Text('No tracks found', style: TextStyle(color: SymphonyTheme.textMuted)),
+          return Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('No tracks found', style: TextStyle(color: SymphonyTheme.textMuted)),
+                const SizedBox(height: 16),
+                TextButton.icon(
+                  onPressed: () {
+                    _searchController.clear();
+                    _onSearchChanged('');
+                  },
+                  icon: const Icon(Icons.arrow_back, size: 18),
+                  label: const Text('Back to Explore Genres'),
+                  style: TextButton.styleFrom(foregroundColor: SymphonyTheme.primaryLight),
+                ),
+              ],
+            ),
           );
         }
 
@@ -199,6 +240,24 @@ class _SearchViewState extends ConsumerState<SearchView> {
         return ListView(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           children: [
+            // Back breadcrumb button
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () {
+                  _searchController.clear();
+                  _onSearchChanged('');
+                },
+                icon: const Icon(Icons.arrow_back, size: 16),
+                label: const Text('Back to Explore Genres', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                style: TextButton.styleFrom(
+                  foregroundColor: SymphonyTheme.primaryLight,
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+
             // Top Result Card
             const Text(
               'Top Result',

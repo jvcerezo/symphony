@@ -2,6 +2,7 @@ import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/symphony_theme.dart';
+import '../../domain/entities/track.dart';
 import '../controllers/audio_player_providers.dart';
 import 'animated_equalizer.dart';
 import 'symphony_artwork.dart';
@@ -64,6 +65,13 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
             children: [
               SymphonyArtwork(
                 artworkUri: mediaItem.artUri,
+                track: Track(
+                  id: mediaItem.id,
+                  title: mediaItem.title,
+                  artist: mediaItem.artist ?? '',
+                  album: mediaItem.album,
+                  artworkUri: mediaItem.artUri,
+                ),
                 size: 56,
                 borderRadius: 6,
                 hasGlow: isPlaying,
@@ -308,6 +316,13 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
           children: [
             SymphonyArtwork(
               artworkUri: mediaItem.artUri,
+              track: Track(
+                id: mediaItem.id,
+                title: mediaItem.title,
+                artist: mediaItem.artist ?? '',
+                album: mediaItem.album,
+                artworkUri: mediaItem.artUri,
+              ),
               size: 44,
               borderRadius: 6,
             ),

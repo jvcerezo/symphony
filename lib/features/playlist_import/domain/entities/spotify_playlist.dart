@@ -6,6 +6,7 @@ class SpotifyPlaylist {
   final String? description;
   final String? coverUrl;
   final String? ownerName;
+  final String source;
   final List<Track> tracks;
 
   const SpotifyPlaylist({
@@ -14,6 +15,7 @@ class SpotifyPlaylist {
     this.description,
     this.coverUrl,
     this.ownerName,
+    this.source = 'Spotify',
     required this.tracks,
   });
 
