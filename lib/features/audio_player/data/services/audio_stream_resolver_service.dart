@@ -21,7 +21,7 @@ class AudioStreamResolverService {
   ///
   /// On Web (`kIsWeb`), queries the backend `/api/resolve` service running
   /// in Symphony's pure Dart HTTP server to extract full master YouTube audio
-  /// without browser CORS limitations.
+  /// without browser CORS limitations and with full Range/seeking support.
   /// On Native, extracts on-device YouTube streams via `youtube_explode_dart`,
   /// falling back to the global CDN if YouTube blocks or restricts the device.
   Future<ResolvedAudioStream> resolveBestAudioStream(Track track) async {
@@ -135,7 +135,7 @@ class AudioStreamResolverService {
   }
 
   /// Queries the Symphony server's `/api/resolve` endpoint on Web to extract
-  /// full-length YouTube audio streams without CORS restrictions.
+  /// full-length YouTube audio stream proxies without 403 or CORS restrictions.
   Future<ResolvedAudioStream?> _resolveViaWebServer(Track track, {String? videoId}) async {
     final cleanTitle = _cleanSongTitle(track.title);
     final cleanArtist = _cleanSongArtist(track.artist);
@@ -180,12 +180,16 @@ class AudioStreamResolverService {
           final durationMs = data['durationMs'] as int?;
 
           if (streamUrl != null && streamUrl.isNotEmpty) {
+            final fullStreamUri = streamUrl.startsWith('http')
+                ? Uri.parse(streamUrl)
+                : Uri.parse(origin).resolve(streamUrl);
+
             developer.log(
-              'Resolved full master YouTube stream via server API ($origin): "${track.title}" [${durationMs != null ? durationMs ~/ 1000 : 0}s]',
+              'Resolved full master stream via server API ($origin): "${track.title}" -> $fullStreamUri',
               name: 'AudioStreamResolver',
             );
             return ResolvedAudioStream(
-              streamUri: Uri.parse(streamUrl),
+              streamUri: fullStreamUri,
               duration: durationMs != null ? Duration(milliseconds: durationMs) : (track.expectedDuration ?? Duration.zero),
               bitrateKbps: (data['bitrate'] as num?)?.round() ?? 160,
               format: (data['format'] as String?) ?? 'webm',
@@ -269,7 +273,6 @@ class AudioStreamResolverService {
               score += 30;
             }
 
-            // Penalize remixes, live, karaoke, cover, tribute unless specifically requested
             if (itemTitle.contains('remix') && !targetTitleLower.contains('remix')) score -= 80;
             if (itemTitle.contains('live') && !targetTitleLower.contains('live')) score -= 80;
             if (itemTitle.contains('karaoke') || itemArtist.contains('karaoke')) score -= 200;

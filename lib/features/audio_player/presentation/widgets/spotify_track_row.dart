@@ -9,6 +9,7 @@ class SpotifyTrackRow extends StatefulWidget {
   final Track track;
   final bool isPlaying;
   final bool isCurrent;
+  final bool isBuffering;
   final VoidCallback onTap;
 
   const SpotifyTrackRow({
@@ -17,6 +18,7 @@ class SpotifyTrackRow extends StatefulWidget {
     required this.track,
     required this.isPlaying,
     required this.isCurrent,
+    this.isBuffering = false,
     required this.onTap,
   });
 
@@ -32,6 +34,7 @@ class _SpotifyTrackRowState extends State<SpotifyTrackRow> {
   Widget build(BuildContext context) {
     final track = widget.track;
     final isCurrent = widget.isCurrent;
+    final isBuffering = widget.isBuffering;
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
@@ -48,25 +51,36 @@ class _SpotifyTrackRowState extends State<SpotifyTrackRow> {
           ),
           child: Row(
             children: [
-              // Index, Animated Equalizer, or Play/Pause Icon
+              // Index, Loading Spinner, Animated Equalizer, or Play/Pause Icon
               SizedBox(
                 width: 32,
-                child: isCurrent && widget.isPlaying && !_isHovered
-                    ? const Center(child: AnimatedEqualizer(isPlaying: true, height: 14))
-                    : (_isHovered || isCurrent
-                        ? Icon(
-                            isCurrent && widget.isPlaying ? Icons.pause : Icons.play_arrow,
-                            color: isCurrent ? SymphonyTheme.primaryLight : Colors.white,
-                            size: 20,
-                          )
-                        : Text(
-                            '${widget.index + 1}',
-                            style: TextStyle(
-                              color: isCurrent ? SymphonyTheme.primaryLight : SymphonyTheme.textMuted,
-                              fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
-                              fontSize: 14,
-                            ),
-                          )),
+                child: isCurrent && isBuffering
+                    ? const Center(
+                        child: SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: SymphonyTheme.primaryLight,
+                          ),
+                        ),
+                      )
+                    : isCurrent && widget.isPlaying && !_isHovered
+                        ? const Center(child: AnimatedEqualizer(isPlaying: true, height: 14))
+                        : (_isHovered || isCurrent
+                            ? Icon(
+                                isCurrent && widget.isPlaying ? Icons.pause : Icons.play_arrow,
+                                color: isCurrent ? SymphonyTheme.primaryLight : Colors.white,
+                                size: 20,
+                              )
+                            : Text(
+                                '${widget.index + 1}',
+                                style: TextStyle(
+                                  color: isCurrent ? SymphonyTheme.primaryLight : SymphonyTheme.textMuted,
+                                  fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+                                  fontSize: 14,
+                                ),
+                              )),
               ),
               const SizedBox(width: 12),
               // Artwork Thumbnail

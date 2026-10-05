@@ -1,3 +1,4 @@
+import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/symphony_theme.dart';
@@ -45,7 +46,10 @@ class _SearchViewState extends ConsumerState<SearchView> {
     final playbackStateAsync = ref.watch(playbackStateStreamProvider);
 
     final mediaItem = mediaItemAsync.asData?.value;
-    final isPlaying = playbackStateAsync.asData?.value.playing ?? false;
+    final playbackState = playbackStateAsync.asData?.value;
+    final isPlaying = playbackState?.playing ?? false;
+    final isBuffering = playbackState?.processingState == AudioProcessingState.buffering ||
+        playbackState?.processingState == AudioProcessingState.loading;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -103,7 +107,7 @@ class _SearchViewState extends ConsumerState<SearchView> {
         Expanded(
           child: query.isEmpty
               ? _buildGenreBrowser()
-              : _buildSearchResults(searchResultsAsync, mediaItem, isPlaying),
+              : _buildSearchResults(searchResultsAsync, mediaItem, isPlaying, isBuffering),
         ),
       ],
     );
@@ -188,6 +192,7 @@ class _SearchViewState extends ConsumerState<SearchView> {
     AsyncValue<List<Track>> resultsAsync,
     dynamic mediaItem,
     bool isPlaying,
+    bool isBuffering,
   ) {
     return resultsAsync.when(
       loading: () => const Center(
@@ -360,7 +365,8 @@ class _SearchViewState extends ConsumerState<SearchView> {
               return SpotifyTrackRow(
                 index: idx + 1,
                 track: track,
-                isPlaying: isPlaying,
+                isPlaying: isPlaying && !isBuffering,
+                isBuffering: isCurrent && isBuffering,
                 isCurrent: isCurrent,
                 onTap: () {
                   if (isCurrent) {

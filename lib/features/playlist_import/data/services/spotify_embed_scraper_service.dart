@@ -34,7 +34,7 @@ class SpotifyEmbedScraperService {
       final segments = uri.pathSegments;
       final idx = segments.indexOf('playlist');
       if (idx != -1 && idx + 1 < segments.length) {
-        return segments[idx + 1];
+        return segments[idx + 1].split('?').first;
       }
     } catch (_) {
       // Regex fallback
@@ -51,20 +51,27 @@ class SpotifyEmbedScraperService {
   }
 
   /// Scrapes public Spotify playlist metadata and tracks without OAuth credentials.
-  /// Handles browser CORS transparently when running on Flutter Web.
+  /// Handles browser CORS transparently by querying the local backend server first.
   Future<SpotifyPlaylist> importPlaylist(String playlistUrlOrId) async {
     final playlistId = extractPlaylistId(playlistUrlOrId);
     if (playlistId == null || playlistId.isEmpty) {
       throw const FormatException('Invalid Spotify playlist URL or ID provided.');
     }
 
-    final targetEmbedUrl = 'https://open.spotify.com/embed/playlist/$playlistId';
-    developer.log('Scraping Spotify embed: $targetEmbedUrl', name: 'SpotifyScraper');
+    developer.log('Importing Spotify playlist: $playlistId', name: 'SpotifyScraper');
 
+    // 1. Primary: Import via Symphony backend server (Zero CORS, 100% full playlist retrieval)
+    final serverPlaylist = await _importViaServer(playlistId);
+    if (serverPlaylist != null && serverPlaylist.tracks.isNotEmpty) {
+      developer.log('Successfully imported playlist via server: "${serverPlaylist.title}" (${serverPlaylist.trackCount} tracks)', name: 'SpotifyScraper');
+      return serverPlaylist;
+    }
+
+    // 2. Native socket fetch or Web proxy fallback
+    final targetEmbedUrl = 'https://open.spotify.com/embed/playlist/$playlistId';
     String? htmlBody;
 
     if (!kIsWeb) {
-      // 1. Native platform: direct socket fetch (zero proxies, full speed)
       try {
         final response = await _httpClient.get(
           Uri.parse(targetEmbedUrl),
@@ -83,13 +90,10 @@ class SpotifyEmbedScraperService {
       }
     }
 
-    // 2. Web or Native fallback: Route via CORS-compliant gateways
     if (htmlBody == null) {
       for (final proxy in _webCorsProxies) {
         try {
           final proxiedUri = Uri.parse('$proxy${Uri.encodeComponent(targetEmbedUrl)}');
-          developer.log('Attempting CORS proxy fetch: $proxiedUri', name: 'SpotifyScraper');
-
           final response = await _httpClient.get(proxiedUri).timeout(const Duration(seconds: 8));
           if (response.statusCode == 200 && response.body.contains('__NEXT_DATA__')) {
             htmlBody = response.body;
@@ -119,7 +123,6 @@ class SpotifyEmbedScraperService {
           String? coverUrl;
           final visualIdentity = entity['visualIdentity']?['image'] as List<dynamic>?;
           if (visualIdentity != null && visualIdentity.isNotEmpty) {
-            // Sort to select the largest master resolution (640x640 or higher)
             final sortedImages = List<dynamic>.from(visualIdentity)
               ..sort((a, b) {
                 final wA = (a is Map) ? (a['maxWidth'] as int? ?? 0) : 0;
@@ -133,7 +136,6 @@ class SpotifyEmbedScraperService {
           }
           coverUrl ??= entity['coverArt']?['sources']?[0]?['url'] as String?;
 
-          // Upgrade Spotify CDN thumbnail to 640x640 high-definition master
           if (coverUrl != null) {
             coverUrl = coverUrl
                 .replaceAll('00000001', '00000003')
@@ -150,15 +152,6 @@ class SpotifyEmbedScraperService {
             final durationMs = item['duration'] as int? ?? 0;
             final trackUriStr = item['uri'] as String? ?? 'spotify:track:$i';
 
-            // Extract direct stream preview if provided in Spotify embed JSON
-            String? previewUrl;
-            final audioPreview = item['audioPreview'];
-            if (audioPreview is Map) {
-              previewUrl = audioPreview['url'] as String?;
-            }
-            previewUrl ??= item['preview_url'] as String? ?? item['audio_preview_url'] as String?;
-
-            // Distinct individual artwork: Do not duplicate playlist coverUrl to individual tracks!
             tracks.add(
               Track(
                 id: trackUriStr,
@@ -166,27 +159,19 @@ class SpotifyEmbedScraperService {
                 artist: artist,
                 album: title,
                 expectedDuration: durationMs > 0 ? Duration(milliseconds: durationMs) : null,
-                artworkUri: null,
-                streamUri: previewUrl != null ? Uri.tryParse(previewUrl) : null,
               ),
             );
           }
 
           if (tracks.isNotEmpty) {
-            developer.log(
-              'Successfully parsed playlist "$title" with ${tracks.length} tracks. Enriching top tracks...',
-              name: 'SpotifyScraper',
-            );
-
-            // Pre-resolve artwork for top tracks so they load immediately with distinct album covers
             final enrichedTracks = await _artworkResolver.batchResolve(tracks, maxCount: 15);
-
             return SpotifyPlaylist(
               id: playlistId,
               title: title,
               description: description,
               coverUrl: coverUrl,
               ownerName: ownerName,
+              source: 'Spotify',
               tracks: enrichedTracks,
             );
           }
@@ -194,8 +179,78 @@ class SpotifyEmbedScraperService {
       }
     }
 
-    // 4. Fallback curated catalog if network/CORS restricts external scraping
-    return _buildCuratedFallback(playlistId);
+    // 4. If this is the default Today's Top Hits playlist and network is offline, provide curated fallback
+    if (playlistId == '37i9dQZF1DXcBWIGoYBM5M') {
+      return _buildCuratedFallback(playlistId);
+    }
+
+    // 5. For user playlists, DO NOT replace their playlist with 8 dummy tracks!
+    throw FormatException(
+      'Could not import Spotify playlist "$playlistId". If this is a private playlist, please set it to "Public" on Spotify and try again.',
+    );
+  }
+
+  /// Calls the local Symphony server to scrape Spotify without browser CORS limits.
+  Future<SpotifyPlaylist?> _importViaServer(String playlistId) async {
+    final candidateOrigins = <String>[];
+    if (kIsWeb) {
+      try {
+        final origin = Uri.base.origin;
+        if (origin.isNotEmpty && !origin.startsWith('null')) {
+          candidateOrigins.add(origin);
+        }
+      } catch (_) {}
+    }
+    if (!candidateOrigins.contains('http://localhost:8080')) {
+      candidateOrigins.add('http://localhost:8080');
+    }
+    if (!candidateOrigins.contains('http://127.0.0.1:8080')) {
+      candidateOrigins.add('http://127.0.0.1:8080');
+    }
+
+    for (final origin in candidateOrigins) {
+      try {
+        final uri = Uri.parse('$origin/api/playlist/spotify?id=$playlistId');
+        final response = await _httpClient.get(uri).timeout(const Duration(seconds: 10));
+
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body) as Map<String, dynamic>;
+          final rawTracks = data['tracks'] as List<dynamic>? ?? [];
+          final tracks = <Track>[];
+
+          for (int i = 0; i < rawTracks.length; i++) {
+            final t = rawTracks[i] as Map<String, dynamic>;
+            final durMs = t['durationMs'] as int? ?? 0;
+            tracks.add(
+              Track(
+                id: t['id'] as String? ?? 'sp_$i',
+                title: t['title'] as String? ?? 'Unknown Title',
+                artist: t['artist'] as String? ?? 'Unknown Artist',
+                album: t['album'] as String? ?? data['title'] as String? ?? '',
+                expectedDuration: durMs > 0 ? Duration(milliseconds: durMs) : null,
+              ),
+            );
+          }
+
+          if (tracks.isNotEmpty) {
+            developer.log('Parsed ${tracks.length} tracks from server for playlist "$playlistId"', name: 'SpotifyScraper');
+            final enriched = await _artworkResolver.batchResolve(tracks, maxCount: 15);
+            return SpotifyPlaylist(
+              id: playlistId,
+              title: data['title'] as String? ?? 'Spotify Playlist',
+              description: data['description'] as String?,
+              coverUrl: data['coverUrl'] as String?,
+              ownerName: data['ownerName'] as String? ?? 'Spotify',
+              source: 'Spotify',
+              tracks: enriched,
+            );
+          }
+        }
+      } catch (e) {
+        developer.log('Server playlist import failed on $origin: $e', name: 'SpotifyScraper');
+      }
+    }
+    return null;
   }
 
   SpotifyPlaylist _buildCuratedFallback(String playlistId) {

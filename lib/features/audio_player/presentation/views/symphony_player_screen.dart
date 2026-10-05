@@ -50,6 +50,8 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
     final mediaItem = mediaItemAsync.asData?.value;
     final playbackState = playbackStateAsync.asData?.value;
     final isPlaying = playbackState?.playing ?? false;
+    final isBuffering = playbackState?.processingState == AudioProcessingState.buffering ||
+        playbackState?.processingState == AudioProcessingState.loading;
 
     final screenWidth = MediaQuery.of(context).size.width;
     final isDesktop = screenWidth >= 850;
@@ -90,7 +92,7 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
                 Expanded(
                   child: Container(
                     color: SymphonyTheme.midnight,
-                    child: _buildCurrentTabContent(activeTab, activePlaylist, mediaItem, isPlaying, isDesktop),
+                    child: _buildCurrentTabContent(activeTab, activePlaylist, mediaItem, isPlaying, isBuffering, isDesktop),
                   ),
                 ),
               ],
@@ -107,6 +109,7 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
     SpotifyPlaylist? activePlaylist,
     MediaItem? mediaItem,
     bool isPlaying,
+    bool isBuffering,
     bool isDesktop,
   ) {
     if (activeTab == 'search') {
@@ -122,7 +125,7 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
       return _buildLoadingState();
     }
 
-    return _buildPlaylistContent(activePlaylist, mediaItem, isPlaying, isDesktop);
+    return _buildPlaylistContent(activePlaylist, mediaItem, isPlaying, isBuffering, isDesktop);
   }
 
   Widget _buildLibraryView() {
@@ -262,6 +265,7 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
     SpotifyPlaylist playlist,
     MediaItem? mediaItem,
     bool isPlaying,
+    bool isBuffering,
     bool isDesktop,
   ) {
     final handler = ref.read(audioHandlerProvider);
@@ -531,7 +535,8 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
                 return SpotifyTrackRow(
                   index: index,
                   track: track,
-                  isPlaying: isPlaying,
+                  isPlaying: isPlaying && !isBuffering,
+                  isBuffering: isCurrent && isBuffering,
                   isCurrent: isCurrent,
                   onTap: () async {
                     try {

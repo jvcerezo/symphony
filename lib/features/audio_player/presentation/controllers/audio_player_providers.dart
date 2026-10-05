@@ -1,5 +1,8 @@
+import 'dart:convert';
 import 'package:audio_service/audio_service.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
 import '../../../metadata_search/data/services/artwork_resolver_service.dart';
 import '../../../metadata_search/data/services/search_service.dart';
 import '../../../playlist_import/data/services/spotify_embed_scraper_service.dart';
@@ -71,9 +74,54 @@ final searchServiceProvider = Provider<SearchService>((ref) {
   return service;
 });
 
-/// StateNotifier for managing imported Spotify playlists
+/// StateNotifier for managing imported Spotify playlists with offline persistence
 class ImportedPlaylistsNotifier extends StateNotifier<List<SpotifyPlaylist>> {
-  ImportedPlaylistsNotifier() : super([]);
+  final http.Client _client = http.Client();
+
+  ImportedPlaylistsNotifier() : super([]) {
+    _loadSavedPlaylists();
+  }
+
+  Future<void> _loadSavedPlaylists() async {
+    try {
+      final origin = kIsWeb ? Uri.base.origin : 'http://localhost:8080';
+      final response = await _client.get(Uri.parse('$origin/api/playlists')).timeout(const Duration(seconds: 4));
+      if (response.statusCode == 200) {
+        final list = jsonDecode(response.body) as List<dynamic>;
+        final playlists = <SpotifyPlaylist>[];
+        for (final item in list) {
+          if (item is Map<String, dynamic>) {
+            final rawTracks = item['tracks'] as List<dynamic>? ?? [];
+            final tracks = rawTracks.map((t) {
+              final durMs = t['durationMs'] as int? ?? 0;
+              return Track(
+                id: t['id'] as String? ?? 'sp_0',
+                title: t['title'] as String? ?? 'Unknown Title',
+                artist: t['artist'] as String? ?? 'Unknown Artist',
+                album: t['album'] as String? ?? '',
+                expectedDuration: durMs > 0 ? Duration(milliseconds: durMs) : null,
+              );
+            }).toList();
+
+            playlists.add(
+              SpotifyPlaylist(
+                id: item['id'] as String? ?? '',
+                title: item['title'] as String? ?? 'Saved Playlist',
+                description: item['description'] as String?,
+                coverUrl: item['coverUrl'] as String?,
+                ownerName: item['ownerName'] as String? ?? 'User',
+                source: item['source'] as String? ?? 'Spotify',
+                tracks: tracks,
+              ),
+            );
+          }
+        }
+        if (playlists.isNotEmpty) {
+          state = playlists;
+        }
+      }
+    } catch (_) {}
+  }
 
   void addPlaylist(SpotifyPlaylist playlist) {
     state = [
