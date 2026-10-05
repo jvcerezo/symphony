@@ -1,0 +1,18 @@
+services:
+  symphony:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: symphony
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - WEB_DIR=build/web
+    volumes:
+      - symphony-cache:/app/.symphony_cache
+
+volumes:
+  symphony-cache:
+    driver: local

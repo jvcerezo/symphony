@@ -180,12 +180,11 @@ Future<void> _enforceCacheQuota({int quotaBytes = _defaultCacheQuotaBytes}) asyn
 }
 
 Future<void> main() async {
-  final port = 8080;
-  final webDir = Directory('build/web');
+  final port = int.tryParse(Platform.environment['PORT'] ?? '') ?? 8080;
+  final webDir = Directory(Platform.environment['WEB_DIR'] ?? 'build/web');
 
   if (!await webDir.exists()) {
-    print('Error: build/web directory not found');
-    return;
+    print('Warning: build/web directory not found at ${webDir.path}');
   }
 
   if (!await _cacheDir.exists()) {
