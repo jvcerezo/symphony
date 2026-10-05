@@ -9,8 +9,10 @@ import '../../../settings/presentation/widgets/personalization_dialog.dart';
 import '../../data/services/symphony_audio_handler.dart';
 import '../controllers/audio_player_providers.dart';
 import '../controllers/offline_provider.dart';
+import '../controllers/navigation_history_provider.dart';
 import '../widgets/bottom_player_bar.dart';
 import '../widgets/import_playlist_dialog.dart';
+import '../widgets/nav_history_controls.dart';
 import '../widgets/realtime_download_toast.dart';
 import '../widgets/sidebar_nav.dart';
 import '../widgets/spotify_track_row.dart';
@@ -33,20 +35,30 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
     final active = ref.read(activePlaylistProvider);
     if (active != null) return;
 
-    try {
-      final importer = ref.read(universalPlaylistImporterProvider);
-      final playlist = await importer.importPlaylist('37i9dQZF1DXcBWIGoYBM5M');
-      if (mounted) {
-        ref.read(importedPlaylistsProvider.notifier).addPlaylist(playlist);
-        ref.read(activePlaylistProvider.notifier).state = playlist;
-      }
-    } catch (_) {
-      // Gracefully handled by scraper fallback
+    final imported = ref.read(importedPlaylistsProvider);
+    if (imported.isNotEmpty) {
+      final first = imported.first;
+      ref.read(activePlaylistProvider.notifier).state = first;
+      ref.read(navigationHistoryProvider.notifier).record('home', first);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<String>(activeNavTabProvider, (prev, next) {
+      if (prev != next) {
+        final p = ref.read(activePlaylistProvider);
+        ref.read(navigationHistoryProvider.notifier).record(next, p);
+      }
+    });
+
+    ref.listen<SpotifyPlaylist?>(activePlaylistProvider, (prev, next) {
+      if (prev?.id != next?.id) {
+        final tab = ref.read(activeNavTabProvider);
+        ref.read(navigationHistoryProvider.notifier).record(tab, next);
+      }
+    });
+
     final activePlaylist = ref.watch(activePlaylistProvider);
     final activeTab = ref.watch(activeNavTabProvider);
     final mediaItemAsync = ref.watch(currentMediaItemStreamProvider);
@@ -150,7 +162,16 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
 
     // Default 'home' tab
     if (activePlaylist == null) {
-      return _buildLoadingState();
+      final imported = ref.watch(importedPlaylistsProvider);
+      if (imported.isNotEmpty) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && ref.read(activePlaylistProvider) == null) {
+            ref.read(activePlaylistProvider.notifier).state = imported.first;
+          }
+        });
+        return _buildPlaylistContent(imported.first, mediaItem, isPlaying, isBuffering, isDesktop);
+      }
+      return _buildEmptyHomeState(isDesktop);
     }
 
     return _buildPlaylistContent(activePlaylist, mediaItem, isPlaying, isBuffering, isDesktop);
@@ -173,21 +194,29 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: Row(
                   children: [
-                    Text(
-                      personalization.userName.isNotEmpty
-                          ? "${personalization.userName}'s Playlists"
-                          : 'Playlists',
-                      style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white, letterSpacing: -0.5),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Your personal music collection • ${importedPlaylists.length} playlists',
-                      style: const TextStyle(fontSize: 13, color: SymphonyTheme.textSecondary),
+                    const NavHistoryControls(),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            personalization.userName.isNotEmpty
+                                ? "${personalization.userName}'s Playlists"
+                                : 'Playlists',
+                            style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white, letterSpacing: -0.5),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Your personal music collection • ${importedPlaylists.length} playlists',
+                            style: const TextStyle(fontSize: 13, color: SymphonyTheme.textSecondary),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -312,30 +341,144 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
     );
   }
 
-  Widget _buildLoadingState() {
+
+  Widget _buildEmptyHomeState(bool isDesktop) {
     final accent = ref.watch(accentThemeProvider);
-    return Center(
+    final personalization = ref.watch(personalizationProvider);
+
+    return SingleChildScrollView(
+      padding: EdgeInsets.symmetric(horizontal: isDesktop ? 32 : 16, vertical: 24),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Top Navigation Bar
+          Row(
+            children: [
+              const NavHistoryControls(),
+              const Spacer(),
+              ElevatedButton.icon(
+                onPressed: () {
+                  showDialog(context: context, builder: (_) => const ImportPlaylistDialog());
+                },
+                icon: const Icon(Icons.add, size: 16, color: Colors.black),
+                label: const Text('Import Playlist', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 13)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: Colors.black,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(500)),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 32),
+
+          // Welcome Hero Banner
           Container(
-            width: 56,
-            height: 56,
+            width: double.infinity,
+            padding: const EdgeInsets.all(32),
             decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: accent.primary,
+              gradient: LinearGradient(
+                colors: [accent.primary.withValues(alpha: 0.35), SymphonyTheme.card],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
             ),
-            child: const Icon(Icons.graphic_eq_rounded, color: Colors.black, size: 30),
-          ),
-          const SizedBox(height: 18),
-          const Text(
-            'Loading Symphony Player...',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Instant zero-login streaming experience',
-            style: TextStyle(fontSize: 13, color: SymphonyTheme.textSecondary),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: accent.primary,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.graphic_eq_rounded, color: Colors.black, size: 28),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            personalization.userName.isNotEmpty
+                                ? "Welcome, ${personalization.userName}!"
+                                : "Welcome to Symphony",
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: -0.5,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          const Text(
+                            'Pure offline-first music player with zero accounts, zero tracking, and local device storage.',
+                            style: TextStyle(color: SymphonyTheme.textSecondary, fontSize: 13),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  'Import your favorite public playlists to personalize your instance and start listening:',
+                  style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w500),
+                ),
+                const SizedBox(height: 16),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        showDialog(context: context, builder: (_) => const ImportPlaylistDialog());
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: accent.primary,
+                        foregroundColor: Colors.black,
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(500)),
+                      ),
+                      icon: const Icon(Icons.add_to_photos_rounded, size: 18, color: Colors.black),
+                      label: const Text('Import Your Playlist', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        final messenger = ScaffoldMessenger.of(context);
+                        messenger.showSnackBar(
+                          const SnackBar(
+                            backgroundColor: Color(0xFF282828),
+                            content: Text("Loading Today's Top Hits..."),
+                            duration: Duration(seconds: 2),
+                          ),
+                        );
+                        try {
+                          final importer = ref.read(universalPlaylistImporterProvider);
+                          final p = await importer.importPlaylist('37i9dQZF1DXcBWIGoYBM5M');
+                          ref.read(importedPlaylistsProvider.notifier).addPlaylist(p);
+                          ref.read(activePlaylistProvider.notifier).state = p;
+                        } catch (_) {}
+                      },
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        side: const BorderSide(color: Colors.white30),
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(500)),
+                      ),
+                      icon: const Icon(Icons.play_arrow_rounded, size: 18, color: Colors.white),
+                      label: const Text("Load Today's Top Hits", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -532,14 +675,28 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'PLAYLIST',
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 12,
-                    letterSpacing: 1.0,
-                  ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (ref.watch(navigationHistoryProvider).canGoBack) ...[
+                      GestureDetector(
+                        onTap: () => ref.read(navigationHistoryProvider.notifier).goBack(ref),
+                        child: const Padding(
+                          padding: EdgeInsets.only(right: 8.0),
+                          child: Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 16),
+                        ),
+                      ),
+                    ],
+                    const Text(
+                      'PLAYLIST',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                  ],
                 ),
                 TextButton.icon(
                   onPressed: () {
@@ -695,33 +852,7 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
         children: [
           Row(
             children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Color(0x7F000000),
-                ),
-                child: IconButton(
-                  padding: EdgeInsets.zero,
-                  icon: const Icon(Icons.chevron_left, color: Colors.white, size: 22),
-                  onPressed: () {},
-                ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                width: 32,
-                height: 32,
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Color(0x7F000000),
-                ),
-                child: IconButton(
-                  padding: EdgeInsets.zero,
-                  icon: const Icon(Icons.chevron_right, color: Colors.white, size: 22),
-                  onPressed: () {},
-                ),
-              ),
+              const NavHistoryControls(),
               const Spacer(),
               ElevatedButton.icon(
                 onPressed: () {

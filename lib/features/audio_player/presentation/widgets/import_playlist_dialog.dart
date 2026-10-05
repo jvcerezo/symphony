@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/symphony_theme.dart';
+import '../../../settings/presentation/controllers/personalization_provider.dart';
 import '../controllers/audio_player_providers.dart';
 
 class ImportPlaylistDialog extends ConsumerStatefulWidget {
@@ -37,9 +38,20 @@ class _ImportPlaylistDialogState extends ConsumerState<ImportPlaylistDialog> {
       final importer = ref.read(universalPlaylistImporterProvider);
       final playlist = await importer.importPlaylist(input);
 
-      // Save to state
+      // Save to state & local offline storage
       ref.read(importedPlaylistsProvider.notifier).addPlaylist(playlist);
       ref.read(activePlaylistProvider.notifier).state = playlist;
+
+      // Automatically personalize user identity from the public playlist owner
+      final owner = playlist.ownerName?.trim();
+      if (owner != null &&
+          owner.isNotEmpty &&
+          !['spotify', 'user', 'spotify user', 'deezer', 'apple music', 'youtube'].contains(owner.toLowerCase())) {
+        ref.read(personalizationProvider.notifier).updateProfile(
+          userName: owner,
+          instanceName: "$owner's Symphony",
+        );
+      }
 
       if (mounted) {
         Navigator.of(context).pop();

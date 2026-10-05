@@ -4,7 +4,6 @@ import 'package:html/parser.dart' as html_parser;
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
 final Directory _cacheDir = Directory('.symphony_cache');
-final File _playlistsFile = File('.symphony_cache/playlists.json');
 final File _resolveIndexFile = File('.symphony_cache/resolve_index.json');
 final Map<String, Map<String, dynamic>> _resolveCache = {};
 final Map<String, String> _remoteUrlCache = {};
@@ -130,41 +129,13 @@ Future<void> _enforceCacheQuota({int quotaBytes = _defaultCacheQuotaBytes}) asyn
 
   if (totalBytes <= quotaBytes) return;
 
-  // Protect pinned tracks from user's saved playlists from eviction
-  final pinnedVideoIds = <String>{};
-  if (await _playlistsFile.exists()) {
-    try {
-      final playlists = jsonDecode(await _playlistsFile.readAsString()) as List<dynamic>;
-      for (final p in playlists) {
-        final tracks = (p['tracks'] as List<dynamic>?) ?? [];
-        for (final t in tracks) {
-          final id = t['id'] as String? ?? '';
-          final title = t['title'] as String? ?? '';
-          final artist = t['artist'] as String? ?? '';
-          final norm = '${_normalizeKey(artist)} - ${_normalizeKey(title)}';
-          final entry = _resolveCache[id] ?? _resolveCache['track_$id'] ?? _resolveCache[norm];
-          if (entry != null && entry['videoId'] != null) {
-            pinnedVideoIds.add(entry['videoId'] as String);
-          }
-        }
-      }
-    } catch (_) {}
-  }
-
-  // Transient files (cached during streaming, not in any saved playlist)
-  final transientFiles = audioFiles.where((f) {
-    final base = f.uri.pathSegments.last;
-    final vid = base.replaceFirst('audio_', '').replaceFirst('.webm', '');
-    return !pinnedVideoIds.contains(vid);
-  }).toList();
-
   // Sort LRU: oldest modified first
-  transientFiles.sort((a, b) => a.lastModifiedSync().compareTo(b.lastModifiedSync()));
+  audioFiles.sort((a, b) => a.lastModifiedSync().compareTo(b.lastModifiedSync()));
 
   final targetBytes = (quotaBytes * 0.8).round();
   int evictedCount = 0;
 
-  for (final file in transientFiles) {
+  for (final file in audioFiles) {
     if (totalBytes <= targetBytes) break;
     final size = file.lengthSync();
     try {
@@ -296,6 +267,11 @@ Future<void> _handleRequest(HttpRequest request, Directory webDir) async {
     if (filePath.endsWith('.apk')) {
       request.response.headers.add('Content-Disposition', 'attachment; filename="symphony.apk"');
     }
+    if (filePath.endsWith('.html') || filePath.endsWith('.js') || filePath.endsWith('.json')) {
+      request.response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+      request.response.headers.set('Pragma', 'no-cache');
+      request.response.headers.set('Expires', '0');
+    }
     if (request.method == 'HEAD') {
       await request.response.close();
       return;
@@ -306,6 +282,9 @@ Future<void> _handleRequest(HttpRequest request, Directory webDir) async {
     final indexFile = File('${webDir.path}/index.html');
     if (await indexFile.exists()) {
       request.response.headers.contentType = ContentType.html;
+      request.response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+      request.response.headers.set('Pragma', 'no-cache');
+      request.response.headers.set('Expires', '0');
       await indexFile.openRead().pipe(request.response);
     } else {
       request.response.statusCode = HttpStatus.notFound;
@@ -1118,43 +1097,8 @@ void _batchDownloadTracks(List<dynamic> tracks) async {
 
 Future<void> _handlePlaylists(HttpRequest request) async {
   request.response.headers.contentType = ContentType.json;
-
-  if (request.method == 'GET') {
-    if (await _playlistsFile.exists()) {
-      final content = await _playlistsFile.readAsString();
-      request.response.write(content);
-    } else {
-      request.response.write('[]');
-    }
-    await request.response.close();
-    return;
-  }
-
-  if (request.method == 'POST') {
-    try {
-      final body = await utf8.decodeStream(request);
-      final newPlaylist = jsonDecode(body) as Map<String, dynamic>;
-
-      List<dynamic> existing = [];
-      if (await _playlistsFile.exists()) {
-        try {
-          existing = jsonDecode(await _playlistsFile.readAsString()) as List<dynamic>;
-        } catch (_) {}
-      }
-
-      existing.removeWhere((p) => p is Map && p['id'] == newPlaylist['id']);
-      existing.insert(0, newPlaylist);
-
-      await _playlistsFile.writeAsString(jsonEncode(existing));
-      request.response.statusCode = HttpStatus.ok;
-      request.response.write(jsonEncode({'success': true, 'count': existing.length}));
-    } catch (e) {
-      request.response.statusCode = HttpStatus.badRequest;
-      request.response.write(jsonEncode({'error': e.toString()}));
-    }
-    await request.response.close();
-    return;
-  }
+  request.response.write('[]');
+  await request.response.close();
 }
 
 Future<void> _handleSpotifyPlaylist(HttpRequest request) async {
@@ -1274,19 +1218,6 @@ Future<void> _handleSpotifyPlaylist(HttpRequest request) async {
       'tracks': tracks,
     };
 
-    // Automatically persist to offline storage
-    try {
-      List<dynamic> existing = [];
-      if (await _playlistsFile.exists()) {
-        try {
-          existing = jsonDecode(await _playlistsFile.readAsString()) as List<dynamic>;
-        } catch (_) {}
-      }
-      existing.removeWhere((p) => p is Map && p['id'] == playlistId);
-      existing.insert(0, responsePayload);
-      await _playlistsFile.writeAsString(jsonEncode(existing));
-    } catch (_) {}
-
     request.response.headers.contentType = ContentType.json;
     request.response.write(jsonEncode(responsePayload));
     await request.response.close();
@@ -1375,29 +1306,6 @@ Future<void> _handleDeletePlaylistCache(HttpRequest request) async {
     final playlistId = data['playlistId'] as String? ?? '';
     final tracks = (data['tracks'] as List<dynamic>?) ?? [];
 
-    // Find other saved playlists to avoid deleting audio files shared with another playlist
-    final otherPlaylistVideoIds = <String>{};
-    if (await _playlistsFile.exists()) {
-      try {
-        final allPlaylists = jsonDecode(await _playlistsFile.readAsString()) as List<dynamic>;
-        for (final p in allPlaylists) {
-          if (p is Map && p['id'] != playlistId) {
-            final pTracks = (p['tracks'] as List<dynamic>?) ?? [];
-            for (final pt in pTracks) {
-              final id = pt['id'] as String? ?? '';
-              final artist = pt['artist'] as String? ?? '';
-              final title = pt['title'] as String? ?? '';
-              final norm = '${_normalizeKey(artist)} - ${_normalizeKey(title)}';
-              final entry = _resolveCache[id] ?? _resolveCache['track_$id'] ?? _resolveCache[norm];
-              if (entry != null && entry['videoId'] != null) {
-                otherPlaylistVideoIds.add(entry['videoId'] as String);
-              }
-            }
-          }
-        }
-      } catch (_) {}
-    }
-
     int deletedAudioCount = 0;
     int freedBytes = 0;
 
@@ -1411,7 +1319,7 @@ Future<void> _handleDeletePlaylistCache(HttpRequest request) async {
 
         if (entry != null) {
           final vid = entry['videoId'] as String?;
-          if (vid != null && !otherPlaylistVideoIds.contains(vid)) {
+          if (vid != null) {
             final audioFile = File('${_cacheDir.path}/audio_$vid.webm');
             if (audioFile.existsSync()) {
               final len = audioFile.lengthSync();

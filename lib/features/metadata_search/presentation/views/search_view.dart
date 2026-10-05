@@ -5,6 +5,7 @@ import '../../../../core/theme/symphony_theme.dart';
 import '../../../audio_player/domain/entities/track.dart';
 import '../../../audio_player/presentation/controllers/audio_player_providers.dart';
 import '../../../audio_player/presentation/controllers/offline_provider.dart';
+import '../../../audio_player/presentation/widgets/nav_history_controls.dart';
 import '../../../audio_player/presentation/widgets/symphony_artwork.dart';
 import '../../../audio_player/presentation/widgets/spotify_track_row.dart';
 
@@ -61,6 +62,8 @@ class _SearchViewState extends ConsumerState<SearchView> {
           color: SymphonyTheme.panel,
           child: Row(
             children: [
+              const NavHistoryControls(),
+              const SizedBox(width: 12),
               if (query.isNotEmpty) ...[
                 IconButton(
                   icon: const Icon(Icons.arrow_back, color: Colors.white),
