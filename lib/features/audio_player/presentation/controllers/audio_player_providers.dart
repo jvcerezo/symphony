@@ -10,6 +10,7 @@ import '../../../playlist_import/domain/entities/spotify_playlist.dart';
 import '../../data/services/symphony_audio_handler.dart';
 import '../../domain/entities/track.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../../../core/constants/curated_playlists.dart';
 
 /// Symphony Brand & User Accent Theme Provider (Defaults to signature Symphony Violet #8B5CF6)
 final accentThemeProvider = StateProvider<SymphonyAccent>((ref) => SymphonyTheme.violet);
@@ -81,7 +82,7 @@ final searchServiceProvider = Provider<SearchService>((ref) {
 class ImportedPlaylistsNotifier extends StateNotifier<List<SpotifyPlaylist>> {
   static const _localPlaylistsKey = 'symphony_user_playlists';
 
-  ImportedPlaylistsNotifier() : super([]) {
+  ImportedPlaylistsNotifier() : super(CuratedPlaylists.all) {
     _loadFromLocalPrefs();
   }
 
@@ -95,7 +96,16 @@ class ImportedPlaylistsNotifier extends StateNotifier<List<SpotifyPlaylist>> {
             .whereType<Map<String, dynamic>>()
             .map((item) => SpotifyPlaylist.fromJson(item))
             .toList();
-        state = playlists;
+        if (playlists.isNotEmpty) {
+          state = playlists;
+        } else {
+          state = CuratedPlaylists.all;
+          _saveToLocalPrefs();
+        }
+      } else {
+        // First launch on this browser/device: seed curated starter playlists
+        state = CuratedPlaylists.all;
+        _saveToLocalPrefs();
       }
     } catch (_) {}
   }

@@ -4,6 +4,7 @@ import '../../../../core/theme/symphony_theme.dart';
 import '../../../settings/presentation/controllers/personalization_provider.dart';
 import '../../../settings/presentation/widgets/personalization_dialog.dart';
 import '../controllers/audio_player_providers.dart';
+import '../controllers/navigation_history_provider.dart';
 import '../controllers/offline_provider.dart';
 import 'import_playlist_dialog.dart';
 
@@ -154,10 +155,14 @@ class _SidebarNavState extends ConsumerState<SidebarNav> {
 
                 // Nav item: Home
                 _buildNavItem(
-                  icon: activeTab == 'home' ? Icons.home_filled : Icons.home_outlined,
+                  icon: (activeTab == 'home' && activePlaylist == null) ? Icons.home_filled : Icons.home_outlined,
                   label: 'Home',
-                  isSelected: activeTab == 'home',
-                  onTap: () => ref.read(activeNavTabProvider.notifier).state = 'home',
+                  isSelected: activeTab == 'home' && activePlaylist == null,
+                  onTap: () {
+                    ref.read(activePlaylistProvider.notifier).state = null;
+                    ref.read(activeNavTabProvider.notifier).state = 'home';
+                    ref.read(navigationHistoryProvider.notifier).record('home', null);
+                  },
                 ),
 
                 const SizedBox(height: 4),
@@ -167,7 +172,10 @@ class _SidebarNavState extends ConsumerState<SidebarNav> {
                   icon: Icons.search_rounded,
                   label: 'Search',
                   isSelected: activeTab == 'search',
-                  onTap: () => ref.read(activeNavTabProvider.notifier).state = 'search',
+                  onTap: () {
+                    ref.read(activeNavTabProvider.notifier).state = 'search';
+                    ref.read(navigationHistoryProvider.notifier).record('search', null);
+                  },
                 ),
               ],
             ),
@@ -192,7 +200,10 @@ class _SidebarNavState extends ConsumerState<SidebarNav> {
                       children: [
                         Expanded(
                           child: InkWell(
-                            onTap: () => ref.read(activeNavTabProvider.notifier).state = 'library',
+                            onTap: () {
+                              ref.read(activeNavTabProvider.notifier).state = 'library';
+                              ref.read(navigationHistoryProvider.notifier).record('library', null);
+                            },
                             borderRadius: BorderRadius.circular(4),
                             child: Row(
                               children: [
@@ -342,6 +353,7 @@ class _SidebarNavState extends ConsumerState<SidebarNav> {
                                 onTap: () {
                                   ref.read(activePlaylistProvider.notifier).state = playlist;
                                   ref.read(activeNavTabProvider.notifier).state = 'home';
+                                  ref.read(navigationHistoryProvider.notifier).record('home', playlist);
                                 },
                               );
                             },
