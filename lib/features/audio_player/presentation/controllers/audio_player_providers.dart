@@ -87,10 +87,27 @@ class ImportedPlaylistsNotifier extends StateNotifier<List<SpotifyPlaylist>> {
   }
 
   Future<void> _loadSavedPlaylists() async {
-    try {
-      final origin = kIsWeb ? Uri.base.origin : 'http://localhost:8080';
-      final response = await _client.get(Uri.parse('$origin/api/playlists')).timeout(const Duration(seconds: 4));
-      if (response.statusCode == 200) {
+    final candidateHosts = <String>[];
+    if (kIsWeb) {
+      try {
+        final origin = Uri.base.origin;
+        if (origin.isNotEmpty && !origin.startsWith('null')) {
+          candidateHosts.add(origin);
+        }
+      } catch (_) {}
+    }
+    for (final host in [
+      'https://symphony.jettimothycerezo.dev',
+      'http://192.168.1.57:8080',
+      'http://localhost:8080',
+    ]) {
+      if (!candidateHosts.contains(host)) candidateHosts.add(host);
+    }
+
+    for (final origin in candidateHosts) {
+      try {
+        final response = await _client.get(Uri.parse('$origin/api/playlists')).timeout(const Duration(seconds: 2));
+        if (response.statusCode == 200) {
         final list = jsonDecode(response.body) as List<dynamic>;
         final playlists = <SpotifyPlaylist>[];
         for (final item in list) {
@@ -122,9 +139,11 @@ class ImportedPlaylistsNotifier extends StateNotifier<List<SpotifyPlaylist>> {
         }
         if (playlists.isNotEmpty) {
           state = playlists;
+          break;
         }
       }
     } catch (_) {}
+  }
   }
 
   void addPlaylist(SpotifyPlaylist playlist) {

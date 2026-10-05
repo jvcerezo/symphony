@@ -268,12 +268,34 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
       final item = enrichedTrack.toMediaItem(actualDuration: streamInfo.duration);
       mediaItem.add(item);
 
-      final audioSource = AudioSource.uri(streamInfo.streamUri, tag: item);
-      await _player.setAudioSource(
-        audioSource,
-        preload: true,
-        initialPosition: Duration.zero,
-      );
+      final streamHeaders = const {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': '*/*',
+        'Accept-Encoding': 'identity;q=1, *;q=0',
+        'Referer': 'https://www.youtube.com/',
+      };
+
+      try {
+        final audioSource = AudioSource.uri(streamInfo.streamUri, headers: streamHeaders, tag: item);
+        await _player.setAudioSource(
+          audioSource,
+          preload: true,
+          initialPosition: Duration.zero,
+        );
+      } catch (loadErr) {
+        developer.log('Primary stream load failed with $loadErr, activating resilient fallback CDN...', name: 'AudioHandler');
+        final fallback = await _streamResolver.resolveFallbackCdn(track);
+        if (fallback != null) {
+          final fallbackSource = AudioSource.uri(fallback.streamUri, headers: streamHeaders, tag: item);
+          await _player.setAudioSource(
+            fallbackSource,
+            preload: true,
+            initialPosition: Duration.zero,
+          );
+        } else {
+          rethrow;
+        }
+      }
       if (requestId != _playRequestId) return;
 
       await _player.play();

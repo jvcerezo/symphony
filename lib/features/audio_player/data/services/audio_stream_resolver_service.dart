@@ -36,7 +36,8 @@ class AudioStreamResolverService {
           final manifest = await _yt.videos.streamsClient.getManifest(videoId);
           final audioStreams = manifest.audioOnly;
           if (audioStreams.isNotEmpty) {
-            final bestAudio = audioStreams.withHighestBitrate();
+            final aacStreams = audioStreams.where((s) => s.container.name == 'mp4' || s.codec.mimeType.contains('mp4') || s.codec.mimeType.contains('aac'));
+            final bestAudio = aacStreams.isNotEmpty ? aacStreams.withHighestBitrate() : audioStreams.withHighestBitrate();
             developer.log('Resolved direct YouTube stream for video: $videoId', name: 'AudioStreamResolver');
             return ResolvedAudioStream(
               streamUri: bestAudio.url,
@@ -108,9 +109,10 @@ class AudioStreamResolverService {
               final audioStreams = manifest.audioOnly;
 
               if (audioStreams.isNotEmpty) {
-                final bestAudio = audioStreams.withHighestBitrate();
+                final aacStreams = audioStreams.where((s) => s.container.name == 'mp4' || s.codec.mimeType.contains('mp4') || s.codec.mimeType.contains('aac'));
+                final bestAudio = aacStreams.isNotEmpty ? aacStreams.withHighestBitrate() : audioStreams.withHighestBitrate();
                 developer.log(
-                  'Resolved full YouTube stream: ${candidate.id.value} [${bestAudio.bitrate.kiloBitsPerSecond.round()} kbps, duration: ${candidate.duration}, score: ${scored.score}]',
+                  'Resolved full YouTube stream: ${candidate.id.value} [${bestAudio.bitrate.kiloBitsPerSecond.round()} kbps, format: ${bestAudio.container.name}, score: ${scored.score}]',
                   name: 'AudioStreamResolver',
                 );
 
@@ -175,11 +177,15 @@ class AudioStreamResolverService {
         }
       } catch (_) {}
     }
-    if (!candidateOrigins.contains('http://localhost:8080')) {
-      candidateOrigins.add('http://localhost:8080');
-    }
-    if (!candidateOrigins.contains('http://127.0.0.1:8080')) {
-      candidateOrigins.add('http://127.0.0.1:8080');
+    for (final host in [
+      'https://symphony.jettimothycerezo.dev',
+      'http://192.168.1.57:8080',
+      'http://localhost:8080',
+      'http://127.0.0.1:8080',
+    ]) {
+      if (!candidateOrigins.contains(host)) {
+        candidateOrigins.add(host);
+      }
     }
 
     for (final origin in candidateOrigins) {
@@ -246,6 +252,9 @@ class AudioStreamResolverService {
         .first
         .trim();
   }
+
+  /// Public fallback method to resolve high-fidelity AAC stream via Apple CDN if primary YouTube stream fails in player
+  Future<ResolvedAudioStream?> resolveFallbackCdn(Track track) => _resolveDirectCdnAudio(track);
 
   /// Resolves an unauthenticated, zero-cost high-fidelity AAC stream via Apple CDN.
   Future<ResolvedAudioStream?> _resolveDirectCdnAudio(Track track) async {

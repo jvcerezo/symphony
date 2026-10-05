@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/symphony_theme.dart';
@@ -39,6 +38,95 @@ class _SpotifyTrackRowState extends ConsumerState<SpotifyTrackRow> {
   bool _isHovered = false;
   bool _isLiked = false;
 
+  void _showMobileTrackOptions(BuildContext context, SymphonyAccent accent) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E1E1E),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: SymphonyArtwork(track: widget.track, size: 52),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            widget.track.title,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            widget.track.artist,
+                            style: const TextStyle(
+                              color: SymphonyTheme.textSecondary,
+                              fontSize: 13,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                const Divider(color: Color(0xFF333333)),
+                ListTile(
+                  leading: Icon(
+                    _isLiked ? Icons.favorite : Icons.favorite_border,
+                    color: _isLiked ? accent.primary : Colors.white,
+                  ),
+                  title: Text(
+                    _isLiked ? 'Liked in Your Library' : 'Like this song',
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                  onTap: () {
+                    setState(() => _isLiked = !_isLiked);
+                    Navigator.pop(ctx);
+                  },
+                ),
+                if (widget.onDownload != null)
+                  ListTile(
+                    leading: Icon(
+                      widget.isDownloaded ? Icons.check_circle : Icons.download_rounded,
+                      color: widget.isDownloaded ? accent.primary : Colors.white,
+                    ),
+                    title: Text(
+                      widget.isDownloaded ? 'Downloaded for offline' : 'Download song offline',
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      widget.onDownload?.call();
+                    },
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final accent = ref.watch(accentThemeProvider);
@@ -46,6 +134,146 @@ class _SpotifyTrackRowState extends ConsumerState<SpotifyTrackRow> {
     final isCurrent = widget.isCurrent;
     final isBuffering = widget.isBuffering;
     final screenWidth = MediaQuery.of(context).size.width;
+    final isMobile = screenWidth < 700;
+
+    if (isMobile) {
+      return _buildMobileRow(accent, track, isCurrent, isBuffering);
+    }
+
+    return _buildDesktopRow(accent, track, isCurrent, isBuffering, screenWidth);
+  }
+
+  Widget _buildMobileRow(SymphonyAccent accent, Track track, bool isCurrent, bool isBuffering) {
+    return InkWell(
+      onTap: widget.onTap,
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        height: 64,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isCurrent ? Colors.white.withOpacity(0.06) : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Row(
+          children: [
+            // 1. High-Resolution Artwork (48x48) with live equalizer overlay if active
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: SymphonyArtwork(
+                    track: track,
+                    size: 48,
+                    borderRadius: 4,
+                  ),
+                ),
+                if (isCurrent && isBuffering)
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.55),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Center(
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: accent.primary,
+                        ),
+                      ),
+                    ),
+                  )
+                else if (isCurrent && widget.isPlaying)
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.45),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Center(
+                      child: AnimatedEqualizer(
+                        isPlaying: true,
+                        height: 18,
+                        color: accent.primary,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(width: 14),
+
+            // 2. Song Title & Artist (Spans 100% of remaining width)
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    track.title,
+                    style: TextStyle(
+                      color: isCurrent ? accent.primary : Colors.white,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
+                      letterSpacing: -0.2,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 3),
+                  Row(
+                    children: [
+                      if (widget.isDownloaded) ...[
+                        Icon(Icons.check_circle, size: 12, color: accent.primary),
+                        const SizedBox(width: 4),
+                      ],
+                      Expanded(
+                        child: Text(
+                          track.artist,
+                          style: const TextStyle(
+                            color: SymphonyTheme.textSecondary,
+                            fontSize: 13,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+
+            // 3. Status indicator & More Options
+            if (widget.isDownloading)
+              Padding(
+                padding: const EdgeInsets.only(right: 8.0),
+                child: SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: accent.primary),
+                ),
+              ),
+
+            IconButton(
+              iconSize: 20,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              icon: const Icon(Icons.more_vert, color: SymphonyTheme.textSecondary),
+              onPressed: () => _showMobileTrackOptions(context, accent),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDesktopRow(SymphonyAccent accent, Track track, bool isCurrent, bool isBuffering, double screenWidth) {
     final showAlbum = screenWidth >= 800;
 
     return MouseRegion(
@@ -156,7 +384,7 @@ class _SpotifyTrackRowState extends ConsumerState<SpotifyTrackRow> {
                 ),
               ],
 
-              // Like / Heart Button (Only appears on hover or if liked)
+              // Like / Heart Button
               Opacity(
                 opacity: (_isLiked || _isHovered) ? 1.0 : 0.0,
                 child: IconButton(

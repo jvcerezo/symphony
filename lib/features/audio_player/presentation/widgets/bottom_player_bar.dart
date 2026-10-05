@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/symphony_theme.dart';
 import '../../domain/entities/track.dart';
 import '../controllers/audio_player_providers.dart';
-import 'animated_equalizer.dart';
 import 'symphony_artwork.dart';
 
 class BottomPlayerBar extends ConsumerStatefulWidget {
@@ -42,13 +41,26 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
     final isMobile = screenWidth < 750;
 
     return Container(
-      height: isMobile ? 74 : 76,
-      padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 16),
-      decoration: const BoxDecoration(
-        color: SymphonyTheme.obsidian,
-        border: Border(
-          top: BorderSide(color: Color(0xFF282828), width: 1),
-        ),
+      height: isMobile ? 64 : 76,
+      margin: isMobile ? const EdgeInsets.fromLTRB(8, 0, 8, 6) : EdgeInsets.zero,
+      padding: EdgeInsets.symmetric(horizontal: isMobile ? 10 : 16, vertical: isMobile ? 6 : 0),
+      decoration: BoxDecoration(
+        color: isMobile ? const Color(0xFF242424) : SymphonyTheme.obsidian,
+        borderRadius: isMobile ? BorderRadius.circular(8) : BorderRadius.zero,
+        border: isMobile
+            ? null
+            : const Border(
+                top: BorderSide(color: Color(0xFF282828), width: 1),
+              ),
+        boxShadow: isMobile
+            ? [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.45),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
+                ),
+              ]
+            : null,
       ),
       child: isMobile
           ? _buildMobileLayout(mediaItem, isPlaying, isBuffering)
@@ -409,14 +421,16 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
                     style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
-                      fontSize: 13,
+                      fontSize: 14,
+                      letterSpacing: -0.2,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
+                  const SizedBox(height: 2),
                   Text(
                     mediaItem.artist ?? '',
-                    style: const TextStyle(color: SymphonyTheme.textSecondary, fontSize: 11),
+                    style: const TextStyle(color: SymphonyTheme.textSecondary, fontSize: 12),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),

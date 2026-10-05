@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/symphony_theme.dart';
 import '../../../metadata_search/presentation/views/search_view.dart';
 import '../../../playlist_import/domain/entities/spotify_playlist.dart';
+import '../../data/services/symphony_audio_handler.dart';
 import '../controllers/audio_player_providers.dart';
 import '../controllers/offline_provider.dart';
 import '../widgets/bottom_player_bar.dart';
@@ -262,321 +263,44 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
       slivers: [
         // Top Bar & Hero Header
         SliverToBoxAdapter(
-          child: Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [const Color(0xFF5038A0), SymphonyTheme.panel],
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-              ),
-            ),
-            padding: EdgeInsets.symmetric(
-              horizontal: isDesktop ? 32 : 16,
-              vertical: isDesktop ? 24 : 16,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Navigation / Action header (Spotify Benchmark Top Bar)
-                Row(
-                  children: [
-                    Container(
-                      width: 32,
-                      height: 32,
-                      decoration: const BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Color(0x7F000000),
-                      ),
-                      child: IconButton(
-                        padding: EdgeInsets.zero,
-                        icon: const Icon(Icons.chevron_left, color: Colors.white, size: 22),
-                        onPressed: () {},
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      width: 32,
-                      height: 32,
-                      decoration: const BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Color(0x7F000000),
-                      ),
-                      child: IconButton(
-                        padding: EdgeInsets.zero,
-                        icon: const Icon(Icons.chevron_right, color: Colors.white, size: 22),
-                        onPressed: () {},
-                      ),
-                    ),
-                    const Spacer(),
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        showDialog(
-                          context: context,
-                          builder: (_) => const ImportPlaylistDialog(),
-                        );
-                      },
-                      icon: const Icon(Icons.add, size: 16, color: Colors.black),
-                      label: const Text(
-                        'Import Playlist',
-                        style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 13),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: Colors.black,
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(500)),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-
-                // Hero Content
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Container(
-                      width: isDesktop ? 220 : 130,
-                      height: isDesktop ? 220 : 130,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(4),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.55),
-                            blurRadius: 36,
-                            offset: const Offset(0, 16),
-                          ),
-                        ],
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
-                        child: playlist.coverUrl != null
-                            ? Image.network(
-                                playlist.coverUrl!,
-                                fit: BoxFit.cover,
-                                filterQuality: FilterQuality.high,
-                                errorBuilder: (context, error, stackTrace) => _buildFallbackCover(),
-                              )
-                            : _buildFallbackCover(),
-                      ),
-                    ),
-                    const SizedBox(width: 24),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'PLAYLIST',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 12,
-                              letterSpacing: 0.8,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            playlist.title,
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: isDesktop ? 48 : 22,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: -1.2,
-                              height: 1.05,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 12),
-                          if (playlist.description != null && playlist.description!.isNotEmpty) ...[
-                            Text(
-                              playlist.description!,
-                              style: const TextStyle(color: SymphonyTheme.textSecondary, fontSize: 13),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 8),
-                          ],
-                          Row(
-                            children: [
-                              Container(
-                                width: 22,
-                                height: 22,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: accent.primary,
-                                ),
-                                child: const Icon(Icons.music_note, size: 14, color: Colors.black),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                playlist.ownerName ?? 'Symphony',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 13,
-                                ),
-                              ),
-                              const Text(' • ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                              Text(
-                                '${playlist.trackCount} songs',
-                                style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 28),
-
-                // Action Bar: Big Accent Play Button + Actions
-                Row(
-                  children: [
-                    AnimatedScale(
-                      scale: isThisPlaying ? 1.04 : 1.0,
-                      duration: const Duration(milliseconds: 200),
-                      child: Container(
-                        width: 56,
-                        height: 56,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: accent.primary,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.35),
-                              blurRadius: 18,
-                              offset: const Offset(0, 8),
-                            ),
-                          ],
-                        ),
-                        child: IconButton(
-                          iconSize: 32,
-                          tooltip: isThisPlaying ? 'Pause' : 'Play',
-                          icon: Icon(
-                            isThisPlaying ? Icons.pause : Icons.play_arrow,
-                            color: Colors.black,
-                          ),
-                          onPressed: () async {
-                            try {
-                              if (isThisPlaying) {
-                                await handler.pause();
-                              } else if (isPlaylistActive) {
-                                await handler.play();
-                              } else {
-                                await handler.playQueue(playlist.tracks, startIndex: 0);
-                              }
-                            } catch (e) {
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    backgroundColor: SymphonyTheme.card,
-                                    content: Text('Playback error: $e', style: const TextStyle(color: Colors.redAccent)),
-                                  ),
-                                );
-                              }
-                            }
-                          },
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 24),
-                    IconButton(
-                      iconSize: 32,
-                      tooltip: 'Save to Your Library',
-                      icon: const Icon(Icons.favorite_border, color: SymphonyTheme.textSecondary),
-                      onPressed: () {},
-                    ),
-                    const SizedBox(width: 16),
-                    IconButton(
-                      iconSize: 32,
-                      tooltip: isPlaylistDownloaded
-                          ? 'Playlist saved for offline playback'
-                          : isPlaylistDownloading
-                              ? 'Downloading playlist...'
-                              : 'Download playlist for offline listening',
-                      icon: isPlaylistDownloading
-                          ? SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.5,
-                                color: accent.primary,
-                              ),
-                            )
-                          : Icon(
-                              isPlaylistDownloaded ? Icons.download_done_rounded : Icons.arrow_circle_down_outlined,
-                              color: isPlaylistDownloaded ? accent.primary : SymphonyTheme.textSecondary,
-                            ),
-                      onPressed: () async {
-                        if (isPlaylistDownloading) return;
-                        final messenger = ScaffoldMessenger.of(context);
-                        messenger.showSnackBar(
-                          SnackBar(
-                            backgroundColor: SymphonyTheme.card,
-                            content: Row(
-                              children: [
-                                Icon(Icons.cloud_download, color: accent.primary, size: 20),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Text(
-                                    'Downloading "${playlist.title}" (${playlist.tracks.length} songs) for offline listening...',
-                                    style: const TextStyle(color: Colors.white),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            duration: const Duration(seconds: 4),
-                          ),
-                        );
-                        await offlineNotifier.downloadPlaylist(playlist);
-                      },
-                    ),
-                    const SizedBox(width: 16),
-                    IconButton(
-                      iconSize: 30,
-                      tooltip: 'More options',
-                      icon: const Icon(Icons.more_horiz, color: SymphonyTheme.textSecondary),
-                      onPressed: () {},
-                    ),
-                  ],
-                ),
-              ],
-            ),
+          child: _buildHeroHeader(
+            playlist,
+            accent,
+            isThisPlaying,
+            isPlaylistActive,
+            isPlaylistDownloaded,
+            isPlaylistDownloading,
+            isDesktop,
+            handler,
+            offlineNotifier,
           ),
         ),
 
-        // Track Table Header (Aligned with SpotifyTrackRow)
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: isDesktop ? 32 : 16,
-              vertical: 8,
-            ),
-            child: Row(
-              children: [
-                const SizedBox(
-                  width: 32,
-                  child: Text(
-                    '#',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: SymphonyTheme.textSecondary, fontSize: 13, fontWeight: FontWeight.bold),
+        // Track Table Header (Desktop Only)
+        if (isDesktop)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 8),
+              child: Row(
+                children: [
+                  const SizedBox(
+                    width: 32,
+                    child: Text(
+                      '#',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: SymphonyTheme.textSecondary, fontSize: 13, fontWeight: FontWeight.bold),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                const SizedBox(width: 40),
-                const SizedBox(width: 14),
-                const Expanded(
-                  flex: 4,
-                  child: Text(
-                    'Title',
-                    style: TextStyle(color: SymphonyTheme.textSecondary, fontSize: 13, fontWeight: FontWeight.bold),
+                  const SizedBox(width: 12),
+                  const SizedBox(width: 40),
+                  const SizedBox(width: 14),
+                  const Expanded(
+                    flex: 4,
+                    child: Text(
+                      'Title',
+                      style: TextStyle(color: SymphonyTheme.textSecondary, fontSize: 13, fontWeight: FontWeight.bold),
+                    ),
                   ),
-                ),
-                if (isDesktop) ...[
                   const SizedBox(width: 16),
                   const Expanded(
                     flex: 3,
@@ -585,24 +309,24 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
                       style: TextStyle(color: SymphonyTheme.textSecondary, fontSize: 13, fontWeight: FontWeight.bold),
                     ),
                   ),
+                  const SizedBox(width: 48),
+                  const SizedBox(
+                    width: 44,
+                    child: Icon(Icons.access_time_outlined, size: 16, color: SymphonyTheme.textSecondary),
+                  ),
+                  const SizedBox(width: 32),
                 ],
-                const SizedBox(width: 48),
-                const SizedBox(
-                  width: 44,
-                  child: Icon(Icons.access_time_outlined, size: 16, color: SymphonyTheme.textSecondary),
-                ),
-                const SizedBox(width: 32),
-              ],
+              ),
             ),
           ),
-        ),
 
-        const SliverToBoxAdapter(
-          child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: 24.0),
-            child: Divider(color: SymphonyTheme.divider, height: 1),
+        if (isDesktop)
+          const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: 24.0),
+              child: Divider(color: SymphonyTheme.divider, height: 1),
+            ),
           ),
-        ),
 
         // Track List Rows
         SliverPadding(
@@ -679,6 +403,459 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
           child: SizedBox(height: 40),
         ),
       ],
+    );
+  }
+
+  Widget _buildHeroHeader(
+    SpotifyPlaylist playlist,
+    SymphonyAccent accent,
+    bool isThisPlaying,
+    bool isPlaylistActive,
+    bool isPlaylistDownloaded,
+    bool isPlaylistDownloading,
+    bool isDesktop,
+    SymphonyAudioHandler handler,
+    OfflineManagerNotifier offlineNotifier,
+  ) {
+    if (!isDesktop) {
+      return Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [const Color(0xFF4A347F), SymphonyTheme.panel],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+        ),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+        child: Column(
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'PLAYLIST',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                    letterSpacing: 1.0,
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: () {
+                    showDialog(
+                      context: context,
+                      builder: (_) => const ImportPlaylistDialog(),
+                    );
+                  },
+                  icon: const Icon(Icons.add, size: 16, color: Colors.white),
+                  label: const Text(
+                    'Import',
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                  style: TextButton.styleFrom(
+                    backgroundColor: Colors.white.withOpacity(0.12),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(500)),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Center(
+              child: Container(
+                width: 170,
+                height: 170,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.6),
+                      blurRadius: 28,
+                      offset: const Offset(0, 14),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: playlist.coverUrl != null
+                      ? Image.network(
+                          playlist.coverUrl!,
+                          fit: BoxFit.cover,
+                          filterQuality: FilterQuality.high,
+                          errorBuilder: (context, error, stackTrace) => _buildFallbackCover(),
+                        )
+                      : _buildFallbackCover(),
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+            Text(
+              playlist.title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 22,
+                fontWeight: FontWeight.w900,
+                letterSpacing: -0.5,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '${playlist.ownerName ?? "Symphony"} • ${playlist.trackCount} songs',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: SymphonyTheme.textSecondary,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                IconButton(
+                  iconSize: 26,
+                  icon: const Icon(Icons.favorite_border, color: SymphonyTheme.textSecondary),
+                  onPressed: () {},
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  iconSize: 26,
+                  icon: isPlaylistDownloading
+                      ? SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: accent.primary,
+                          ),
+                        )
+                      : Icon(
+                          isPlaylistDownloaded ? Icons.download_done_rounded : Icons.arrow_circle_down_outlined,
+                          color: isPlaylistDownloaded ? accent.primary : SymphonyTheme.textSecondary,
+                        ),
+                  onPressed: () async {
+                    if (isPlaylistDownloading) return;
+                    await offlineNotifier.downloadPlaylist(playlist);
+                  },
+                ),
+                const Spacer(),
+                GestureDetector(
+                  onTap: () async {
+                    if (isThisPlaying) {
+                      await handler.pause();
+                    } else if (isPlaylistActive) {
+                      await handler.play();
+                    } else {
+                      await handler.playQueue(playlist.tracks, startIndex: 0);
+                    }
+                  },
+                  child: Container(
+                    width: 52,
+                    height: 52,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: accent.primary,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.35),
+                          blurRadius: 16,
+                          offset: const Offset(0, 6),
+                        ),
+                      ],
+                    ),
+                    child: Icon(
+                      isThisPlaying ? Icons.pause : Icons.play_arrow,
+                      color: Colors.black,
+                      size: 32,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Desktop Hero Layout
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [const Color(0xFF5038A0), SymphonyTheme.panel],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Color(0x7F000000),
+                ),
+                child: IconButton(
+                  padding: EdgeInsets.zero,
+                  icon: const Icon(Icons.chevron_left, color: Colors.white, size: 22),
+                  onPressed: () {},
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                width: 32,
+                height: 32,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Color(0x7F000000),
+                ),
+                child: IconButton(
+                  padding: EdgeInsets.zero,
+                  icon: const Icon(Icons.chevron_right, color: Colors.white, size: 22),
+                  onPressed: () {},
+                ),
+              ),
+              const Spacer(),
+              ElevatedButton.icon(
+                onPressed: () {
+                  showDialog(
+                    context: context,
+                    builder: (_) => const ImportPlaylistDialog(),
+                  );
+                },
+                icon: const Icon(Icons.add, size: 16, color: Colors.black),
+                label: const Text(
+                  'Import Playlist',
+                  style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: Colors.black,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(500)),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Container(
+                width: 220,
+                height: 220,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(4),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.55),
+                      blurRadius: 36,
+                      offset: const Offset(0, 16),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: playlist.coverUrl != null
+                      ? Image.network(
+                          playlist.coverUrl!,
+                          fit: BoxFit.cover,
+                          filterQuality: FilterQuality.high,
+                          errorBuilder: (context, error, stackTrace) => _buildFallbackCover(),
+                        )
+                      : _buildFallbackCover(),
+                ),
+              ),
+              const SizedBox(width: 24),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'PLAYLIST',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      playlist.title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 48,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -1.2,
+                        height: 1.05,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 12),
+                    if (playlist.description != null && playlist.description!.isNotEmpty) ...[
+                      Text(
+                        playlist.description!,
+                        style: const TextStyle(color: SymphonyTheme.textSecondary, fontSize: 13),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                    Row(
+                      children: [
+                        Container(
+                          width: 22,
+                          height: 22,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: accent.primary,
+                          ),
+                          child: const Icon(Icons.music_note, size: 14, color: Colors.black),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          playlist.ownerName ?? 'Symphony',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
+                        const Text(' • ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        Text(
+                          '${playlist.trackCount} songs',
+                          style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 28),
+          Row(
+            children: [
+              AnimatedScale(
+                scale: isThisPlaying ? 1.04 : 1.0,
+                duration: const Duration(milliseconds: 200),
+                child: Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: accent.primary,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.35),
+                        blurRadius: 18,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: IconButton(
+                    iconSize: 32,
+                    tooltip: isThisPlaying ? 'Pause' : 'Play',
+                    icon: Icon(
+                      isThisPlaying ? Icons.pause : Icons.play_arrow,
+                      color: Colors.black,
+                    ),
+                    onPressed: () async {
+                      try {
+                        if (isThisPlaying) {
+                          await handler.pause();
+                        } else if (isPlaylistActive) {
+                          await handler.play();
+                        } else {
+                          await handler.playQueue(playlist.tracks, startIndex: 0);
+                        }
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              backgroundColor: SymphonyTheme.card,
+                              content: Text('Playback error: $e', style: const TextStyle(color: Colors.redAccent)),
+                            ),
+                          );
+                        }
+                      }
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(width: 24),
+              IconButton(
+                iconSize: 32,
+                tooltip: 'Save to Your Library',
+                icon: const Icon(Icons.favorite_border, color: SymphonyTheme.textSecondary),
+                onPressed: () {},
+              ),
+              const SizedBox(width: 16),
+              IconButton(
+                iconSize: 32,
+                tooltip: isPlaylistDownloaded
+                    ? 'Playlist saved for offline playback'
+                    : isPlaylistDownloading
+                        ? 'Downloading playlist...'
+                        : 'Download playlist for offline listening',
+                icon: isPlaylistDownloading
+                    ? SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: accent.primary,
+                        ),
+                      )
+                    : Icon(
+                        isPlaylistDownloaded ? Icons.download_done_rounded : Icons.arrow_circle_down_outlined,
+                        color: isPlaylistDownloaded ? accent.primary : SymphonyTheme.textSecondary,
+                      ),
+                onPressed: () async {
+                  if (isPlaylistDownloading) return;
+                  final messenger = ScaffoldMessenger.of(context);
+                  messenger.showSnackBar(
+                    SnackBar(
+                      backgroundColor: SymphonyTheme.card,
+                      content: Row(
+                        children: [
+                          Icon(Icons.cloud_download, color: accent.primary, size: 20),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Downloading "${playlist.title}" (${playlist.tracks.length} songs) for offline listening...',
+                              style: const TextStyle(color: Colors.white),
+                            ),
+                          ),
+                        ],
+                      ),
+                      duration: const Duration(seconds: 4),
+                    ),
+                  );
+                  await offlineNotifier.downloadPlaylist(playlist);
+                },
+              ),
+              const SizedBox(width: 16),
+              IconButton(
+                iconSize: 30,
+                tooltip: 'More options',
+                icon: const Icon(Icons.more_horiz, color: SymphonyTheme.textSecondary),
+                onPressed: () {},
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 

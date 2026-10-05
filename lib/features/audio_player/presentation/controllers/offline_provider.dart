@@ -53,7 +53,8 @@ class OfflineManagerNotifier extends StateNotifier<OfflineState> {
   }
 
   String _getServerOrigin() {
-    return kIsWeb ? Uri.base.origin : 'http://localhost:8080';
+    if (kIsWeb) return Uri.base.origin;
+    return 'http://192.168.1.57:8080';
   }
 
   Future<void> refreshOfflineStatus() async {
