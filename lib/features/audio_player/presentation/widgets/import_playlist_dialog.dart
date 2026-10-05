@@ -74,8 +74,8 @@ class _ImportPlaylistDialogState extends ConsumerState<ImportPlaylistDialog> {
   @override
   Widget build(BuildContext context) {
     return Dialog(
-      backgroundColor: SymphonyTheme.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      backgroundColor: const Color(0xFF282828),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 580),
         child: Padding(
@@ -90,10 +90,10 @@ class _ImportPlaylistDialogState extends ConsumerState<ImportPlaylistDialog> {
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: SymphonyTheme.primaryDark.withAlpha(60),
-                      borderRadius: BorderRadius.circular(10),
+                      color: SymphonyTheme.spotifyGreen.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                    child: const Icon(Icons.library_add, color: SymphonyTheme.primaryLight, size: 28),
+                    child: const Icon(Icons.add_to_photos_rounded, color: SymphonyTheme.spotifyGreen, size: 26),
                   ),
                   const SizedBox(width: 14),
                   const Expanded(
@@ -105,7 +105,8 @@ class _ImportPlaylistDialogState extends ConsumerState<ImportPlaylistDialog> {
                           style: TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.bold,
-                            color: SymphonyTheme.textPrimary,
+                            color: Colors.white,
+                            letterSpacing: -0.5,
                           ),
                         ),
                         SizedBox(height: 3),
@@ -117,7 +118,7 @@ class _ImportPlaylistDialogState extends ConsumerState<ImportPlaylistDialog> {
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close, color: SymphonyTheme.textMuted),
+                    icon: const Icon(Icons.close, color: SymphonyTheme.textSecondary),
                     onPressed: () => Navigator.of(context).pop(),
                   ),
                 ],
@@ -130,11 +131,19 @@ class _ImportPlaylistDialogState extends ConsumerState<ImportPlaylistDialog> {
                 children: ['All', 'Spotify', 'YouTube', 'Apple Music', 'Deezer', 'Smart Mix'].map((cat) {
                   final isSelected = _selectedCategory == cat;
                   return ChoiceChip(
-                    label: Text(cat, style: TextStyle(fontSize: 12, color: isSelected ? Colors.white : SymphonyTheme.textSecondary)),
+                    label: Text(
+                      cat,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                        color: isSelected ? Colors.black : Colors.white,
+                      ),
+                    ),
                     selected: isSelected,
-                    selectedColor: SymphonyTheme.primary,
-                    backgroundColor: SymphonyTheme.card,
-                    side: BorderSide(color: isSelected ? SymphonyTheme.primaryLight : SymphonyTheme.divider),
+                    selectedColor: Colors.white,
+                    backgroundColor: const Color(0xFF3E3E3E),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(500)),
+                    side: BorderSide.none,
                     onSelected: (selected) {
                       if (selected) setState(() => _selectedCategory = cat);
                     },
@@ -156,19 +165,19 @@ class _ImportPlaylistDialogState extends ConsumerState<ImportPlaylistDialog> {
                   hintText: 'Paste Spotify, YouTube, Apple Music, Deezer URL or type artist...',
                   hintStyle: const TextStyle(color: SymphonyTheme.textMuted),
                   filled: true,
-                  fillColor: SymphonyTheme.card,
+                  fillColor: const Color(0xFF3E3E3E),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(color: SymphonyTheme.divider),
+                    borderRadius: BorderRadius.circular(4),
+                    borderSide: BorderSide.none,
                   ),
                   enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(color: SymphonyTheme.divider),
+                    borderRadius: BorderRadius.circular(4),
+                    borderSide: BorderSide.none,
                   ),
                   focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(color: SymphonyTheme.primary, width: 1.5),
+                    borderRadius: BorderRadius.circular(4),
+                    borderSide: const BorderSide(color: SymphonyTheme.spotifyGreen, width: 1.5),
                   ),
                 ),
               ),
@@ -200,24 +209,25 @@ class _ImportPlaylistDialogState extends ConsumerState<ImportPlaylistDialog> {
                 children: [
                   TextButton(
                     onPressed: _isLoading ? null : () => Navigator.of(context).pop(),
-                    child: const Text('Cancel', style: TextStyle(color: SymphonyTheme.textMuted)),
+                    child: const Text('Cancel', style: TextStyle(color: SymphonyTheme.textSecondary, fontWeight: FontWeight.bold)),
                   ),
                   const SizedBox(width: 12),
                   ElevatedButton(
                     onPressed: _isLoading ? null : _handleImport,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: SymphonyTheme.primary,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      backgroundColor: SymphonyTheme.spotifyGreen,
+                      foregroundColor: Colors.black,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(500)),
                       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
                     ),
                     child: _isLoading
                         ? const SizedBox(
                             width: 18,
                             height: 18,
-                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                            child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2),
                           )
-                        : const Text('Import & Play Ad-Free', style: TextStyle(fontWeight: FontWeight.bold)),
+                        : const Text('Import & Play Ad-Free', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                   ),
                 ],
               ),
@@ -256,11 +266,12 @@ class _ImportPlaylistDialogState extends ConsumerState<ImportPlaylistDialog> {
                         ? Icons.music_note
                         : Icons.auto_awesome,
         size: 16,
-        color: SymphonyTheme.primaryLight,
+        color: SymphonyTheme.spotifyGreen,
       ),
-      label: Text(label, style: const TextStyle(fontSize: 11, color: SymphonyTheme.textSecondary)),
-      backgroundColor: SymphonyTheme.card,
-      side: const BorderSide(color: SymphonyTheme.divider),
+      label: Text(label, style: const TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.w500)),
+      backgroundColor: const Color(0xFF333333),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(500)),
+      side: BorderSide.none,
       onPressed: () {
         _inputController.text = url;
       },

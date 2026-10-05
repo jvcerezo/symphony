@@ -18,6 +18,10 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
   double _volume = 1.0;
   bool _isMuted = false;
   bool _isLiked = false;
+  bool _isShuffle = false;
+  bool _isRepeat = false;
+  bool _isScrubberHovered = false;
+  bool _isVolumeHovered = false;
 
   @override
   Widget build(BuildContext context) {
@@ -35,16 +39,15 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
     }
 
     final screenWidth = MediaQuery.of(context).size.width;
-    final isMobile = screenWidth < 700;
+    final isMobile = screenWidth < 750;
 
-    // Use zero-overhead solid background for 60+ FPS on Web and native
     return Container(
-      height: isMobile ? 76 : 90,
-      padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 24, vertical: 8),
-      decoration: BoxDecoration(
-        color: SymphonyTheme.surface.withAlpha(245),
-        border: const Border(
-          top: BorderSide(color: SymphonyTheme.divider, width: 1),
+      height: isMobile ? 74 : 76,
+      padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 16),
+      decoration: const BoxDecoration(
+        color: SymphonyTheme.obsidian,
+        border: Border(
+          top: BorderSide(color: Color(0xFF282828), width: 1),
         ),
       ),
       child: isMobile
@@ -58,23 +61,26 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
 
     return Row(
       children: [
-        // Left Column: Artwork with animated pulse glow + Metadata
+        // Left Column (flex 3): Artwork + Title + Artist + Like
         Expanded(
           flex: 3,
           child: Row(
             children: [
-              SymphonyArtwork(
-                artworkUri: mediaItem.artUri,
-                track: Track(
-                  id: mediaItem.id,
-                  title: mediaItem.title,
-                  artist: mediaItem.artist ?? '',
-                  album: mediaItem.album,
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: SymphonyArtwork(
                   artworkUri: mediaItem.artUri,
+                  track: Track(
+                    id: mediaItem.id,
+                    title: mediaItem.title,
+                    artist: mediaItem.artist ?? '',
+                    album: mediaItem.album,
+                    artworkUri: mediaItem.artUri,
+                  ),
+                  size: 56,
+                  borderRadius: 4,
+                  hasGlow: false,
                 ),
-                size: 56,
-                borderRadius: 6,
-                hasGlow: isPlaying,
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -85,7 +91,7 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
                     Text(
                       mediaItem.title,
                       style: const TextStyle(
-                        color: SymphonyTheme.textPrimary,
+                        color: Colors.white,
                         fontWeight: FontWeight.bold,
                         fontSize: 14,
                       ),
@@ -97,7 +103,7 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
                       mediaItem.artist ?? '',
                       style: const TextStyle(
                         color: SymphonyTheme.textSecondary,
-                        fontSize: 12,
+                        fontSize: 11,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -106,10 +112,13 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
                 ),
               ),
               IconButton(
-                iconSize: 20,
+                iconSize: 18,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                tooltip: _isLiked ? 'Remove from Your Library' : 'Save to Your Library',
                 icon: Icon(
                   _isLiked ? Icons.favorite : Icons.favorite_border,
-                  color: _isLiked ? SymphonyTheme.primaryLight : SymphonyTheme.textMuted,
+                  color: _isLiked ? SymphonyTheme.spotifyGreen : SymphonyTheme.textSecondary,
                 ),
                 onPressed: () => setState(() => _isLiked = !_isLiked),
               ),
@@ -117,156 +126,193 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
           ),
         ),
 
-        // Center Column: Player Controls + Scrubber
+        // Center Column (flex 5): Controls + Scrubber
         Expanded(
-          flex: 6,
+          flex: 5,
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Control Buttons
+              // Upper Control Buttons
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   IconButton(
-                    iconSize: 20,
-                    icon: const Icon(Icons.shuffle, color: SymphonyTheme.textMuted),
-                    onPressed: () {},
+                    iconSize: 18,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                    tooltip: 'Enable shuffle',
+                    icon: Icon(
+                      Icons.shuffle,
+                      color: _isShuffle ? SymphonyTheme.spotifyGreen : SymphonyTheme.textSecondary,
+                    ),
+                    onPressed: () => setState(() => _isShuffle = !_isShuffle),
                   ),
+                  const SizedBox(width: 8),
                   IconButton(
-                    iconSize: 24,
-                    icon: const Icon(Icons.skip_previous, color: Colors.white),
+                    iconSize: 22,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                    tooltip: 'Previous',
+                    icon: const Icon(Icons.skip_previous, color: SymphonyTheme.textSecondary),
+                    hoverColor: Colors.transparent,
                     onPressed: () => handler.skipToPrevious(),
                   ),
                   const SizedBox(width: 8),
-                  AnimatedScale(
-                    scale: isPlaying ? 1.05 : 1.0,
-                    duration: const Duration(milliseconds: 200),
-                    child: Container(
-                      width: 40,
-                      height: 40,
-                      decoration: const BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: SymphonyTheme.brandGradient,
-                      ),
-                      child: IconButton(
-                        padding: EdgeInsets.zero,
-                        iconSize: 24,
-                        icon: isBuffering
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                              )
-                            : Icon(
-                                isPlaying ? Icons.pause : Icons.play_arrow,
-                                color: Colors.white,
-                              ),
-                        onPressed: () async {
-                          if (isPlaying) {
-                            await handler.pause();
-                          } else {
-                            await handler.play();
-                          }
-                        },
-                      ),
+                  // Play/Pause Button (Spotify Benchmark: White circular button with black icon)
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white,
+                    ),
+                    child: IconButton(
+                      padding: EdgeInsets.zero,
+                      iconSize: 20,
+                      tooltip: isPlaying ? 'Pause' : 'Play',
+                      icon: isBuffering
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2),
+                            )
+                          : Icon(
+                              isPlaying ? Icons.pause : Icons.play_arrow,
+                              color: Colors.black,
+                            ),
+                      onPressed: () async {
+                        if (isPlaying) {
+                          await handler.pause();
+                        } else {
+                          await handler.play();
+                        }
+                      },
                     ),
                   ),
                   const SizedBox(width: 8),
                   IconButton(
-                    iconSize: 24,
-                    icon: const Icon(Icons.skip_next, color: Colors.white),
+                    iconSize: 22,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                    tooltip: 'Next',
+                    icon: const Icon(Icons.skip_next, color: SymphonyTheme.textSecondary),
+                    hoverColor: Colors.transparent,
                     onPressed: () => handler.skipToNext(),
                   ),
+                  const SizedBox(width: 8),
                   IconButton(
-                    iconSize: 20,
-                    icon: const Icon(Icons.repeat, color: SymphonyTheme.textMuted),
-                    onPressed: () {},
+                    iconSize: 18,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                    tooltip: 'Enable repeat',
+                    icon: Icon(
+                      Icons.repeat,
+                      color: _isRepeat ? SymphonyTheme.spotifyGreen : SymphonyTheme.textSecondary,
+                    ),
+                    onPressed: () => setState(() => _isRepeat = !_isRepeat),
                   ),
                 ],
               ),
 
-              // Scrubber Line
-              StreamBuilder<Duration>(
-                stream: AudioService.position,
-                builder: (context, snapshot) {
-                  final position = snapshot.data ?? Duration.zero;
-                  final total = mediaItem.duration ?? Duration.zero;
-                  final totalMs = total.inMilliseconds.toDouble();
-                  final posMs =
-                      position.inMilliseconds.toDouble().clamp(0.0, totalMs > 0 ? totalMs : 1.0);
+              const SizedBox(height: 2),
 
-                  return Row(
-                    children: [
-                      Text(
-                        _formatDuration(position),
-                        style: const TextStyle(fontSize: 11, color: SymphonyTheme.textMuted),
-                      ),
-                      Expanded(
-                        child: SliderTheme(
-                          data: SliderTheme.of(context).copyWith(
-                            trackHeight: 3.0,
-                            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5.0),
-                          ),
-                          child: Slider(
-                            value: posMs,
-                            max: totalMs > 0 ? totalMs : 1.0,
-                            activeColor: SymphonyTheme.primaryLight,
-                            inactiveColor: SymphonyTheme.divider,
-                            onChanged: (val) {
-                              handler.seek(Duration(milliseconds: val.round()));
-                            },
+              // Scrubber Line (Interactive Spotify Style)
+              MouseRegion(
+                onEnter: (_) => setState(() => _isScrubberHovered = true),
+                onExit: (_) => setState(() => _isScrubberHovered = false),
+                child: StreamBuilder<Duration>(
+                  stream: AudioService.position,
+                  builder: (context, snapshot) {
+                    final position = snapshot.data ?? Duration.zero;
+                    final total = mediaItem.duration ?? Duration.zero;
+                    final totalMs = total.inMilliseconds.toDouble();
+                    final posMs =
+                        position.inMilliseconds.toDouble().clamp(0.0, totalMs > 0 ? totalMs : 1.0);
+
+                    return Row(
+                      children: [
+                        SizedBox(
+                          width: 38,
+                          child: Text(
+                            _formatDuration(position),
+                            textAlign: TextAlign.right,
+                            style: const TextStyle(fontSize: 11, color: SymphonyTheme.textSecondary),
                           ),
                         ),
-                      ),
-                      Text(
-                        _formatDuration(total),
-                        style: const TextStyle(fontSize: 11, color: SymphonyTheme.textMuted),
-                      ),
-                    ],
-                  );
-                },
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: SliderTheme(
+                            data: SliderTheme.of(context).copyWith(
+                              trackHeight: 4.0,
+                              thumbShape: RoundSliderThumbShape(
+                                enabledThumbRadius: _isScrubberHovered ? 6.0 : 0.0,
+                              ),
+                              overlayShape: RoundSliderOverlayShape(
+                                overlayRadius: _isScrubberHovered ? 12.0 : 0.0,
+                              ),
+                              activeTrackColor: _isScrubberHovered
+                                  ? SymphonyTheme.spotifyGreen
+                                  : Colors.white,
+                              inactiveTrackColor: const Color(0xFF4D4D4D),
+                              thumbColor: Colors.white,
+                            ),
+                            child: Slider(
+                              value: posMs,
+                              max: totalMs > 0 ? totalMs : 1.0,
+                              onChanged: (val) {
+                                handler.seek(Duration(milliseconds: val.round()));
+                              },
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: 38,
+                          child: Text(
+                            _formatDuration(total),
+                            style: const TextStyle(fontSize: 11, color: SymphonyTheme.textSecondary),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
               ),
             ],
           ),
         ),
 
-        // Right Column: Animated Equalizer + Quality Badge + Volume Controls
+        // Right Column (flex 3): Lyrics + Queue + Offline Badge + Volume + Fullscreen
         Expanded(
           flex: 3,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              AnimatedEqualizer(isPlaying: isPlaying, height: 16),
-              const SizedBox(width: 14),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: SymphonyTheme.card,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: SymphonyTheme.divider),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.bolt, size: 13, color: SymphonyTheme.secondary),
-                    SizedBox(width: 3),
-                    Text(
-                      'HD STREAM',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        color: SymphonyTheme.secondary,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                  ],
-                ),
+              IconButton(
+                iconSize: 18,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                tooltip: 'Lyrics',
+                icon: const Icon(Icons.mic_none_outlined, color: SymphonyTheme.textSecondary),
+                onPressed: () {},
               ),
-              const SizedBox(width: 12),
+              IconButton(
+                iconSize: 18,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                tooltip: 'Queue',
+                icon: const Icon(Icons.queue_music_rounded, color: SymphonyTheme.textSecondary),
+                onPressed: () {},
+              ),
+              const SizedBox(width: 6),
               IconButton(
                 iconSize: 20,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                 icon: Icon(
-                  _isMuted || _volume == 0 ? Icons.volume_off : Icons.volume_up,
+                  _isMuted || _volume == 0
+                      ? Icons.volume_off_rounded
+                      : (_volume < 0.5 ? Icons.volume_down_rounded : Icons.volume_up_rounded),
                   color: SymphonyTheme.textSecondary,
                 ),
                 onPressed: () {
@@ -276,28 +322,49 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
                   });
                 },
               ),
-              SizedBox(
-                width: 90,
-                child: SliderTheme(
-                  data: SliderTheme.of(context).copyWith(
-                    trackHeight: 3.0,
-                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 4.0),
-                  ),
-                  child: Slider(
-                    value: _isMuted ? 0.0 : _volume,
-                    min: 0.0,
-                    max: 1.0,
-                    activeColor: Colors.white,
-                    inactiveColor: SymphonyTheme.divider,
-                    onChanged: (val) {
-                      setState(() {
-                        _volume = val;
-                        _isMuted = false;
-                      });
-                      handler.setVolume(val);
-                    },
+              MouseRegion(
+                onEnter: (_) => setState(() => _isVolumeHovered = true),
+                onExit: (_) => setState(() => _isVolumeHovered = false),
+                child: SizedBox(
+                  width: 90,
+                  child: SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      trackHeight: 4.0,
+                      thumbShape: RoundSliderThumbShape(
+                        enabledThumbRadius: _isVolumeHovered ? 5.0 : 0.0,
+                      ),
+                      overlayShape: RoundSliderOverlayShape(
+                        overlayRadius: _isVolumeHovered ? 10.0 : 0.0,
+                      ),
+                      activeTrackColor: _isVolumeHovered
+                          ? SymphonyTheme.spotifyGreen
+                          : Colors.white,
+                      inactiveTrackColor: const Color(0xFF4D4D4D),
+                      thumbColor: Colors.white,
+                    ),
+                    child: Slider(
+                      value: _isMuted ? 0.0 : _volume,
+                      min: 0.0,
+                      max: 1.0,
+                      onChanged: (val) {
+                        setState(() {
+                          _volume = val;
+                          _isMuted = false;
+                        });
+                        handler.setVolume(val);
+                      },
+                    ),
                   ),
                 ),
+              ),
+              const SizedBox(width: 4),
+              IconButton(
+                iconSize: 18,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                tooltip: 'Full screen',
+                icon: const Icon(Icons.fullscreen_rounded, color: SymphonyTheme.textSecondary),
+                onPressed: () {},
               ),
             ],
           ),
@@ -314,17 +381,20 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
       children: [
         Row(
           children: [
-            SymphonyArtwork(
-              artworkUri: mediaItem.artUri,
-              track: Track(
-                id: mediaItem.id,
-                title: mediaItem.title,
-                artist: mediaItem.artist ?? '',
-                album: mediaItem.album,
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: SymphonyArtwork(
                 artworkUri: mediaItem.artUri,
+                track: Track(
+                  id: mediaItem.id,
+                  title: mediaItem.title,
+                  artist: mediaItem.artist ?? '',
+                  album: mediaItem.album,
+                  artworkUri: mediaItem.artUri,
+                ),
+                size: 44,
+                borderRadius: 4,
               ),
-              size: 44,
-              borderRadius: 6,
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -335,7 +405,7 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
                   Text(
                     mediaItem.title,
                     style: const TextStyle(
-                      color: SymphonyTheme.textPrimary,
+                      color: Colors.white,
                       fontWeight: FontWeight.bold,
                       fontSize: 13,
                     ),
@@ -351,19 +421,20 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
                 ],
               ),
             ),
-            AnimatedEqualizer(isPlaying: isPlaying, height: 14),
-            const SizedBox(width: 8),
             IconButton(
-              iconSize: 28,
-              icon: const Icon(Icons.skip_previous, color: Colors.white),
-              onPressed: () => handler.skipToPrevious(),
+              iconSize: 20,
+              icon: Icon(
+                _isLiked ? Icons.favorite : Icons.favorite_border,
+                color: _isLiked ? SymphonyTheme.spotifyGreen : SymphonyTheme.textSecondary,
+              ),
+              onPressed: () => setState(() => _isLiked = !_isLiked),
             ),
             Container(
               width: 36,
               height: 36,
               decoration: const BoxDecoration(
                 shape: BoxShape.circle,
-                gradient: SymphonyTheme.brandGradient,
+                color: Colors.white,
               ),
               child: IconButton(
                 padding: EdgeInsets.zero,
@@ -372,9 +443,9 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
                     ? const SizedBox(
                         width: 16,
                         height: 16,
-                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                        child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2),
                       )
-                    : Icon(isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.white),
+                    : Icon(isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.black),
                 onPressed: () async {
                   if (isPlaying) {
                     await handler.pause();
@@ -384,8 +455,9 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
                 },
               ),
             ),
+            const SizedBox(width: 4),
             IconButton(
-              iconSize: 28,
+              iconSize: 24,
               icon: const Icon(Icons.skip_next, color: Colors.white),
               onPressed: () => handler.skipToNext(),
             ),
@@ -404,8 +476,8 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
 
             return LinearProgressIndicator(
               value: progress,
-              backgroundColor: SymphonyTheme.divider,
-              valueColor: const AlwaysStoppedAnimation<Color>(SymphonyTheme.primaryLight),
+              backgroundColor: const Color(0xFF4D4D4D),
+              valueColor: const AlwaysStoppedAnimation<Color>(SymphonyTheme.spotifyGreen),
               minHeight: 2,
             );
           },

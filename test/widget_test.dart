@@ -19,12 +19,14 @@ void main() {
           id: 'track-1',
           title: 'Starboy',
           artist: 'The Weeknd',
+          album: 'Starboy LP',
           expectedDuration: const Duration(minutes: 3, seconds: 50),
         ),
         Track(
           id: 'track-2',
           title: 'Blinding Lights',
           artist: 'The Weeknd',
+          album: 'After Hours',
           expectedDuration: const Duration(minutes: 3, seconds: 20),
         ),
       ],
@@ -42,9 +44,9 @@ void main() {
 
     // Verify Playlist title renders in hero section
     expect(find.text('Top Hits 2026'), findsOneWidget);
-    expect(find.text('SPOTIFY PLAYLIST'), findsOneWidget);
+    expect(find.text('PUBLIC PLAYLIST'), findsOneWidget);
     expect(find.text('Starboy'), findsOneWidget);
     expect(find.text('Blinding Lights'), findsOneWidget);
-    expect(find.text('TITLE'), findsOneWidget);
+    expect(find.text('Title'), findsOneWidget);
   });
 }

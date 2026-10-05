@@ -367,17 +367,33 @@ Future<void> _streamAudioBytes(HttpRequest request, String videoId) async {
 }
 
 Future<void> _cacheTrackInBackground(String streamUrl, File targetFile) async {
+  final tmpFile = File('${targetFile.path}.tmp');
   try {
     final req = await _httpClient.getUrl(Uri.parse(streamUrl));
     req.headers.set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
     final res = await req.close();
     if (res.statusCode == 200 || res.statusCode == 206) {
-      final sink = targetFile.openWrite();
+      final sink = tmpFile.openWrite();
       await res.pipe(sink);
-      print('Saved track to offline cache: ${targetFile.path} (${await targetFile.length()} bytes)');
+      if (await tmpFile.exists() && await tmpFile.length() > 50000) {
+        if (await targetFile.exists()) {
+          try {
+            await targetFile.delete();
+          } catch (_) {}
+        }
+        await tmpFile.rename(targetFile.path);
+        print('Saved track to offline cache: ${targetFile.path} (${await targetFile.length()} bytes)');
+      } else {
+        if (await tmpFile.exists()) await tmpFile.delete();
+      }
     }
   } catch (e) {
     print('Background cache error: $e');
+    if (await tmpFile.exists()) {
+      try {
+        await tmpFile.delete();
+      } catch (_) {}
+    }
   }
 }
 
@@ -392,15 +408,25 @@ Future<void> _streamLocalFile(HttpRequest request, File file) async {
   if (rangeHeader != null && rangeHeader.startsWith('bytes=')) {
     final parts = rangeHeader.substring(6).split('-');
     final start = int.tryParse(parts[0]) ?? 0;
+
+    // Handle range requests at or beyond EOF: return 416 so player recognizes EOF cleanly
+    if (start >= totalSize) {
+      request.response.statusCode = HttpStatus.requestedRangeNotSatisfiable;
+      request.response.headers.set('Content-Range', 'bytes */$totalSize');
+      await request.response.close();
+      return;
+    }
+
     final end = parts.length > 1 && parts[1].isNotEmpty
-        ? int.tryParse(parts[1]) ?? (totalSize - 1)
+        ? (int.tryParse(parts[1]) ?? (totalSize - 1))
         : totalSize - 1;
-    final chunkLen = (end - start + 1).clamp(0, totalSize);
+    final safeEnd = end.clamp(start, totalSize - 1);
+    final chunkLen = safeEnd - start + 1;
 
     request.response.statusCode = HttpStatus.partialContent;
-    request.response.headers.set('Content-Range', 'bytes $start-$end/$totalSize');
+    request.response.headers.set('Content-Range', 'bytes $start-$safeEnd/$totalSize');
     request.response.contentLength = chunkLen;
-    await file.openRead(start, end + 1).pipe(request.response);
+    await file.openRead(start, safeEnd + 1).pipe(request.response);
   } else {
     request.response.statusCode = HttpStatus.ok;
     request.response.contentLength = totalSize;
@@ -599,14 +625,25 @@ Future<bool> _downloadTrackToDisk(String videoId) async {
     }
 
     if (streamUrl != null && streamUrl.startsWith('http')) {
+      final tmpFile = File('${targetFile.path}.tmp');
       final req = await _httpClient.getUrl(Uri.parse(streamUrl));
       req.headers.set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
       final res = await req.close();
       if (res.statusCode == 200 || res.statusCode == 206) {
-        final sink = targetFile.openWrite();
+        final sink = tmpFile.openWrite();
         await res.pipe(sink);
-        print('Downloaded and cached: ${targetFile.path} (${await targetFile.length()} bytes)');
-        return true;
+        if (await tmpFile.exists() && await tmpFile.length() > 50000) {
+          if (await targetFile.exists()) {
+            try {
+              await targetFile.delete();
+            } catch (_) {}
+          }
+          await tmpFile.rename(targetFile.path);
+          print('Downloaded and cached: ${targetFile.path} (${await targetFile.length()} bytes)');
+          return true;
+        } else {
+          if (await tmpFile.exists()) await tmpFile.delete();
+        }
       }
     }
   } catch (e) {

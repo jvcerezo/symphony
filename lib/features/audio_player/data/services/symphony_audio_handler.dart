@@ -26,6 +26,9 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
 
   int _playRequestId = 0;
   bool _isAutoSkipping = false;
+  Timer? _completionWatchdogTimer;
+  Duration _lastObservedPosition = Duration.zero;
+  DateTime _lastPositionAdvanceTime = DateTime.now();
 
   SymphonyAudioHandler({
     AudioPlayer? player,
@@ -121,22 +124,68 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   }
 
   void _listenToCompletion() {
-    _playerStateSub = _player.playerStateStream.listen((state) async {
-      // Only auto-skip when player actually finishes playing a track to completion,
-      // not when stopping/transitioning or at 0 position.
+    _playerStateSub = _player.playerStateStream.listen((state) {
       if (state.processingState == ProcessingState.completed &&
           !_isAutoSkipping &&
           _player.position > const Duration(seconds: 3)) {
-        _isAutoSkipping = true;
-        developer.log('Track completed. Auto-skipping to next...', name: 'AudioHandler');
-        try {
-          await skipToNext();
-        } finally {
-          await Future.delayed(const Duration(milliseconds: 800));
-          _isAutoSkipping = false;
+        _handleTrackCompleted('ProcessingState.completed event');
+      }
+    });
+  }
+
+  void _startCompletionWatchdog() {
+    _completionWatchdogTimer?.cancel();
+    _lastObservedPosition = Duration.zero;
+    _lastPositionAdvanceTime = DateTime.now();
+
+    _completionWatchdogTimer = Timer.periodic(const Duration(milliseconds: 350), (_) {
+      if (_isAutoSkipping || _playlistQueue.isEmpty || !_player.playing) return;
+
+      final dur = _player.duration ?? mediaItem.value?.duration ?? currentTrack?.expectedDuration;
+      if (dur == null || dur <= const Duration(seconds: 5)) return;
+
+      final pos = _player.position;
+
+      // Track advancement
+      if (pos > _lastObservedPosition) {
+        _lastObservedPosition = pos;
+        _lastPositionAdvanceTime = DateTime.now();
+      }
+
+      // 1. Natural end boundary reached (within 500ms of track duration or past duration)
+      if (pos >= dur - const Duration(milliseconds: 500)) {
+        _handleTrackCompleted('end boundary reached: $pos / $dur');
+        return;
+      }
+
+      // 2. Near end stall watchdog: within 2.5 seconds of end and position hasn't advanced for > 850ms,
+      // or browser audio entered buffering/idle at EOF
+      if (pos >= dur - const Duration(milliseconds: 2500)) {
+        final timeSinceAdvance = DateTime.now().difference(_lastPositionAdvanceTime);
+        final isBufferingOrIdle = _player.processingState == ProcessingState.buffering ||
+            _player.processingState == ProcessingState.idle;
+
+        if (timeSinceAdvance > const Duration(milliseconds: 850) || isBufferingOrIdle) {
+          _handleTrackCompleted('stalled at end: $pos / $dur, state: ${_player.processingState}');
+          return;
         }
       }
     });
+  }
+
+  Future<void> _handleTrackCompleted([String reason = '']) async {
+    if (_isAutoSkipping || _playlistQueue.isEmpty) return;
+    _isAutoSkipping = true;
+    _completionWatchdogTimer?.cancel();
+    developer.log('Track completed ($reason). Auto-skipping to next...', name: 'AudioHandler');
+    try {
+      await skipToNext();
+    } catch (e) {
+      developer.log('Auto-skip error: $e', name: 'AudioHandler');
+    } finally {
+      await Future.delayed(const Duration(milliseconds: 600));
+      _isAutoSkipping = false;
+    }
   }
 
   AudioProcessingState _transformProcessingState(ProcessingState state) {
@@ -228,6 +277,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
       if (requestId != _playRequestId) return;
 
       await _player.play();
+      _startCompletionWatchdog();
 
       developer.log(
         'Started: "${track.title}" by "${track.artist}" [${streamInfo.bitrateKbps}kbps, duration: ${streamInfo.duration.inSeconds}s]',
@@ -290,6 +340,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   Future<void> setVolume(double volume) => _player.setVolume(volume);
 
   Future<void> release() async {
+    _completionWatchdogTimer?.cancel();
     await _playbackEventSub?.cancel();
     await _playerStateSub?.cancel();
     await _interruptionSub?.cancel();

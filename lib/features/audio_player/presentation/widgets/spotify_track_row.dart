@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../../../core/theme/symphony_theme.dart';
 import '../../domain/entities/track.dart';
@@ -41,19 +42,24 @@ class _SpotifyTrackRowState extends State<SpotifyTrackRow> {
     final track = widget.track;
     final isCurrent = widget.isCurrent;
     final isBuffering = widget.isBuffering;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final showAlbum = screenWidth >= 800;
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
       child: InkWell(
         onTap: widget.onTap,
-        borderRadius: BorderRadius.circular(8),
-        hoverColor: SymphonyTheme.cardHover.withAlpha(150),
+        borderRadius: BorderRadius.circular(4),
+        hoverColor: Colors.transparent,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          height: 56,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
           decoration: BoxDecoration(
-            color: isCurrent ? SymphonyTheme.primaryDark.withAlpha(40) : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
+            color: isCurrent
+                ? (isBuffering ? SymphonyTheme.cardHover.withOpacity(0.4) : Colors.white.withOpacity(0.08))
+                : (_isHovered ? SymphonyTheme.cardHover.withOpacity(0.7) : Colors.transparent),
+            borderRadius: BorderRadius.circular(4),
           ),
           child: Row(
             children: [
@@ -67,7 +73,7 @@ class _SpotifyTrackRowState extends State<SpotifyTrackRow> {
                           height: 14,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            color: SymphonyTheme.primaryLight,
+                            color: SymphonyTheme.spotifyGreen,
                           ),
                         ),
                       )
@@ -76,37 +82,42 @@ class _SpotifyTrackRowState extends State<SpotifyTrackRow> {
                         : (_isHovered || isCurrent
                             ? Icon(
                                 isCurrent && widget.isPlaying ? Icons.pause : Icons.play_arrow,
-                                color: isCurrent ? SymphonyTheme.primaryLight : Colors.white,
+                                color: isCurrent ? SymphonyTheme.spotifyGreen : Colors.white,
                                 size: 20,
                               )
                             : Text(
                                 '${widget.index + 1}',
+                                textAlign: TextAlign.center,
                                 style: TextStyle(
-                                  color: isCurrent ? SymphonyTheme.primaryLight : SymphonyTheme.textMuted,
+                                  color: isCurrent ? SymphonyTheme.spotifyGreen : SymphonyTheme.textSecondary,
                                   fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
                                   fontSize: 14,
                                 ),
                               )),
               ),
               const SizedBox(width: 12),
-              // Artwork Thumbnail
+
+              // Artwork Thumbnail (40x40)
               SymphonyArtwork(
                 track: track,
-                size: 44,
+                size: 40,
                 borderRadius: 4,
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 14),
+
               // Title & Artist
               Expanded(
+                flex: 4,
                 child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       track.title,
                       style: TextStyle(
-                        color: isCurrent ? SymphonyTheme.primaryLight : SymphonyTheme.textPrimary,
-                        fontWeight: isCurrent ? FontWeight.w600 : FontWeight.w500,
-                        fontSize: 15,
+                        color: isCurrent ? SymphonyTheme.spotifyGreen : Colors.white,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -124,18 +135,44 @@ class _SpotifyTrackRowState extends State<SpotifyTrackRow> {
                   ],
                 ),
               ),
-              // Like Button
-              IconButton(
-                iconSize: 20,
-                icon: Icon(
-                  _isLiked ? Icons.favorite : Icons.favorite_border,
-                  color: _isLiked ? SymphonyTheme.primaryLight : SymphonyTheme.textMuted,
+
+              // Album Column (Visible on Desktop)
+              if (showAlbum) ...[
+                const SizedBox(width: 16),
+                Expanded(
+                  flex: 3,
+                  child: Text(
+                    (track.album != null && track.album!.isNotEmpty) ? track.album! : track.title,
+                    style: const TextStyle(
+                      color: SymphonyTheme.textSecondary,
+                      fontSize: 13,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-                onPressed: () {
-                  setState(() => _isLiked = !_isLiked);
-                },
+              ],
+
+              // Like / Heart Button (Only appears on hover or if liked, matching Spotify)
+              Opacity(
+                opacity: (_isLiked || _isHovered) ? 1.0 : 0.0,
+                child: IconButton(
+                  iconSize: 18,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  tooltip: _isLiked ? 'Remove from Your Library' : 'Save to Your Library',
+                  icon: Icon(
+                    _isLiked ? Icons.favorite : Icons.favorite_border,
+                    color: _isLiked ? SymphonyTheme.spotifyGreen : SymphonyTheme.textSecondary,
+                  ),
+                  onPressed: () {
+                    setState(() => _isLiked = !_isLiked);
+                  },
+                ),
               ),
-              const SizedBox(width: 6),
+
+              const SizedBox(width: 8),
+
               // Offline Download Indicator / Button
               if (widget.isDownloading)
                 const SizedBox(
@@ -143,7 +180,7 @@ class _SpotifyTrackRowState extends State<SpotifyTrackRow> {
                   height: 16,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    color: SymphonyTheme.secondary,
+                    color: SymphonyTheme.spotifyGreen,
                   ),
                 )
               else if (widget.isDownloaded)
@@ -152,28 +189,48 @@ class _SpotifyTrackRowState extends State<SpotifyTrackRow> {
                   child: Icon(
                     Icons.check_circle,
                     size: 16,
-                    color: SymphonyTheme.secondary,
+                    color: SymphonyTheme.spotifyGreen,
                   ),
                 )
               else if (_isHovered && widget.onDownload != null)
                 IconButton(
                   iconSize: 18,
                   padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                  constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
                   tooltip: 'Download track offline',
                   icon: const Icon(Icons.arrow_circle_down_outlined, color: SymphonyTheme.textSecondary),
                   onPressed: widget.onDownload,
                 )
               else
                 const SizedBox(width: 16),
-              const SizedBox(width: 10),
-              // Duration
-              Text(
-                _formatDuration(track.expectedDuration ?? Duration.zero),
-                style: TextStyle(
-                  color: isCurrent ? SymphonyTheme.primaryLight : SymphonyTheme.textMuted,
-                  fontSize: 13,
-                  fontFeatures: const [FontFeature.tabularFigures()],
+
+              const SizedBox(width: 16),
+
+              // Track Duration
+              SizedBox(
+                width: 44,
+                child: Text(
+                  _formatDuration(track.expectedDuration ?? Duration.zero),
+                  textAlign: TextAlign.right,
+                  style: TextStyle(
+                    color: isCurrent ? SymphonyTheme.spotifyGreen : SymphonyTheme.textSecondary,
+                    fontSize: 13,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ),
+
+              const SizedBox(width: 8),
+
+              // More options button (visible on hover)
+              Opacity(
+                opacity: _isHovered ? 1.0 : 0.0,
+                child: IconButton(
+                  iconSize: 18,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                  icon: const Icon(Icons.more_horiz, color: SymphonyTheme.textSecondary),
+                  onPressed: () {},
                 ),
               ),
             ],

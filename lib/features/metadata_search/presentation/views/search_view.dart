@@ -19,14 +19,14 @@ class _SearchViewState extends ConsumerState<SearchView> {
   final _searchController = TextEditingController();
 
   static const _genres = [
-    (title: 'Pop', color1: Color(0xFF8B5CF6), color2: Color(0xFFEC4899), icon: Icons.star),
-    (title: 'Hip-Hop', color1: Color(0xFFF97316), color2: Color(0xFFEF4444), icon: Icons.album),
-    (title: 'Rock', color1: Color(0xFFDC2626), color2: Color(0xFF7F1D1D), icon: Icons.electric_bolt),
-    (title: 'Lo-Fi Chill', color1: Color(0xFF0D9488), color2: Color(0xFF10B981), icon: Icons.nightlife),
-    (title: 'Synthwave', color1: Color(0xFF6366F1), color2: Color(0xFFA855F7), icon: Icons.graphic_eq),
-    (title: 'Electronic', color1: Color(0xFF06B6D4), color2: Color(0xFF3B82F6), icon: Icons.headphones),
-    (title: 'Acoustic', color1: Color(0xFFD97706), color2: Color(0xFFB45309), icon: Icons.music_note),
-    (title: 'Gaming', color1: Color(0xFFEC4899), color2: Color(0xFF8B5CF6), icon: Icons.videogame_asset),
+    (title: 'Pop', color1: Color(0xFF8D67AB), color2: Color(0xFF8D67AB), icon: Icons.star),
+    (title: 'Hip-Hop', color1: Color(0xFFBC5900), color2: Color(0xFFBC5900), icon: Icons.album),
+    (title: 'Rock', color1: Color(0xFFE91429), color2: Color(0xFFE91429), icon: Icons.electric_bolt),
+    (title: 'Lo-Fi Chill', color1: Color(0xFF503750), color2: Color(0xFF503750), icon: Icons.nightlife),
+    (title: 'Synthwave', color1: Color(0xFF1E3264), color2: Color(0xFF1E3264), icon: Icons.graphic_eq),
+    (title: 'Electronic', color1: Color(0xFFD84000), color2: Color(0xFFD84000), icon: Icons.headphones),
+    (title: 'Acoustic', color1: Color(0xFF608108), color2: Color(0xFF608108), icon: Icons.music_note),
+    (title: 'Gaming', color1: Color(0xFFE8115B), color2: Color(0xFFE8115B), icon: Icons.videogame_asset),
   ];
 
   @override
@@ -55,16 +55,16 @@ class _SearchViewState extends ConsumerState<SearchView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Top Search Header
+        // Top Search Header (Spotify Benchmark)
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-          color: SymphonyTheme.obsidian,
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          color: SymphonyTheme.panel,
           child: Row(
             children: [
               if (query.isNotEmpty) ...[
                 IconButton(
                   icon: const Icon(Icons.arrow_back, color: Colors.white),
-                  tooltip: 'Back to Explore Genres',
+                  tooltip: 'Back to Browse',
                   onPressed: () {
                     _searchController.clear();
                     _onSearchChanged('');
@@ -73,29 +73,32 @@ class _SearchViewState extends ConsumerState<SearchView> {
                 const SizedBox(width: 8),
               ],
               Expanded(
-                child: TextField(
-                  controller: _searchController,
-                  onChanged: _onSearchChanged,
-                  style: const TextStyle(color: Colors.white, fontSize: 15),
-                  decoration: InputDecoration(
-                    hintText: 'What do you want to play?',
-                    hintStyle: const TextStyle(color: SymphonyTheme.textMuted),
-                    prefixIcon: const Icon(Icons.search, color: SymphonyTheme.textSecondary, size: 22),
-                    suffixIcon: query.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.close, color: SymphonyTheme.textMuted),
-                            onPressed: () {
-                              _searchController.clear();
-                              _onSearchChanged('');
-                            },
-                          )
-                        : null,
-                    filled: true,
-                    fillColor: SymphonyTheme.card,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(24),
-                      borderSide: BorderSide.none,
+                child: SizedBox(
+                  height: 48,
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: _onSearchChanged,
+                    style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
+                    decoration: InputDecoration(
+                      hintText: 'What do you want to play?',
+                      hintStyle: const TextStyle(color: SymphonyTheme.textSecondary, fontSize: 14),
+                      prefixIcon: const Icon(Icons.search, color: SymphonyTheme.textSecondary, size: 24),
+                      suffixIcon: query.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.close, color: SymphonyTheme.textSecondary),
+                              onPressed: () {
+                                _searchController.clear();
+                                _onSearchChanged('');
+                              },
+                            )
+                          : null,
+                      filled: true,
+                      fillColor: const Color(0xFF242424),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(500),
+                        borderSide: BorderSide.none,
+                      ),
                     ),
                   ),
                 ),
@@ -121,8 +124,8 @@ class _SearchViewState extends ConsumerState<SearchView> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Explore Genres',
-            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
+            'Browse all',
+            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white, letterSpacing: -0.5),
           ),
           const SizedBox(height: 16),
           GridView.builder(
@@ -130,7 +133,7 @@ class _SearchViewState extends ConsumerState<SearchView> {
             physics: const NeverScrollableScrollPhysics(),
             gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
               maxCrossAxisExtent: 220,
-              mainAxisExtent: 120,
+              mainAxisExtent: 110,
               crossAxisSpacing: 16,
               mainAxisSpacing: 16,
             ),
@@ -142,23 +145,12 @@ class _SearchViewState extends ConsumerState<SearchView> {
                   _searchController.text = g.title;
                   _onSearchChanged(g.title);
                 },
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(8),
                 child: Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
-                    gradient: LinearGradient(
-                      colors: [g.color1, g.color2],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: g.color1.withAlpha(60),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
+                    borderRadius: BorderRadius.circular(8),
+                    color: g.color1,
                   ),
                   child: Stack(
                     children: [
@@ -171,11 +163,22 @@ class _SearchViewState extends ConsumerState<SearchView> {
                         ),
                       ),
                       Positioned(
-                        right: -4,
-                        bottom: -4,
+                        right: -6,
+                        bottom: -6,
                         child: Transform.rotate(
-                          angle: 0.3,
-                          child: Icon(g.icon, size: 48, color: Colors.white.withAlpha(60)),
+                          angle: 0.35,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.3),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: Icon(g.icon, size: 54, color: Colors.white.withOpacity(0.85)),
+                          ),
                         ),
                       ),
                     ],
@@ -197,7 +200,7 @@ class _SearchViewState extends ConsumerState<SearchView> {
   ) {
     return resultsAsync.when(
       loading: () => const Center(
-        child: CircularProgressIndicator(color: SymphonyTheme.primaryLight),
+        child: CircularProgressIndicator(color: SymphonyTheme.spotifyGreen),
       ),
       error: (e, _) => Center(
         child: Column(
@@ -211,8 +214,8 @@ class _SearchViewState extends ConsumerState<SearchView> {
                 _onSearchChanged('');
               },
               icon: const Icon(Icons.arrow_back, size: 18),
-              label: const Text('Back to Explore Genres'),
-              style: TextButton.styleFrom(foregroundColor: SymphonyTheme.primaryLight),
+              label: const Text('Back to Browse'),
+              style: TextButton.styleFrom(foregroundColor: SymphonyTheme.spotifyGreen),
             ),
           ],
         ),
@@ -231,8 +234,8 @@ class _SearchViewState extends ConsumerState<SearchView> {
                     _onSearchChanged('');
                   },
                   icon: const Icon(Icons.arrow_back, size: 18),
-                  label: const Text('Back to Explore Genres'),
-                  style: TextButton.styleFrom(foregroundColor: SymphonyTheme.primaryLight),
+                  label: const Text('Back to Browse'),
+                  style: TextButton.styleFrom(foregroundColor: SymphonyTheme.spotifyGreen),
                 ),
               ],
             ),
@@ -244,37 +247,19 @@ class _SearchViewState extends ConsumerState<SearchView> {
         final handler = ref.read(audioHandlerProvider);
         final offlineState = ref.watch(offlineProvider);
         final offlineNotifier = ref.read(offlineProvider.notifier);
+        final isTopCurrent = mediaItem?.title == topTrack.title && mediaItem?.artist == topTrack.artist;
 
         return ListView(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           children: [
-            // Back breadcrumb button
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: () {
-                  _searchController.clear();
-                  _onSearchChanged('');
-                },
-                icon: const Icon(Icons.arrow_back, size: 16),
-                label: const Text('Back to Explore Genres', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                style: TextButton.styleFrom(
-                  foregroundColor: SymphonyTheme.primaryLight,
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-
-            // Top Result Card
+            // Top Result Card (Spotify benchmark)
             const Text(
-              'Top Result',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+              'Top result',
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white, letterSpacing: -0.5),
             ),
             const SizedBox(height: 12),
             InkWell(
               onTap: () {
-                final isTopCurrent = mediaItem?.title == topTrack.title && mediaItem?.artist == topTrack.artist;
                 if (isTopCurrent) {
                   if (isPlaying) {
                     handler.pause();
@@ -285,20 +270,20 @@ class _SearchViewState extends ConsumerState<SearchView> {
                   handler.playQueue(tracks, startIndex: 0);
                 }
               },
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(8),
               child: Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
                   color: SymphonyTheme.card,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: SymphonyTheme.divider),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.transparent),
                 ),
                 child: Row(
                   children: [
                     SymphonyArtwork(
                       track: topTrack,
-                      size: 80,
-                      borderRadius: 8,
+                      size: 92,
+                      borderRadius: 4,
                     ),
                     const SizedBox(width: 20),
                     Expanded(
@@ -307,35 +292,43 @@ class _SearchViewState extends ConsumerState<SearchView> {
                         children: [
                           Text(
                             topTrack.title,
-                            style: const TextStyle(
-                              fontSize: 20,
+                            style: TextStyle(
+                              fontSize: 22,
                               fontWeight: FontWeight.bold,
-                              color: Colors.white,
+                              color: isTopCurrent ? SymphonyTheme.spotifyGreen : Colors.white,
+                              letterSpacing: -0.5,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 6),
-                          Text(
-                            topTrack.artist,
-                            style: const TextStyle(fontSize: 14, color: SymphonyTheme.textSecondary),
-                          ),
-                          const SizedBox(height: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: SymphonyTheme.surface,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Text(
-                              'SONG',
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                                letterSpacing: 1.0,
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF242424),
+                                  borderRadius: BorderRadius.circular(500),
+                                ),
+                                child: const Text(
+                                  'Song',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
                               ),
-                            ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  topTrack.artist,
+                                  style: const TextStyle(fontSize: 14, color: SymphonyTheme.textSecondary, fontWeight: FontWeight.w500),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -343,22 +336,33 @@ class _SearchViewState extends ConsumerState<SearchView> {
                     Container(
                       width: 48,
                       height: 48,
-                      decoration: const BoxDecoration(
+                      decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        gradient: SymphonyTheme.brandGradient,
+                        color: SymphonyTheme.spotifyGreen,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.35),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
                       ),
-                      child: const Icon(Icons.play_arrow, color: Colors.white, size: 28),
+                      child: Icon(
+                        (isTopCurrent && isPlaying) ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                        color: Colors.black,
+                        size: 30,
+                      ),
                     ),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 28),
 
-            // Songs List
+            // Songs List Header
             const Text(
               'Songs',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white, letterSpacing: -0.5),
             ),
             const SizedBox(height: 12),
             ...List.generate(remainingTracks.length, (idx) {

@@ -75,28 +75,35 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
                 ref.read(activeNavTabProvider.notifier).state = tab;
               },
               backgroundColor: SymphonyTheme.obsidian,
-              selectedItemColor: SymphonyTheme.primaryLight,
+              selectedItemColor: Colors.white,
               unselectedItemColor: SymphonyTheme.textSecondary,
               items: const [
                 BottomNavigationBarItem(icon: Icon(Icons.home_filled), label: 'Home'),
-                BottomNavigationBarItem(icon: Icon(Icons.search), label: 'Search'),
-                BottomNavigationBarItem(icon: Icon(Icons.library_music), label: 'Your Library'),
+                BottomNavigationBarItem(icon: Icon(Icons.search_rounded), label: 'Search'),
+                BottomNavigationBarItem(icon: Icon(Icons.library_music_rounded), label: 'Your Library'),
               ],
             )
           : null,
       body: Column(
         children: [
           Expanded(
-            child: Row(
-              children: [
-                if (isDesktop) const SidebarNav(),
-                Expanded(
-                  child: Container(
-                    color: SymphonyTheme.midnight,
-                    child: _buildCurrentTabContent(activeTab, activePlaylist, mediaItem, isPlaying, isBuffering, isDesktop),
+            child: Padding(
+              padding: isDesktop ? const EdgeInsets.fromLTRB(8, 8, 8, 0) : EdgeInsets.zero,
+              child: Row(
+                children: [
+                  if (isDesktop) const SidebarNav(),
+                  if (isDesktop) const SizedBox(width: 8),
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: isDesktop ? BorderRadius.circular(8) : BorderRadius.zero,
+                      child: Container(
+                        color: SymphonyTheme.panel,
+                        child: _buildCurrentTabContent(activeTab, activePlaylist, mediaItem, isPlaying, isBuffering, isDesktop),
+                      ),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           const BottomPlayerBar(),
@@ -131,6 +138,7 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
 
   Widget _buildLibraryView() {
     final importedPlaylists = ref.watch(importedPlaylistsProvider);
+    final handler = ref.read(audioHandlerProvider);
 
     return Padding(
       padding: const EdgeInsets.all(28.0),
@@ -141,28 +149,32 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text(
-                'Your Library',
-                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
+                'Playlists',
+                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white, letterSpacing: -0.5),
               ),
               ElevatedButton.icon(
                 onPressed: () {
                   showDialog(context: context, builder: (_) => const ImportPlaylistDialog());
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: SymphonyTheme.primary,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  backgroundColor: Colors.white,
+                  foregroundColor: Colors.black,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(500)),
                 ),
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('Import Playlist'),
+                icon: const Icon(Icons.add, size: 18, color: Colors.black),
+                label: const Text(
+                  'Import Playlist',
+                  style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 13),
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
           if (importedPlaylists.isEmpty)
-            const Center(
-              child: Padding(
-                padding: EdgeInsets.only(top: 80.0),
+            const Expanded(
+              child: Center(
                 child: Text('No playlists imported yet', style: TextStyle(color: SymphonyTheme.textMuted)),
               ),
             )
@@ -171,59 +183,23 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
               child: GridView.builder(
                 gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                   maxCrossAxisExtent: 220,
-                  mainAxisExtent: 260,
+                  mainAxisExtent: 280,
                   crossAxisSpacing: 16,
                   mainAxisSpacing: 16,
                 ),
                 itemCount: importedPlaylists.length,
                 itemBuilder: (context, index) {
                   final playlist = importedPlaylists[index];
-                  return InkWell(
+                  return _SpotifyPlaylistCard(
+                    playlist: playlist,
                     onTap: () {
                       ref.read(activePlaylistProvider.notifier).state = playlist;
                       ref.read(activeNavTabProvider.notifier).state = 'home';
                     },
-                    borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: SymphonyTheme.card,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: SymphonyTheme.divider),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: playlist.coverUrl != null
-                                ? Image.network(
-                                    playlist.coverUrl!,
-                                    width: double.infinity,
-                                    height: 150,
-                                    fit: BoxFit.cover,
-                                    filterQuality: FilterQuality.high,
-                                    errorBuilder: (context, error, stackTrace) => _buildFallbackCover(),
-                                  )
-                                : _buildFallbackCover(),
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            playlist.title,
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.white),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '${playlist.trackCount} songs • By ${playlist.ownerName ?? "Spotify"}',
-                            style: const TextStyle(fontSize: 12, color: SymphonyTheme.textSecondary),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ),
+                    onPlay: () {
+                      ref.read(activePlaylistProvider.notifier).state = playlist;
+                      handler.playQueue(playlist.tracks, startIndex: 0);
+                    },
                   );
                 },
               ),
@@ -239,13 +215,13 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 54,
-            height: 54,
+            width: 56,
+            height: 56,
             decoration: const BoxDecoration(
               shape: BoxShape.circle,
-              gradient: SymphonyTheme.brandGradient,
+              color: SymphonyTheme.spotifyGreen,
             ),
-            child: const Icon(Icons.graphic_eq, color: Colors.white, size: 28),
+            child: const Icon(Icons.graphic_eq_rounded, color: Colors.black, size: 30),
           ),
           const SizedBox(height: 18),
           const Text(
@@ -283,50 +259,71 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
         // Top Bar & Hero Header
         SliverToBoxAdapter(
           child: Container(
-            decoration: const BoxDecoration(
-              gradient: SymphonyTheme.heroGradient,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [const Color(0xFF5038A0), SymphonyTheme.panel],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+              ),
             ),
             padding: EdgeInsets.symmetric(
               horizontal: isDesktop ? 32 : 16,
-              vertical: isDesktop ? 32 : 20,
+              vertical: isDesktop ? 24 : 16,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Navigation / Action header
+                // Navigation / Action header (Spotify Benchmark Top Bar)
                 Row(
                   children: [
-                    if (!isDesktop) ...[
-                      IconButton(
-                        icon: const Icon(Icons.add_circle_outline, color: SymphonyTheme.secondary),
-                        tooltip: 'Import Playlist',
-                        onPressed: () {
-                          showDialog(
-                            context: context,
-                            builder: (_) => const ImportPlaylistDialog(),
-                          );
-                        },
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Color(0x7F000000),
                       ),
-                      const SizedBox(width: 8),
-                      const Text(
-                        'SYMPHONY',
-                        style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.5, fontSize: 18),
+                      child: IconButton(
+                        padding: EdgeInsets.zero,
+                        icon: const Icon(Icons.chevron_left, color: Colors.white, size: 22),
+                        onPressed: () {},
                       ),
-                      const Spacer(),
-                    ],
-                    if (isDesktop) ...[
-                      IconButton(
-                        icon: const Icon(Icons.add_link, color: SymphonyTheme.secondary),
-                        tooltip: 'Import Playlist',
-                        onPressed: () {
-                          showDialog(
-                            context: context,
-                            builder: (_) => const ImportPlaylistDialog(),
-                          );
-                        },
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Color(0x7F000000),
                       ),
-                      const Spacer(),
-                    ],
+                      child: IconButton(
+                        padding: EdgeInsets.zero,
+                        icon: const Icon(Icons.chevron_right, color: Colors.white, size: 22),
+                        onPressed: () {},
+                      ),
+                    ),
+                    const Spacer(),
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        showDialog(
+                          context: context,
+                          builder: (_) => const ImportPlaylistDialog(),
+                        );
+                      },
+                      icon: const Icon(Icons.add, size: 16, color: Colors.black),
+                      label: const Text(
+                        'Import Playlist',
+                        style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: Colors.black,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(500)),
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 24),
@@ -336,20 +333,20 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Container(
-                      width: isDesktop ? 190 : 130,
-                      height: isDesktop ? 190 : 130,
+                      width: isDesktop ? 220 : 130,
+                      height: isDesktop ? 220 : 130,
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(4),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withAlpha(140),
-                            blurRadius: 24,
-                            offset: const Offset(0, 8),
+                            color: Colors.black.withOpacity(0.55),
+                            blurRadius: 36,
+                            offset: const Offset(0, 16),
                           ),
                         ],
                       ),
                       child: ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(4),
                         child: playlist.coverUrl != null
                             ? Image.network(
                                 playlist.coverUrl!,
@@ -365,13 +362,13 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            '${playlist.source.toUpperCase()} PLAYLIST',
-                            style: const TextStyle(
-                              color: SymphonyTheme.primaryLight,
-                              fontWeight: FontWeight.w800,
-                              fontSize: 11,
-                              letterSpacing: 1.0,
+                          const Text(
+                            'PUBLIC PLAYLIST',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                              letterSpacing: 0.8,
                             ),
                           ),
                           const SizedBox(height: 8),
@@ -379,16 +376,36 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
                             playlist.title,
                             style: TextStyle(
                               color: Colors.white,
-                              fontSize: isDesktop ? 40 : 22,
+                              fontSize: isDesktop ? 48 : 22,
                               fontWeight: FontWeight.w900,
-                              letterSpacing: -0.5,
+                              letterSpacing: -1.2,
+                              height: 1.05,
                             ),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 12),
+                          if (playlist.description != null && playlist.description!.isNotEmpty) ...[
+                            Text(
+                              playlist.description!,
+                              style: const TextStyle(color: SymphonyTheme.textSecondary, fontSize: 13),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 8),
+                          ],
                           Row(
                             children: [
+                              Container(
+                                width: 22,
+                                height: 22,
+                                decoration: const BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: SymphonyTheme.spotifyGreen,
+                                ),
+                                child: const Icon(Icons.music_note, size: 14, color: Colors.black),
+                              ),
+                              const SizedBox(width: 8),
                               Text(
                                 playlist.ownerName ?? 'Spotify',
                                 style: const TextStyle(
@@ -397,10 +414,10 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
                                   fontSize: 13,
                                 ),
                               ),
-                              const Text(' • ', style: TextStyle(color: SymphonyTheme.textMuted)),
+                              const Text(' • ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                               Text(
                                 '${playlist.trackCount} songs',
-                                style: const TextStyle(color: SymphonyTheme.textSecondary, fontSize: 13),
+                                style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
                               ),
                             ],
                           ),
@@ -412,70 +429,66 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
 
                 const SizedBox(height: 28),
 
-                // Action Bar: Big Play Button
+                // Action Bar: Big Spotify Green Play Button + Actions
                 Row(
                   children: [
-                    AnimatedContainer(
+                    AnimatedScale(
+                      scale: isThisPlaying ? 1.04 : 1.0,
                       duration: const Duration(milliseconds: 200),
-                      width: 56,
-                      height: 56,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: SymphonyTheme.brandGradient,
-                        boxShadow: isThisPlaying
-                            ? [
-                                BoxShadow(
-                                  color: SymphonyTheme.primary.withAlpha(160),
-                                  blurRadius: 18,
-                                  spreadRadius: 2,
-                                ),
-                              ]
-                            : [
-                                BoxShadow(
-                                  color: Colors.black.withAlpha(80),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                      ),
-                      child: IconButton(
-                        iconSize: 32,
-                        tooltip: isThisPlaying ? 'Pause' : 'Play',
-                        icon: Icon(
-                          isThisPlaying ? Icons.pause : Icons.play_arrow,
-                          color: Colors.white,
+                      child: Container(
+                        width: 56,
+                        height: 56,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: SymphonyTheme.spotifyGreen,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.35),
+                              blurRadius: 18,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
                         ),
-                        onPressed: () async {
-                          try {
-                            if (isThisPlaying) {
-                              await handler.pause();
-                            } else if (isPlaylistActive) {
-                              await handler.play();
-                            } else {
-                              await handler.playQueue(playlist.tracks, startIndex: 0);
+                        child: IconButton(
+                          iconSize: 32,
+                          tooltip: isThisPlaying ? 'Pause' : 'Play',
+                          icon: Icon(
+                            isThisPlaying ? Icons.pause : Icons.play_arrow,
+                            color: Colors.black,
+                          ),
+                          onPressed: () async {
+                            try {
+                              if (isThisPlaying) {
+                                await handler.pause();
+                              } else if (isPlaylistActive) {
+                                await handler.play();
+                              } else {
+                                await handler.playQueue(playlist.tracks, startIndex: 0);
+                              }
+                            } catch (e) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    backgroundColor: SymphonyTheme.card,
+                                    content: Text('Playback error: $e', style: const TextStyle(color: Colors.redAccent)),
+                                  ),
+                                );
+                              }
                             }
-                          } catch (e) {
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  backgroundColor: SymphonyTheme.card,
-                                  content: Text('Playback error: $e', style: const TextStyle(color: Colors.redAccent)),
-                                ),
-                              );
-                            }
-                          }
-                        },
+                          },
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 20),
+                    const SizedBox(width: 24),
                     IconButton(
-                      iconSize: 28,
+                      iconSize: 32,
+                      tooltip: 'Save to Your Library',
                       icon: const Icon(Icons.favorite_border, color: SymphonyTheme.textSecondary),
                       onPressed: () {},
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 16),
                     IconButton(
-                      iconSize: 28,
+                      iconSize: 32,
                       tooltip: isPlaylistDownloaded
                           ? 'Playlist saved for offline playback'
                           : isPlaylistDownloading
@@ -483,16 +496,16 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
                               : 'Download playlist for offline listening',
                       icon: isPlaylistDownloading
                           ? const SizedBox(
-                              width: 22,
-                              height: 22,
+                              width: 24,
+                              height: 24,
                               child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: SymphonyTheme.secondary,
+                                strokeWidth: 2.5,
+                                color: SymphonyTheme.spotifyGreen,
                               ),
                             )
                           : Icon(
                               isPlaylistDownloaded ? Icons.download_done_rounded : Icons.arrow_circle_down_outlined,
-                              color: isPlaylistDownloaded ? SymphonyTheme.secondary : SymphonyTheme.textSecondary,
+                              color: isPlaylistDownloaded ? SymphonyTheme.spotifyGreen : SymphonyTheme.textSecondary,
                             ),
                       onPressed: () async {
                         if (isPlaylistDownloading) return;
@@ -502,7 +515,7 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
                             backgroundColor: SymphonyTheme.card,
                             content: Row(
                               children: [
-                                const Icon(Icons.cloud_download, color: SymphonyTheme.secondary, size: 20),
+                                const Icon(Icons.cloud_download, color: SymphonyTheme.spotifyGreen, size: 20),
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Text(
@@ -518,9 +531,10 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
                         await offlineNotifier.downloadPlaylist(playlist);
                       },
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 16),
                     IconButton(
-                      iconSize: 24,
+                      iconSize: 30,
+                      tooltip: 'More options',
                       icon: const Icon(Icons.more_horiz, color: SymphonyTheme.textSecondary),
                       onPressed: () {},
                     ),
@@ -531,33 +545,49 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
           ),
         ),
 
-        // Track Table Header
+        // Track Table Header (Aligned with SpotifyTrackRow)
         SliverToBoxAdapter(
           child: Padding(
             padding: EdgeInsets.symmetric(
               horizontal: isDesktop ? 32 : 16,
-              vertical: 12,
+              vertical: 8,
             ),
-            child: const Row(
+            child: Row(
               children: [
-                SizedBox(
+                const SizedBox(
                   width: 32,
                   child: Text(
                     '#',
-                    style: TextStyle(color: SymphonyTheme.textMuted, fontSize: 13, fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: SymphonyTheme.textSecondary, fontSize: 13, fontWeight: FontWeight.bold),
                   ),
                 ),
-                SizedBox(width: 12),
-                SizedBox(width: 44),
-                SizedBox(width: 16),
-                Expanded(
+                const SizedBox(width: 12),
+                const SizedBox(width: 40),
+                const SizedBox(width: 14),
+                const Expanded(
+                  flex: 4,
                   child: Text(
-                    'TITLE',
-                    style: TextStyle(color: SymphonyTheme.textMuted, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 0.8),
+                    'Title',
+                    style: TextStyle(color: SymphonyTheme.textSecondary, fontSize: 13, fontWeight: FontWeight.bold),
                   ),
                 ),
-                SizedBox(width: 48),
-                Icon(Icons.access_time, size: 16, color: SymphonyTheme.textMuted),
+                if (isDesktop) ...[
+                  const SizedBox(width: 16),
+                  const Expanded(
+                    flex: 3,
+                    child: Text(
+                      'Album',
+                      style: TextStyle(color: SymphonyTheme.textSecondary, fontSize: 13, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+                const SizedBox(width: 48),
+                const SizedBox(
+                  width: 44,
+                  child: Icon(Icons.access_time_outlined, size: 16, color: SymphonyTheme.textSecondary),
+                ),
+                const SizedBox(width: 32),
               ],
             ),
           ),
@@ -565,7 +595,7 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
 
         const SliverToBoxAdapter(
           child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16.0),
+            padding: EdgeInsets.symmetric(horizontal: 24.0),
             child: Divider(color: SymphonyTheme.divider, height: 1),
           ),
         ),
@@ -655,3 +685,121 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
     );
   }
 }
+
+class _SpotifyPlaylistCard extends StatefulWidget {
+  final SpotifyPlaylist playlist;
+  final VoidCallback onTap;
+  final VoidCallback onPlay;
+
+  const _SpotifyPlaylistCard({
+    required this.playlist,
+    required this.onTap,
+    required this.onPlay,
+  });
+
+  @override
+  State<_SpotifyPlaylistCard> createState() => _SpotifyPlaylistCardState();
+}
+
+class _SpotifyPlaylistCardState extends State<_SpotifyPlaylistCard> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final playlist = widget.playlist;
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: _isHovered ? SymphonyTheme.cardHover : SymphonyTheme.card,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Cover with hover play button
+              Stack(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: AspectRatio(
+                      aspectRatio: 1.0,
+                      child: playlist.coverUrl != null
+                          ? Image.network(
+                              playlist.coverUrl!,
+                              fit: BoxFit.cover,
+                              filterQuality: FilterQuality.high,
+                              errorBuilder: (_, __, ___) => Container(
+                                color: const Color(0xFF282828),
+                                child: const Icon(Icons.music_note, color: SymphonyTheme.textMuted, size: 40),
+                              ),
+                            )
+                          : Container(
+                              color: const Color(0xFF282828),
+                              child: const Icon(Icons.music_note, color: SymphonyTheme.textMuted, size: 40),
+                            ),
+                    ),
+                  ),
+                  Positioned(
+                    right: 8,
+                    bottom: 8,
+                    child: AnimatedOpacity(
+                      opacity: _isHovered ? 1.0 : 0.0,
+                      duration: const Duration(milliseconds: 200),
+                      child: AnimatedSlide(
+                        offset: _isHovered ? Offset.zero : const Offset(0, 0.25),
+                        duration: const Duration(milliseconds: 200),
+                        child: GestureDetector(
+                          onTap: widget.onPlay,
+                          child: Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: SymphonyTheme.spotifyGreen,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.4),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: const Icon(Icons.play_arrow_rounded, color: Colors.black, size: 30),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                playlist.title,
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.white),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                playlist.description != null && playlist.description!.isNotEmpty
+                    ? playlist.description!
+                    : 'By ${playlist.ownerName ?? "Spotify"} • ${playlist.trackCount} songs',
+                style: const TextStyle(fontSize: 13, color: SymphonyTheme.textSecondary, height: 1.2),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
