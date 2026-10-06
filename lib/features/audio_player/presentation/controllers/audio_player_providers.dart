@@ -97,7 +97,9 @@ class ImportedPlaylistsNotifier extends StateNotifier<List<SpotifyPlaylist>> {
             .map((item) => SpotifyPlaylist.fromJson(item))
             .toList();
         if (playlists.isNotEmpty) {
-          state = playlists;
+          final existingIds = playlists.map((p) => p.id).toSet();
+          final missingCurated = CuratedPlaylists.all.where((c) => !existingIds.contains(c.id)).toList();
+          state = [...playlists, ...missingCurated];
         } else {
           state = CuratedPlaylists.all;
           _saveToLocalPrefs();

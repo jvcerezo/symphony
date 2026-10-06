@@ -166,8 +166,8 @@ Future<void> main() async {
   await _loadResolveIndex();
   await _enforceCacheQuota();
 
-  final server = await HttpServer.bind(InternetAddress.anyIPv4, port);
-  print('Symphony Full-Track Offline Server running on http://localhost:$port');
+  final server = await HttpServer.bind(InternetAddress.anyIPv6, port, v6Only: false);
+  print('Symphony Full-Track Offline Server running on port $port (IPv4 & IPv6)');
 
   await for (final request in server) {
     _handleRequest(request, webDir);
@@ -267,10 +267,11 @@ Future<void> _handleRequest(HttpRequest request, Directory webDir) async {
     if (filePath.endsWith('.apk')) {
       request.response.headers.add('Content-Disposition', 'attachment; filename="symphony.apk"');
     }
-    if (filePath.endsWith('.html') || filePath.endsWith('.js') || filePath.endsWith('.json')) {
-      request.response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-      request.response.headers.set('Pragma', 'no-cache');
-      request.response.headers.set('Expires', '0');
+    request.response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+    request.response.headers.set('Pragma', 'no-cache');
+    request.response.headers.set('Expires', '0');
+    if (filePath.endsWith('.html')) {
+      request.response.headers.set('Clear-Site-Data', '"cache"');
     }
     if (request.method == 'HEAD') {
       await request.response.close();
@@ -282,9 +283,10 @@ Future<void> _handleRequest(HttpRequest request, Directory webDir) async {
     final indexFile = File('${webDir.path}/index.html');
     if (await indexFile.exists()) {
       request.response.headers.contentType = ContentType.html;
-      request.response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+      request.response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
       request.response.headers.set('Pragma', 'no-cache');
       request.response.headers.set('Expires', '0');
+      request.response.headers.set('Clear-Site-Data', '"cache"');
       await indexFile.openRead().pipe(request.response);
     } else {
       request.response.statusCode = HttpStatus.notFound;

@@ -186,15 +186,16 @@ class AudioStreamResolverService {
           candidateOrigins.add(origin);
         }
       } catch (_) {}
-    }
-    for (final host in [
-      'https://symphony.jettimothycerezo.dev',
-      'http://192.168.1.57:8080',
-      'http://localhost:8080',
-      'http://127.0.0.1:8080',
-    ]) {
-      if (!candidateOrigins.contains(host)) {
-        candidateOrigins.add(host);
+    } else {
+      for (final host in [
+        'https://symphony.jettimothycerezo.dev',
+        'http://192.168.1.57:8080',
+        'http://localhost:8080',
+        'http://127.0.0.1:8080',
+      ]) {
+        if (!candidateOrigins.contains(host)) {
+          candidateOrigins.add(host);
+        }
       }
     }
 

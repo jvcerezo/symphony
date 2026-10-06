@@ -200,12 +200,17 @@ class SpotifyEmbedScraperService {
           candidateOrigins.add(origin);
         }
       } catch (_) {}
-    }
-    if (!candidateOrigins.contains('http://localhost:8080')) {
-      candidateOrigins.add('http://localhost:8080');
-    }
-    if (!candidateOrigins.contains('http://127.0.0.1:8080')) {
-      candidateOrigins.add('http://127.0.0.1:8080');
+    } else {
+      for (final host in [
+        'https://symphony.jettimothycerezo.dev',
+        'http://192.168.1.57:8080',
+        'http://localhost:8080',
+        'http://127.0.0.1:8080',
+      ]) {
+        if (!candidateOrigins.contains(host)) {
+          candidateOrigins.add(host);
+        }
+      }
     }
 
     for (final origin in candidateOrigins) {
