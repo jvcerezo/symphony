@@ -52,7 +52,7 @@ class SpotifyEmbedScraperService {
 
   /// Scrapes public Spotify playlist metadata and tracks without OAuth credentials.
   /// Handles browser CORS transparently by querying the local backend server first.
-  Future<SpotifyPlaylist> importPlaylist(String playlistUrlOrId) async {
+  Future<SpotifyPlaylist> importPlaylist(String playlistUrlOrId, {String? instanceId}) async {
     final playlistId = extractPlaylistId(playlistUrlOrId);
     if (playlistId == null || playlistId.isEmpty) {
       throw const FormatException('Invalid Spotify playlist URL or ID provided.');
@@ -61,7 +61,7 @@ class SpotifyEmbedScraperService {
     developer.log('Importing Spotify playlist: $playlistId', name: 'SpotifyScraper');
 
     // 1. Primary: Import via Symphony backend server (Zero CORS, 100% full playlist retrieval)
-    final serverPlaylist = await _importViaServer(playlistId);
+    final serverPlaylist = await _importViaServer(playlistId, instanceId: instanceId);
     if (serverPlaylist != null && serverPlaylist.tracks.isNotEmpty) {
       developer.log('Successfully imported playlist via server: "${serverPlaylist.title}" (${serverPlaylist.trackCount} tracks)', name: 'SpotifyScraper');
       return serverPlaylist;
@@ -191,7 +191,7 @@ class SpotifyEmbedScraperService {
   }
 
   /// Calls the local Symphony server to scrape Spotify without browser CORS limits.
-  Future<SpotifyPlaylist?> _importViaServer(String playlistId) async {
+  Future<SpotifyPlaylist?> _importViaServer(String playlistId, {String? instanceId}) async {
     final candidateOrigins = <String>[];
     if (kIsWeb) {
       try {
@@ -215,7 +215,10 @@ class SpotifyEmbedScraperService {
 
     for (final origin in candidateOrigins) {
       try {
-        final uri = Uri.parse('$origin/api/playlist/spotify?id=$playlistId');
+        final q = instanceId != null && instanceId.isNotEmpty
+            ? 'id=$playlistId&instanceId=$instanceId'
+            : 'id=$playlistId';
+        final uri = Uri.parse('$origin/api/playlist/spotify?$q');
         final response = await _httpClient.get(uri).timeout(const Duration(seconds: 10));
 
         if (response.statusCode == 200) {
@@ -225,7 +228,7 @@ class SpotifyEmbedScraperService {
 
           for (int i = 0; i < rawTracks.length; i++) {
             final t = rawTracks[i] as Map<String, dynamic>;
-            final durMs = t['durationMs'] as int? ?? 0;
+            final durMs = (t['durationMs'] as num?)?.toInt() ?? 0;
             tracks.add(
               Track(
                 id: t['id'] as String? ?? 'sp_$i',

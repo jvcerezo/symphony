@@ -49,26 +49,32 @@ class SpotifyPlaylist {
 
   factory SpotifyPlaylist.fromJson(Map<String, dynamic> json) {
     final rawTracks = json['tracks'] as List<dynamic>? ?? [];
-    final tracks = rawTracks.map((t) {
-      final durMs = t['durationMs'] as int? ?? 0;
-      final artUri = t['artworkUri'] as String?;
-      return Track(
-        id: t['id'] as String? ?? 'sp_0',
-        title: t['title'] as String? ?? 'Unknown Title',
-        artist: t['artist'] as String? ?? 'Unknown Artist',
-        album: t['album'] as String? ?? '',
-        expectedDuration: durMs > 0 ? Duration(milliseconds: durMs) : null,
-        artworkUri: artUri != null ? Uri.tryParse(artUri) : null,
-      );
-    }).toList();
+    final tracks = <Track>[];
+    for (int i = 0; i < rawTracks.length; i++) {
+      final t = rawTracks[i];
+      if (t is Map) {
+        final durMs = (t['durationMs'] as num?)?.toInt() ?? 0;
+        final artUri = t['artworkUri']?.toString();
+        tracks.add(
+          Track(
+            id: (t['id']?.toString()) ?? 'sp_$i',
+            title: (t['title']?.toString()) ?? 'Unknown Title',
+            artist: (t['artist']?.toString()) ?? 'Unknown Artist',
+            album: (t['album']?.toString()) ?? '',
+            expectedDuration: durMs > 0 ? Duration(milliseconds: durMs) : null,
+            artworkUri: artUri != null && artUri.isNotEmpty ? Uri.tryParse(artUri) : null,
+          ),
+        );
+      }
+    }
 
     return SpotifyPlaylist(
-      id: json['id'] as String? ?? '',
-      title: json['title'] as String? ?? 'Saved Playlist',
-      description: json['description'] as String?,
-      coverUrl: json['coverUrl'] as String?,
-      ownerName: json['ownerName'] as String? ?? 'User',
-      source: json['source'] as String? ?? 'Spotify',
+      id: (json['id']?.toString()) ?? '',
+      title: (json['title']?.toString()) ?? 'Saved Playlist',
+      description: json['description']?.toString(),
+      coverUrl: json['coverUrl']?.toString(),
+      ownerName: (json['ownerName']?.toString()) ?? 'User',
+      source: (json['source']?.toString()) ?? 'Spotify',
       tracks: tracks,
     );
   }

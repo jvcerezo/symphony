@@ -35,11 +35,14 @@ class _ImportPlaylistDialogState extends ConsumerState<ImportPlaylistDialog> {
     });
 
     try {
+      final instanceId = ref.read(personalizationProvider).instanceId.isNotEmpty
+          ? ref.read(personalizationProvider).instanceId
+          : await PersonalizationNotifier.getOrCreateInstanceId();
       final importer = ref.read(universalPlaylistImporterProvider);
-      final playlist = await importer.importPlaylist(input);
+      final playlist = await importer.importPlaylist(input, instanceId: instanceId);
 
-      // Save to state & local offline storage
-      ref.read(importedPlaylistsProvider.notifier).addPlaylist(playlist);
+      // Save to state & local offline storage & instance backup
+      await ref.read(importedPlaylistsProvider.notifier).addPlaylist(playlist);
       ref.read(activePlaylistProvider.notifier).state = playlist;
 
       // Automatically personalize user identity from the public playlist owner

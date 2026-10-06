@@ -1,7 +1,12 @@
+import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:symphony/features/audio_player/domain/entities/track.dart';
+import 'package:symphony/features/audio_player/presentation/controllers/audio_player_providers.dart';
 import 'package:symphony/features/metadata_search/data/services/artwork_resolver_service.dart';
 import 'package:symphony/features/playlist_import/data/services/spotify_embed_scraper_service.dart';
 import 'package:symphony/features/playlist_import/data/services/universal_playlist_importer_service.dart';
+import 'package:symphony/features/playlist_import/domain/entities/spotify_playlist.dart';
 
 void main() {
   group('SpotifyEmbedScraperService URL & Embed Tests', () {
@@ -93,6 +98,75 @@ void main() {
         importer.detectSource('Taylor Swift Top Songs'),
         equals(PlaylistSourceType.smartMix),
       );
+    });
+  });
+
+  group('Playlist Persistence & Serialization Tests', () {
+    test('SpotifyPlaylist toJson and fromJson roundtrip accurately', () {
+      final sample = SpotifyPlaylist(
+        id: 'user_pl_1',
+        title: 'My Custom Jams',
+        description: 'Vibes only',
+        ownerName: 'Jet',
+        source: 'Spotify',
+        tracks: [
+          Track(
+            id: 'tr_1',
+            title: 'Midnight City',
+            artist: 'M83',
+            album: 'Hurry Up, We\'re Dreaming',
+            expectedDuration: const Duration(minutes: 4, seconds: 4),
+            artworkUri: Uri.parse('https://example.com/art.jpg'),
+          ),
+        ],
+      );
+
+      final json = sample.toJson();
+      final restored = SpotifyPlaylist.fromJson(json);
+
+      expect(restored.id, equals('user_pl_1'));
+      expect(restored.title, equals('My Custom Jams'));
+      expect(restored.ownerName, equals('Jet'));
+      expect(restored.tracks.length, equals(1));
+      expect(restored.tracks.first.title, equals('Midnight City'));
+      expect(restored.tracks.first.expectedDuration, equals(const Duration(minutes: 4, seconds: 4)));
+    });
+
+    test('ImportedPlaylistsNotifier restores playlists from SharedPreferences', () async {
+      final customJson = [
+        {
+          'id': 'my_custom_123',
+          'title': 'Offline Roadtrip',
+          'description': 'Saved for offline',
+          'ownerName': 'TestListener',
+          'source': 'Spotify',
+          'tracks': [
+            {
+              'id': 'tr_x',
+              'title': 'Fast Car',
+              'artist': 'Luke Combs',
+              'album': 'Gettin\' Old',
+              'durationMs': 265000,
+              'artworkUri': null,
+            }
+          ]
+        }
+      ];
+
+      SharedPreferences.setMockInitialValues({
+        'symphony_user_playlists': jsonEncode(customJson),
+      });
+
+      final notifier = ImportedPlaylistsNotifier();
+      // Allow async _initAndLoad to execute
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      final state = notifier.state;
+      expect(state.any((p) => p.id == 'my_custom_123'), isTrue);
+      final restored = state.firstWhere((p) => p.id == 'my_custom_123');
+      expect(restored.title, equals('Offline Roadtrip'));
+      expect(restored.ownerName, equals('TestListener'));
+      expect(restored.tracks.first.title, equals('Fast Car'));
     });
   });
 }

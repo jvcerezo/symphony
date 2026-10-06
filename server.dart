@@ -464,9 +464,6 @@ Future<void> _handleRequest(HttpRequest request, Directory webDir) async {
     request.response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
     request.response.headers.set('Pragma', 'no-cache');
     request.response.headers.set('Expires', '0');
-    if (filePath.endsWith('.html')) {
-      request.response.headers.set('Clear-Site-Data', '"cache"');
-    }
     if (request.method == 'HEAD') {
       await request.response.close();
       return;
@@ -480,7 +477,6 @@ Future<void> _handleRequest(HttpRequest request, Directory webDir) async {
       request.response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
       request.response.headers.set('Pragma', 'no-cache');
       request.response.headers.set('Expires', '0');
-      request.response.headers.set('Clear-Site-Data', '"cache"');
       await indexFile.openRead().pipe(request.response);
     } else {
       request.response.statusCode = HttpStatus.notFound;
@@ -1305,7 +1301,53 @@ void _batchDownloadTracks(List<dynamic> tracks) async {
 
 Future<void> _handlePlaylists(HttpRequest request) async {
   request.response.headers.contentType = ContentType.json;
-  request.response.write('[]');
+  final instanceId = request.uri.queryParameters['instanceId']?.replaceAll(RegExp(r'[^a-zA-Z0-9_\-]'), '') ?? '';
+
+  if (instanceId.isEmpty) {
+    request.response.statusCode = HttpStatus.badRequest;
+    request.response.write(jsonEncode({'error': 'Missing instanceId parameter'}));
+    await request.response.close();
+    return;
+  }
+
+  final userDir = Directory('${_cacheDir.path}/user_playlists');
+  if (!await userDir.exists()) {
+    await userDir.create(recursive: true);
+  }
+  final userFile = File('${userDir.path}/$instanceId.json');
+
+  if (request.method == 'GET') {
+    if (await userFile.exists()) {
+      final content = await userFile.readAsString();
+      request.response.write(content);
+    } else {
+      request.response.write('[]');
+    }
+    await request.response.close();
+    return;
+  }
+
+  if (request.method == 'POST') {
+    try {
+      final body = await utf8.decodeStream(request);
+      final decoded = jsonDecode(body);
+      if (decoded is List) {
+        await userFile.writeAsString(jsonEncode(decoded));
+        request.response.statusCode = HttpStatus.ok;
+        request.response.write(jsonEncode({'success': true, 'count': decoded.length}));
+      } else {
+        request.response.statusCode = HttpStatus.badRequest;
+        request.response.write(jsonEncode({'error': 'Expected JSON array'}));
+      }
+    } catch (e) {
+      request.response.statusCode = HttpStatus.badRequest;
+      request.response.write(jsonEncode({'error': e.toString()}));
+    }
+    await request.response.close();
+    return;
+  }
+
+  request.response.statusCode = HttpStatus.methodNotAllowed;
   await request.response.close();
 }
 
@@ -1425,6 +1467,27 @@ Future<void> _handleSpotifyPlaylist(HttpRequest request) async {
       'ownerName': ownerName,
       'tracks': tracks,
     };
+
+    final instanceId = request.uri.queryParameters['instanceId']?.replaceAll(RegExp(r'[^a-zA-Z0-9_\-]'), '');
+    if (instanceId != null && instanceId.isNotEmpty) {
+      try {
+        final userDir = Directory('${_cacheDir.path}/user_playlists');
+        if (!await userDir.exists()) await userDir.create(recursive: true);
+        final userFile = File('${userDir.path}/$instanceId.json');
+        List<dynamic> existing = [];
+        if (await userFile.exists()) {
+          try {
+            existing = jsonDecode(await userFile.readAsString()) as List<dynamic>;
+          } catch (_) {}
+        }
+        existing.removeWhere((p) => p is Map && p['id'] == playlistId);
+        existing.insert(0, responsePayload);
+        await userFile.writeAsString(jsonEncode(existing));
+        print('Saved playlist "$title" to user instance storage ($instanceId)');
+      } catch (e) {
+        print('Error saving to user instance file: $e');
+      }
+    }
 
     request.response.headers.contentType = ContentType.json;
     request.response.write(jsonEncode(responsePayload));

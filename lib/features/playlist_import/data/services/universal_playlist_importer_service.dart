@@ -51,7 +51,7 @@ class UniversalPlaylistImporterService {
   }
 
   /// Imports a playlist from any supported platform (Spotify, YouTube, Deezer, Apple Music, or Smart Mix).
-  Future<SpotifyPlaylist> importPlaylist(String input) async {
+  Future<SpotifyPlaylist> importPlaylist(String input, {String? instanceId}) async {
     final trimmed = input.trim();
     if (trimmed.isEmpty) {
       throw const FormatException('Please enter a valid playlist link or search query.');
@@ -62,7 +62,7 @@ class UniversalPlaylistImporterService {
 
     switch (type) {
       case PlaylistSourceType.spotify:
-        return _spotifyScraper.importPlaylist(trimmed);
+        return _spotifyScraper.importPlaylist(trimmed, instanceId: instanceId);
       case PlaylistSourceType.deezer:
         return _importDeezer(trimmed);
       case PlaylistSourceType.appleMusic:
