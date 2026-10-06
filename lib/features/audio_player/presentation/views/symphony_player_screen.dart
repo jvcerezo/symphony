@@ -22,7 +22,8 @@ import '../widgets/sidebar_nav.dart';
 import '../widgets/spotify_track_row.dart';
 
 class SymphonyPlayerScreen extends ConsumerStatefulWidget {
-  const SymphonyPlayerScreen({super.key});
+  final bool isWebDemoMode;
+  const SymphonyPlayerScreen({super.key, this.isWebDemoMode = false});
 
   @override
   ConsumerState<SymphonyPlayerScreen> createState() => _SymphonyPlayerScreenState();
@@ -718,7 +719,25 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const NavHistoryControls(),
+                Row(
+                  children: [
+                    if (Navigator.of(context).canPop())
+                      Padding(
+                        padding: const EdgeInsets.only(right: 12.0),
+                        child: OutlinedButton.icon(
+                          onPressed: () => Navigator.of(context).pop(),
+                          icon: const Icon(Icons.arrow_back_rounded, size: 14, color: Colors.white70),
+                          label: const Text('Showcase & Downloads', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: Color(0xFF3F3F46)),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                          ),
+                        ),
+                      ),
+                    const NavHistoryControls(),
+                  ],
+                ),
                 Row(
                   children: [
                     _buildPersonalizeButton(personalization, accent),
@@ -734,6 +753,17 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
               children: [
                 Row(
                   children: [
+                    if (Navigator.of(context).canPop())
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8.0),
+                        child: IconButton(
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          icon: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 20),
+                          onPressed: () => Navigator.of(context).pop(),
+                          tooltip: 'Back to Showcase',
+                        ),
+                      ),
                     const SymphonyBrandLogo(size: 32),
                     const SizedBox(width: 10),
                     Text(
