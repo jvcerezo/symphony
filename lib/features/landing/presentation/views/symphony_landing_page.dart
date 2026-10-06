@@ -1,6 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/services/app_update_service.dart';
 import '../../../../core/widgets/symphony_brand_logo.dart';
 import '../../../audio_player/presentation/views/symphony_player_screen.dart';
@@ -12,14 +12,11 @@ class SymphonyLandingPage extends ConsumerWidget {
 
   static const String repoUrl = 'https://github.com/jvcerezo/symphony';
   static const String portfolioUrl = 'https://jettimothycerezo.dev';
-  static const String fallbackWindowsUrl = 'https://github.com/jvcerezo/symphony/releases/download/latest/symphony-windows-x64.zip';
+  static const String fallbackWindowsUrl = 'https://github.com/jvcerezo/symphony/releases';
   static const String fallbackAndroidUrl = 'https://github.com/jvcerezo/symphony/releases/download/latest/symphony.apk';
 
-  Future<void> _openExternal(String url) async {
-    final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
+  static void _openExternal(String url) {
+    AppUpdateNotifier.openUrl(url);
   }
 
   void _launchWebPlayer(BuildContext context) {
@@ -38,8 +35,10 @@ class SymphonyLandingPage extends ConsumerWidget {
     final updateState = ref.watch(appUpdateProvider);
     final latestRelease = updateState.latestRelease;
     final versionTag = latestRelease?.tagName ?? 'v1.0.0';
+    final hasDirectWindowsAsset = latestRelease?.windowsDownloadUrl != null;
     final winDownloadUrl = latestRelease?.windowsDownloadUrl ?? fallbackWindowsUrl;
-    final apkDownloadUrl = latestRelease?.androidDownloadUrl ?? fallbackAndroidUrl;
+    final apkDownloadUrl = latestRelease?.androidDownloadUrl ??
+        (kIsWeb ? '/symphony.apk' : fallbackAndroidUrl);
 
     final screenWidth = MediaQuery.of(context).size.width;
     final isDesktop = screenWidth >= 860;
@@ -69,6 +68,7 @@ class SymphonyLandingPage extends ConsumerWidget {
                       context,
                       isDesktop,
                       versionTag,
+                      hasDirectWindowsAsset,
                       winDownloadUrl,
                       apkDownloadUrl,
                     ),
@@ -79,6 +79,7 @@ class SymphonyLandingPage extends ConsumerWidget {
                     _buildDistributionGrid(
                       context,
                       isDesktop,
+                      hasDirectWindowsAsset,
                       winDownloadUrl,
                       apkDownloadUrl,
                       versionTag,
@@ -184,6 +185,7 @@ class SymphonyLandingPage extends ConsumerWidget {
     BuildContext context,
     bool isDesktop,
     String versionTag,
+    bool hasDirectWindowsAsset,
     String winDownloadUrl,
     String apkDownloadUrl,
   ) {
@@ -250,7 +252,9 @@ class SymphonyLandingPage extends ConsumerWidget {
             ElevatedButton.icon(
               onPressed: () => _openExternal(winDownloadUrl),
               icon: const Icon(Icons.desktop_windows_rounded, size: 18),
-              label: Text('Download for Windows ($versionTag)'),
+              label: Text(hasDirectWindowsAsset
+                  ? 'Download for Windows ($versionTag)'
+                  : 'Windows App (GitHub Releases)'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.white,
                 foregroundColor: Colors.black,
@@ -290,6 +294,7 @@ class SymphonyLandingPage extends ConsumerWidget {
   Widget _buildDistributionGrid(
     BuildContext context,
     bool isDesktop,
+    bool hasDirectWindowsAsset,
     String winDownloadUrl,
     String apkDownloadUrl,
     String versionTag,
@@ -320,11 +325,11 @@ class SymphonyLandingPage extends ConsumerWidget {
                   width: cardWidth,
                   icon: Icons.desktop_windows_rounded,
                   title: 'Windows Desktop',
-                  badge: 'Recommended',
+                  badge: hasDirectWindowsAsset ? 'Portable .zip' : 'GitHub Releases',
                   spec: 'Windows 10 / 11 • 64-bit',
                   description:
                       'Full client-side stream resolution, hardware media keys, system tray, and unlimited local hard drive audio caching.',
-                  buttonText: 'Download .zip',
+                  buttonText: hasDirectWindowsAsset ? 'Download .zip' : 'View on GitHub',
                   isPrimary: true,
                   onTap: () => _openExternal(winDownloadUrl),
                 ),

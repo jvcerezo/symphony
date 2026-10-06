@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:developer' as developer;
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
@@ -190,10 +191,15 @@ class AppUpdateNotifier extends StateNotifier<AppUpdateState> {
 
   static Future<bool> openUrl(String url) async {
     try {
-      final uri = Uri.parse(url);
-      if (await canLaunchUrl(uri)) {
-        return await launchUrl(uri, mode: LaunchMode.externalApplication);
+      Uri uri = Uri.parse(url);
+      if (!uri.hasScheme && kIsWeb) {
+        uri = Uri.base.resolve(url);
       }
+      return await launchUrl(
+        uri,
+        mode: LaunchMode.platformDefault,
+        webOnlyWindowName: '_blank',
+      );
     } catch (e) {
       developer.log('Failed to launch URL: $url ($e)', name: 'AppUpdateService');
     }
