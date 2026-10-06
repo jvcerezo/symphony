@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/symphony_theme.dart';
+import '../../../../core/widgets/symphony_brand_logo.dart';
 import '../../../audio_player/presentation/controllers/audio_player_providers.dart';
 import '../controllers/personalization_provider.dart';
 
@@ -61,31 +62,37 @@ class _PersonalizationDialogState extends ConsumerState<PersonalizationDialog> {
               // Header
               Row(
                 children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: accent.primary,
-                      boxShadow: [
-                        BoxShadow(
-                          color: accent.primary.withOpacity(0.35),
-                          blurRadius: 10,
-                          offset: const Offset(0, 3),
+                  enteredName.isEmpty
+                      ? SymphonyBrandLogo(
+                          size: 48,
+                          glowColor: accent.primary,
+                          showGlow: true,
+                        )
+                      : Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: accent.primary,
+                            boxShadow: [
+                              BoxShadow(
+                                color: accent.primary.withOpacity(0.35),
+                                blurRadius: 10,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                          child: Center(
+                            child: Text(
+                              initial,
+                              style: const TextStyle(
+                                color: Colors.black,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 22,
+                              ),
+                            ),
+                          ),
                         ),
-                      ],
-                    ),
-                    child: Center(
-                      child: Text(
-                        initial,
-                        style: const TextStyle(
-                          color: Colors.black,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 22,
-                        ),
-                      ),
-                    ),
-                  ),
                   const SizedBox(width: 16),
                   Expanded(
                     child: Column(

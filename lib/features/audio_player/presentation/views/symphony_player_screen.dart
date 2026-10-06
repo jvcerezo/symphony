@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/curated_playlists.dart';
 import '../../../../core/theme/symphony_theme.dart';
+import '../../../../core/widgets/symphony_brand_logo.dart';
 import '../../../metadata_search/presentation/views/search_view.dart';
 import '../../../playlist_import/domain/entities/spotify_playlist.dart';
 import '../../../settings/presentation/controllers/personalization_provider.dart';
@@ -728,16 +729,10 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
               children: [
                 Row(
                   children: [
-                    Container(
-                      width: 32,
-                      height: 32,
-                      decoration: BoxDecoration(
-                        gradient: accent.gradient,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Center(
-                        child: Icon(Icons.graphic_eq_rounded, color: Colors.black, size: 20),
-                      ),
+                    SymphonyBrandLogo(
+                      size: 32,
+                      glowColor: accent.primary,
+                      showGlow: true,
                     ),
                     const SizedBox(width: 10),
                     Text(

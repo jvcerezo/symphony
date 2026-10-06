@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/symphony_theme.dart';
+import '../../../../core/widgets/symphony_brand_logo.dart';
 import '../../../settings/presentation/controllers/personalization_provider.dart';
 import '../../../settings/presentation/widgets/personalization_dialog.dart';
 import '../controllers/audio_player_providers.dart';
@@ -66,90 +67,21 @@ class _SidebarNavState extends ConsumerState<SidebarNav> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Symphony Personalized Brand Header
+                // Symphony Personalized Brand Header with Official Logo
                 Padding(
                   padding: const EdgeInsets.only(left: 2.0, top: 4.0, bottom: 16.0),
-                  child: InkWell(
+                  child: SymphonyBrandHeader(
+                    title: personalization.displayTitle,
+                    subtitle: personalization.userName.isNotEmpty
+                        ? personalization.userName
+                        : 'Offline Music Engine',
+                    accent: accent,
                     onTap: () {
                       showDialog(
                         context: context,
                         builder: (_) => const PersonalizationDialog(),
                       );
                     },
-                    borderRadius: BorderRadius.circular(8),
-                    child: Padding(
-                      padding: const EdgeInsets.all(4.0),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 32,
-                            height: 32,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(8),
-                              gradient: accent.gradient,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: accent.primary.withOpacity(0.35),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            child: Center(
-                              child: Text(
-                                personalization.userName.isNotEmpty
-                                    ? personalization.userName[0].toUpperCase()
-                                    : 'S',
-                                style: const TextStyle(
-                                  color: Colors.black,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  personalization.displayTitle.toUpperCase(),
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w900,
-                                    letterSpacing: 1.2,
-                                    color: Colors.white,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                if (personalization.userName.isNotEmpty)
-                                  Text(
-                                    personalization.userName,
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: accent.primary,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                              ],
-                            ),
-                          ),
-                          Tooltip(
-                            message: 'Personalize app',
-                            child: Icon(
-                              Icons.edit_outlined,
-                              size: 14,
-                              color: SymphonyTheme.textMuted.withOpacity(0.8),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
                   ),
                 ),
 

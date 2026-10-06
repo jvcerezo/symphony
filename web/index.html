@@ -1,30 +1,29 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <!--
-    If you are serving your web app in a path other than the root, change the
-    href value below to reflect the base path you are serving from.
-
-    The path provided below has to start and end with a slash "/" in order for
-    it to work correctly.
-
-    For more details:
-    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
-
-    This is a placeholder for base href that will be replaced by the value of
-    the `--base-href` argument provided to `flutter build`.
-  -->
   <base href="$FLUTTER_BASE_HREF">
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="description" content="Symphony – Pure, private, offline-first music streaming and playlist hub with instant playback and zero ads.">
+  <meta name="theme-color" content="#0A0A0C">
+
+  <!-- OpenGraph / Social Sharing -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Symphony — Pure Offline Music">
+  <meta property="og:description" content="Pure, private, offline-first music streaming and universal playlist hub.">
+  <meta property="og:image" content="icons/symphony_og_banner.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Symphony — Pure Offline Music">
+  <meta name="twitter:description" content="Pure, private, offline-first music streaming and universal playlist hub.">
+  <meta name="twitter:image" content="icons/symphony_og_banner.jpg">
 
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
 
-  <!-- Service Worker Buster -->
+  <!-- Service Worker Management -->
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.getRegistrations().then(function(registrations) {
@@ -42,19 +41,96 @@
     }
   </script>
 
-  <!-- iOS meta tags & icons -->
+  <!-- iOS PWA Meta Tags -->
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="symphony">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Symphony">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
-  <!-- Favicon -->
-  <link rel="icon" type="image/png" href="favicon.png"/>
+  <!-- Favicon Icons -->
+  <link rel="icon" type="image/svg+xml" href="icons/symphony_logo.svg">
+  <link rel="alternate icon" type="image/png" href="favicon.png">
 
-  <title>symphony</title>
+  <title>Symphony — Pure Offline Music</title>
   <link rel="manifest" href="manifest.json">
+
+  <!-- Minimalist Symphony Ambient Splash Screen Styles -->
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #0A0A0C;
+      color: #FFFFFF;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      overflow: hidden;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      width: 100vw;
+    }
+    #symphony-loader {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      transition: opacity 0.4s ease-out;
+    }
+    .symphony-logo-wrapper {
+      position: relative;
+      width: 96px;
+      height: 96px;
+      border-radius: 24px;
+      overflow: hidden;
+      box-shadow: 0 12px 40px rgba(139, 92, 246, 0.35);
+      animation: pulseGlow 2.4s infinite ease-in-out;
+    }
+    .symphony-logo-img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .symphony-title {
+      margin-top: 20px;
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: 2px;
+      color: #FFFFFF;
+      text-transform: uppercase;
+      opacity: 0.95;
+    }
+    .symphony-subtitle {
+      margin-top: 6px;
+      font-size: 11px;
+      color: #A78BFA;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+    @keyframes pulseGlow {
+      0%, 100% {
+        transform: scale(1);
+        box-shadow: 0 12px 35px rgba(139, 92, 246, 0.3);
+      }
+      50% {
+        transform: scale(1.03);
+        box-shadow: 0 16px 50px rgba(139, 92, 246, 0.55), 0 0 30px rgba(99, 102, 241, 0.4);
+      }
+    }
+  </style>
 </head>
 <body>
-  <script src="flutter_bootstrap.js?v=2" async></script>
+  <!-- Initial Ambient Splash (Fades when Flutter initializes) -->
+  <div id="symphony-loader">
+    <div class="symphony-logo-wrapper">
+      <img src="icons/Icon-192.png" alt="Symphony" class="symphony-logo-img">
+    </div>
+    <div class="symphony-title">Symphony</div>
+    <div class="symphony-subtitle">Pure Offline Music</div>
+  </div>
+
+  <script src="flutter_bootstrap.js?v=3" async></script>
 </body>
 </html>

@@ -1,13 +1,14 @@
 {
-    "name": "symphony",
-    "short_name": "symphony",
+    "name": "Symphony Music",
+    "short_name": "Symphony",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
-    "orientation": "portrait-primary",
+    "background_color": "#0A0A0C",
+    "theme_color": "#8B5CF6",
+    "description": "Pure, high-fidelity offline music player and playlist hub.",
+    "orientation": "any",
     "prefer_related_applications": false,
+    "categories": ["music", "entertainment", "audio"],
     "icons": [
         {
             "src": "icons/Icon-192.png",
@@ -30,6 +31,11 @@
             "sizes": "512x512",
             "type": "image/png",
             "purpose": "maskable"
+        },
+        {
+            "src": "icons/symphony_logo.svg",
+            "sizes": "any",
+            "type": "image/svg+xml"
         }
     ]
 }
