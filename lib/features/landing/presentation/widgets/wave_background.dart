@@ -1,15 +1,15 @@
 import 'dart:math' as math;
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-/// Architectural animated wave background for Symphony landing page.
+/// Architectural soundwave audio visualizer background for Symphony.
 /// 
-/// Features:
-/// - Multi-layered harmonic audio waves with fluid bezier ribbon curves.
-/// - Atmospheric ambient top spotlight / radial glow.
-/// - Architectural frequency guides & subtle crest energy nodes.
-/// - Interactive mouse-following wave modulation on web/desktop.
-/// - Ultra-efficient CustomPainter with zero widget rebuild thrash.
+/// Authentically models audio waveforms:
+/// - Mirrored audio waveform envelope & vertical spectrum equalizer ribs.
+/// - High-precision oscilloscope carrier traces (L & R stereo channels + treble transients).
+/// - 0 dB datum audio reference axis with measurement ticks.
+/// - Frequency peak energy nodes with drop guidelines.
+/// - 100% mathematically flawless infinite loop (strictly integer harmonic multipliers).
+/// - Smooth interactive mouse modulation (modulates audio gain/amplitude).
 class WaveBackground extends StatefulWidget {
   final bool interactive;
   final double speedMultiplier;
@@ -33,9 +33,10 @@ class _WaveBackgroundState extends State<WaveBackground>
   @override
   void initState() {
     super.initState();
+    // 8-second cycle for a natural, rhythmic acoustic audio respiration
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 10),
+      duration: const Duration(seconds: 8),
     )..repeat();
   }
 
@@ -78,14 +79,14 @@ class _WaveBackgroundState extends State<WaveBackground>
                 // Smooth pointer interpolation towards target
                 final target = _pointerPos ?? const Offset(0.5, 0.5);
                 _smoothedPointer = Offset(
-                  _smoothedPointer.dx + (target.dx - _smoothedPointer.dx) * 0.05,
-                  _smoothedPointer.dy + (target.dy - _smoothedPointer.dy) * 0.05,
+                  _smoothedPointer.dx + (target.dx - _smoothedPointer.dx) * 0.06,
+                  _smoothedPointer.dy + (target.dy - _smoothedPointer.dy) * 0.06,
                 );
 
                 return CustomPaint(
                   size: Size.infinite,
-                  painter: WaveBackgroundPainter(
-                    progress: _controller.value * widget.speedMultiplier,
+                  painter: SoundwaveBackgroundPainter(
+                    progress: _controller.value,
                     mouseFactor: _smoothedPointer,
                     isInteractiveActive: _pointerPos != null,
                   ),
@@ -99,13 +100,14 @@ class _WaveBackgroundState extends State<WaveBackground>
   }
 }
 
-/// Scalable CustomPainter rendering generative audio waves and architectural lighting.
-class WaveBackgroundPainter extends CustomPainter {
+/// Scalable CustomPainter rendering authentic oscilloscope sound waves and spectrum fields.
+class SoundwaveBackgroundPainter extends CustomPainter {
+  /// Progress normalized in [0.0, 1.0]
   final double progress;
   final Offset mouseFactor;
   final bool isInteractiveActive;
 
-  WaveBackgroundPainter({
+  SoundwaveBackgroundPainter({
     required this.progress,
     required this.mouseFactor,
     required this.isInteractiveActive,
@@ -117,247 +119,290 @@ class WaveBackgroundPainter extends CustomPainter {
     final h = size.height;
     if (w <= 0 || h <= 0) return;
 
-    // 1. Base Dark Canvas
+    // 1. Deep Obsidian Studio Canvas
     final baseBgPaint = Paint()..color = const Color(0xFF0A0A0A);
     canvas.drawRect(Rect.fromLTWH(0, 0, w, h), baseBgPaint);
 
-    // 2. Architectural Ambient Top Spotlight (Hero Radial Light)
-    _drawAmbientSpotlight(canvas, size);
+    // 2. Sound Pressure Radial Glow (Centered behind hero acoustic epicenter)
+    _drawSoundPressureGlow(canvas, size);
 
-    // 3. Subtle Architectural Frequency Guidelines (Muted Audio Grid)
-    _drawFrequencyGrid(canvas, size);
+    // Timeline angle T = 2 * pi * progress.
+    // Every time term in every wave equation is strictly (k * T) where k is an INTEGER.
+    // This guarantees mathematical C-infinity seamless looping at progress = 0.0 and 1.0.
+    final t = progress * 2.0 * math.pi;
 
-    // 4. Layered Harmonic Wave Ribbons
-    _drawLayeredWaves(canvas, size);
+    // Responsive primary soundwave datum baseline (around 38% - 44% of viewport height)
+    final primaryY = math.min(math.max(h * 0.40, 260.0), 420.0);
+
+    // Interactive mouse modulation on audio amplitude gain
+    final mouseGain = isInteractiveActive
+        ? 1.0 + (0.5 - (mouseFactor.dy - 0.5).abs()) * 0.4
+        : 1.0;
+    final mousePitchShift = isInteractiveActive ? (mouseFactor.dy - 0.5) * 28.0 : 0.0;
+
+    final centerY = primaryY + mousePitchShift;
+
+    // 3. Central 0 dB Datum Reference Line & Acoustic Axis Ticks
+    _drawAudioReferenceAxis(canvas, size, centerY);
+
+    // 4. Vertical Audio Equalizer / Waveform Spectrum Field (Soundwave Bars)
+    _drawSpectrumWaveBars(canvas, size, centerY, t, mouseGain);
+
+    // 5. Mirrored Soundwave Envelope Fill (Stereo DAW Profile)
+    _drawMirroredEnvelopeFill(canvas, size, centerY, t, mouseGain);
+
+    // 6. High-Precision Oscilloscope Audio Ribbon Traces
+    _drawOscilloscopeTraces(canvas, size, centerY, t, mouseGain);
+
+    // 7. Secondary Ambient Sub-Bass Wave (Lower Page Depth)
+    final secondaryY = math.max(h * 0.78, centerY + 280.0);
+    if (secondaryY < h + 100) {
+      _drawSubBassWave(canvas, size, secondaryY, t);
+    }
   }
 
-  void _drawAmbientSpotlight(Canvas canvas, Size size) {
+  void _drawSoundPressureGlow(Canvas canvas, Size size) {
     final w = size.width;
     final h = size.height;
 
-    // Dynamic light anchor slightly reacting to mouse
-    final lightCenterX = w * (0.5 + (mouseFactor.dx - 0.5) * 0.1);
-    final lightCenterY = math.min(h * 0.22, 280.0);
-    final radius = math.max(w * 0.55, 360.0);
+    final glowCenterX = w * (0.5 + (mouseFactor.dx - 0.5) * 0.12);
+    final glowCenterY = math.min(h * 0.35, 340.0);
+    final glowRadius = math.max(w * 0.55, 420.0);
 
-    final spotlightPaint = Paint()
+    final glowPaint = Paint()
       ..shader = RadialGradient(
         center: Alignment.center,
         radius: 1.0,
         colors: [
-          const Color(0xFFFFFFFF).withOpacity(0.045),
-          const Color(0xFF27272A).withOpacity(0.025),
-          const Color(0xFF18181B).withOpacity(0.01),
+          const Color(0xFFFFFFFF).withOpacity(0.04),
+          const Color(0xFF27272A).withOpacity(0.02),
+          const Color(0xFF141416).withOpacity(0.01),
           Colors.transparent,
         ],
         stops: const [0.0, 0.35, 0.7, 1.0],
       ).createShader(
         Rect.fromCircle(
-          center: Offset(lightCenterX, lightCenterY),
-          radius: radius,
+          center: Offset(glowCenterX, glowCenterY),
+          radius: glowRadius,
         ),
       );
 
-    canvas.drawCircle(Offset(lightCenterX, lightCenterY), radius, spotlightPaint);
+    canvas.drawCircle(Offset(glowCenterX, glowCenterY), glowRadius, glowPaint);
   }
 
-  void _drawFrequencyGrid(Canvas canvas, Size size) {
+  void _drawAudioReferenceAxis(Canvas canvas, Size size, double centerY) {
     final w = size.width;
-    final h = size.height;
 
-    final gridPaint = Paint()
-      ..color = const Color(0xFF27272A).withOpacity(0.12)
+    // Continuous 0 dB datum hairline with soft horizontal vignette
+    final axisPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0
+      ..shader = LinearGradient(
+        colors: [
+          Colors.transparent,
+          const Color(0xFF27272A).withOpacity(0.25),
+          const Color(0xFF71717A).withOpacity(0.4),
+          const Color(0xFF27272A).withOpacity(0.25),
+          Colors.transparent,
+        ],
+        stops: const [0.0, 0.15, 0.5, 0.85, 1.0],
+      ).createShader(Rect.fromLTWH(0, centerY, w, 1));
+
+    canvas.drawLine(Offset(0, centerY), Offset(w, centerY), axisPaint);
+
+    // Audio frequency division tick marks along datum axis
+    final tickPaint = Paint()
+      ..color = const Color(0xFF3F3F46).withOpacity(0.25)
       ..strokeWidth = 1.0;
 
-    // Vertical subtle measurement lines
-    const lineCount = 8;
-    for (int i = 1; i < lineCount; i++) {
-      final x = w * (i / lineCount);
-      canvas.drawLine(
-        Offset(x, 0),
-        Offset(x, h * 0.65),
-        gridPaint,
+    const divisions = 16;
+    for (int i = 1; i < divisions; i++) {
+      final x = w * (i / divisions);
+      canvas.drawLine(Offset(x, centerY - 4), Offset(x, centerY + 4), tickPaint);
+    }
+  }
+
+  /// Evaluates the audio wave amplitude at horizontal normalized coordinate u in [0.0, 1.0].
+  /// Every time term is strictly an integer multiplier of t (t = 2 * pi * progress).
+  double _calculateAudioAmplitude(double u, double t, double mouseGain) {
+    // Spatial acoustic envelope: tapers smoothly at left and right viewport edges
+    final edgeWindow = math.sin(u * math.pi); // 0 at edges, 1 at center
+    final envelope = edgeWindow * (0.65 + 0.35 * math.sin(2.0 * math.pi * 2.0 * u - 1.0 * t));
+
+    // Acoustic harmonics:
+    // Fundamental (2 cycles, speed 1)
+    final h1 = math.sin(2.0 * math.pi * 2.0 * u + 1.0 * t);
+    // Mid harmonic (5 cycles, speed -2)
+    final h2 = 0.50 * math.sin(2.0 * math.pi * 5.0 * u - 2.0 * t + 1.2);
+    // Treble acoustic transient (12 cycles, speed 3)
+    final h3 = 0.28 * math.sin(2.0 * math.pi * 12.0 * u + 3.0 * t + 2.4);
+    // Acoustic micro-flutter (24 cycles, speed -4)
+    final h4 = 0.12 * math.sin(2.0 * math.pi * 24.0 * u - 4.0 * t + 0.8);
+
+    final rawSignal = h1 + h2 + h3 + h4;
+    return rawSignal * envelope * mouseGain;
+  }
+
+  void _drawSpectrumWaveBars(
+    Canvas canvas,
+    Size size,
+    double centerY,
+    double t,
+    double mouseGain,
+  ) {
+    final w = size.width;
+    const barSpacing = 7.0;
+    const barWidth = 2.0;
+    final barCount = (w / barSpacing).floor();
+
+    final barPaint = Paint()
+      ..style = PaintingStyle.fill
+      ..strokeCap = StrokeCap.round;
+
+    final maxBarHeight = math.min(size.height * 0.18, 95.0);
+
+    for (int i = 0; i <= barCount; i++) {
+      final x = i * barSpacing;
+      final u = (x / w).clamp(0.0, 1.0);
+
+      final signal = _calculateAudioAmplitude(u, t, mouseGain);
+      final rawHeight = (signal.abs() * maxBarHeight).clamp(2.0, maxBarHeight);
+
+      // Gradient color: peak is crisp light zinc, baseline fades to dark
+      final alpha = (0.05 + 0.22 * (rawHeight / maxBarHeight)).clamp(0.0, 1.0);
+      barPaint.color = Colors.white.withOpacity(alpha);
+
+      // Draw vertical audio bar symmetrically across datum axis
+      final top = centerY - rawHeight;
+      final bottom = centerY + rawHeight;
+      final rect = RRect.fromRectAndRadius(
+        Rect.fromLTRB(x - barWidth / 2, top, x + barWidth / 2, bottom),
+        const Radius.circular(1.0),
       );
+      canvas.drawRRect(rect, barPaint);
     }
   }
 
-  void _drawLayeredWaves(Canvas canvas, Size size) {
+  void _drawMirroredEnvelopeFill(
+    Canvas canvas,
+    Size size,
+    double centerY,
+    double t,
+    double mouseGain,
+  ) {
     final w = size.width;
-    final h = size.height;
+    final maxAmp = math.min(size.height * 0.20, 105.0);
 
-    // Base timeline oscillation
-    final t = progress * 2.0 * math.pi;
+    final topPath = Path();
+    final bottomPath = Path();
 
-    // Responsive wave center baseline: sits around 48% to 65% of screen height
-    final baseY = math.max(h * 0.50, 320.0);
+    topPath.moveTo(0, centerY);
+    bottomPath.moveTo(0, centerY);
 
-    // Interactive mouse influence on wave amplitude & phase
-    final mouseModulation = isInteractiveActive
-        ? (math.sin((mouseFactor.dx * 2 - 1) * math.pi) * 16.0)
-        : 0.0;
-    final mousePitch = isInteractiveActive ? (mouseFactor.dy - 0.5) * 35.0 : 0.0;
-
-    // ==========================================
-    // LAYER 1: Deep Atmosphere Wave (Low Freq, Back)
-    // ==========================================
-    _drawFilledWave(
-      canvas: canvas,
-      size: size,
-      baseY: baseY + 50.0 + mousePitch,
-      primaryAmp: 38.0 + mouseModulation * 0.5,
-      secondaryAmp: 22.0,
-      wavelength1: w * 0.95,
-      wavelength2: w * 0.48,
-      phase1: t * 0.7,
-      phase2: -t * 0.5 + 1.2,
-      topColor: const Color(0xFF1A1A1E).withOpacity(0.35),
-      bottomColor: const Color(0xFF0A0A0A).withOpacity(0.0),
-    );
-
-    // ==========================================
-    // LAYER 2: Harmonic Mid-Tone Wave
-    // ==========================================
-    _drawFilledWave(
-      canvas: canvas,
-      size: size,
-      baseY: baseY + 15.0 + mousePitch * 0.8,
-      primaryAmp: 48.0 + mouseModulation * 0.8,
-      secondaryAmp: 26.0,
-      wavelength1: w * 0.75,
-      wavelength2: w * 0.38,
-      phase1: -t * 0.9 + 2.0,
-      phase2: t * 0.6 + 0.5,
-      topColor: const Color(0xFF27272A).withOpacity(0.24),
-      bottomColor: Colors.transparent,
-    );
-
-    // ==========================================
-    // LAYER 3: Kinetic Audio Ribbon (Foreground Glow)
-    // ==========================================
-    _drawGlowingWaveRibbon(
-      canvas: canvas,
-      size: size,
-      baseY: baseY - 20.0 + mousePitch * 0.6,
-      primaryAmp: 56.0 + mouseModulation,
-      secondaryAmp: 30.0,
-      wavelength1: w * 0.65,
-      wavelength2: w * 0.32,
-      phase1: t * 1.1 + 0.8,
-      phase2: -t * 0.8 + 2.4,
-    );
-
-    // ==========================================
-    // LAYER 4: Secondary Subtle Counter-Wave Ribbon
-    // ==========================================
-    _drawAccentWaveRibbon(
-      canvas: canvas,
-      size: size,
-      baseY: baseY - 60.0 + mousePitch * 0.4,
-      primaryAmp: 36.0 - mouseModulation * 0.4,
-      secondaryAmp: 18.0,
-      wavelength1: w * 0.82,
-      wavelength2: w * 0.42,
-      phase1: -t * 0.75 + 1.5,
-      phase2: t * 0.85 + 3.1,
-    );
-  }
-
-  void _drawFilledWave({
-    required Canvas canvas,
-    required Size size,
-    required double baseY,
-    required double primaryAmp,
-    required double secondaryAmp,
-    required double wavelength1,
-    required double wavelength2,
-    required double phase1,
-    required double phase2,
-    required Color topColor,
-    required Color bottomColor,
-  }) {
-    final w = size.width;
-    final h = size.height;
-
-    final path = Path();
-    path.moveTo(0, h);
-
-    // Generate smooth wave line
-    const step = 8.0;
+    const step = 6.0;
     for (double x = 0; x <= w + step; x += step) {
-      final y = baseY +
-          primaryAmp * math.sin((x / wavelength1) * 2 * math.pi + phase1) +
-          secondaryAmp * math.cos((x / wavelength2) * 2 * math.pi + phase2);
+      final u = (x / w).clamp(0.0, 1.0);
+      final signal = _calculateAudioAmplitude(u, t, mouseGain);
+      final amp = signal.abs() * maxAmp;
 
-      if (x == 0) {
-        path.lineTo(x, y);
-      } else {
-        path.lineTo(x, y);
-      }
+      topPath.lineTo(x, centerY - amp);
+      bottomPath.lineTo(x, centerY + amp);
     }
 
-    path.lineTo(w, h);
-    path.close();
+    topPath.lineTo(w, centerY);
+    bottomPath.lineTo(w, centerY);
 
-    final paint = Paint()
+    final fillPaint = Paint()
+      ..style = PaintingStyle.fill
       ..shader = LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
-        colors: [topColor, bottomColor],
-      ).createShader(Rect.fromLTWH(0, baseY - primaryAmp - secondaryAmp, w, h - baseY + 80));
+        colors: [
+          const Color(0xFF27272A).withOpacity(0.08),
+          Colors.transparent,
+          const Color(0xFF27272A).withOpacity(0.08),
+        ],
+        stops: const [0.0, 0.5, 1.0],
+      ).createShader(Rect.fromLTWH(0, centerY - maxAmp, w, maxAmp * 2));
 
-    canvas.drawPath(path, paint);
+    canvas.drawPath(topPath, fillPaint);
+    canvas.drawPath(bottomPath, fillPaint);
   }
 
-  void _drawGlowingWaveRibbon({
-    required Canvas canvas,
-    required Size size,
-    required double baseY,
-    required double primaryAmp,
-    required double secondaryAmp,
-    required double wavelength1,
-    required double wavelength2,
-    required double phase1,
-    required double phase2,
-  }) {
+  void _drawOscilloscopeTraces(
+    Canvas canvas,
+    Size size,
+    double centerY,
+    double t,
+    double mouseGain,
+  ) {
     final w = size.width;
-    final path = Path();
+    final maxAmp = math.min(size.height * 0.19, 100.0);
 
-    const step = 6.0;
-    final points = <Offset>[];
+    final mainPath = Path();
+    final stereoPath = Path();
+    final transientPath = Path();
+
+    const step = 4.0;
+    final crestPoints = <Offset>[];
 
     for (double x = 0; x <= w + step; x += step) {
-      final y = baseY +
-          primaryAmp * math.sin((x / wavelength1) * 2 * math.pi + phase1) +
-          secondaryAmp * math.cos((x / wavelength2) * 2 * math.pi + phase2);
+      final u = (x / w).clamp(0.0, 1.0);
+      final edgeWindow = math.sin(u * math.pi);
 
-      final pt = Offset(x, y);
-      points.add(pt);
+      // --- TRACE 1: Main Audio Carrier Wave (Lead Left Channel) ---
+      final sig1 = _calculateAudioAmplitude(u, t, mouseGain);
+      final y1 = centerY - (sig1 * maxAmp);
+
+      // --- TRACE 2: Stereo Phase-Shifted Track (Right Channel) ---
+      // Strictly integer time multipliers (t * -1, t * 2, t * -3)
+      final sig2 = edgeWindow *
+          (math.sin(2.0 * math.pi * 3.0 * u - 1.0 * t + 0.9) +
+              0.45 * math.sin(2.0 * math.pi * 7.0 * u + 2.0 * t + 1.8) +
+              0.20 * math.sin(2.0 * math.pi * 16.0 * u - 3.0 * t));
+      final y2 = centerY + (sig2 * maxAmp * 0.75 * mouseGain);
+
+      // --- TRACE 3: Treble Acoustic Flutter (High frequency vibration) ---
+      // Strictly integer time multipliers (t * 2, t * -4)
+      final sig3 = edgeWindow *
+          (0.6 * math.sin(2.0 * math.pi * 6.0 * u + 2.0 * t) +
+              0.4 * math.sin(2.0 * math.pi * 18.0 * u - 4.0 * t + 1.5));
+      final y3 = centerY - (sig3 * maxAmp * 0.5 * mouseGain);
 
       if (x == 0) {
-        path.moveTo(pt.dx, pt.dy);
+        mainPath.moveTo(x, y1);
+        stereoPath.moveTo(x, y2);
+        transientPath.moveTo(x, y3);
       } else {
-        path.lineTo(pt.dx, pt.dy);
+        mainPath.lineTo(x, y1);
+        stereoPath.lineTo(x, y2);
+        transientPath.lineTo(x, y3);
+      }
+
+      // Collect sample points for acoustic crest peak nodes
+      if (x % (w / 7).floor() < step && u > 0.1 && u < 0.9) {
+        crestPoints.add(Offset(x, y1));
       }
     }
 
-    // Pass 1: Diffuse Soft Ambient Glow
+    // 1. Trace 1 Glow pass (Soft Phosphor Bloom)
     final glowPaint = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 4.0
+      ..strokeWidth = 3.8
       ..strokeCap = StrokeCap.round
       ..shader = LinearGradient(
         colors: [
           Colors.transparent,
           const Color(0xFFFFFFFF).withOpacity(0.08),
-          const Color(0xFFFFFFFF).withOpacity(0.16),
+          const Color(0xFFFFFFFF).withOpacity(0.20),
           const Color(0xFFFFFFFF).withOpacity(0.08),
           Colors.transparent,
         ],
-        stops: const [0.0, 0.25, 0.5, 0.75, 1.0],
+        stops: const [0.0, 0.2, 0.5, 0.8, 1.0],
       ).createShader(Rect.fromLTWH(0, 0, w, size.height));
-    canvas.drawPath(path, glowPaint);
+    canvas.drawPath(mainPath, glowPaint);
 
-    // Pass 2: Crisp Ultra-Clean White/Zinc Filament
+    // 2. Trace 1 Sharp Core Filament (Solid White Oscilloscope Wire)
     final corePaint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.3
@@ -365,38 +410,93 @@ class WaveBackgroundPainter extends CustomPainter {
       ..shader = LinearGradient(
         colors: [
           Colors.transparent,
-          const Color(0xFFA1A1AA).withOpacity(0.35),
-          Colors.white.withOpacity(0.85),
-          const Color(0xFFA1A1AA).withOpacity(0.35),
+          const Color(0xFFA1A1AA).withOpacity(0.4),
+          Colors.white.withOpacity(0.95),
+          const Color(0xFFA1A1AA).withOpacity(0.4),
+          Colors.transparent,
+        ],
+        stops: const [0.0, 0.15, 0.5, 0.85, 1.0],
+      ).createShader(Rect.fromLTWH(0, 0, w, size.height));
+    canvas.drawPath(mainPath, corePaint);
+
+    // 3. Trace 2 Stereo Track (Subtle Slate Wire)
+    final stereoPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.1
+      ..strokeCap = StrokeCap.round
+      ..shader = LinearGradient(
+        colors: [
+          Colors.transparent,
+          const Color(0xFF71717A).withOpacity(0.15),
+          const Color(0xFFA1A1AA).withOpacity(0.45),
+          const Color(0xFF71717A).withOpacity(0.15),
           Colors.transparent,
         ],
         stops: const [0.0, 0.2, 0.5, 0.8, 1.0],
       ).createShader(Rect.fromLTWH(0, 0, w, size.height));
-    canvas.drawPath(path, corePaint);
+    canvas.drawPath(stereoPath, stereoPaint);
 
-    // Pass 3: Subtle Harmonic Crest Nodes (Sound Energy Beads)
-    _drawCrestNodes(canvas, points);
+    // 4. Trace 3 Treble Jitter Wire
+    final transientPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.9
+      ..strokeCap = StrokeCap.round
+      ..shader = LinearGradient(
+        colors: [
+          Colors.transparent,
+          const Color(0xFF52525B).withOpacity(0.2),
+          const Color(0xFFE4E4E7).withOpacity(0.35),
+          const Color(0xFF52525B).withOpacity(0.2),
+          Colors.transparent,
+        ],
+        stops: const [0.0, 0.25, 0.5, 0.75, 1.0],
+      ).createShader(Rect.fromLTWH(0, 0, w, size.height));
+    canvas.drawPath(transientPath, transientPaint);
+
+    // 5. Acoustic Crest Peak Nodes & Vertical Measurement Drop-Lines
+    _drawCrestNodes(canvas, crestPoints, centerY);
   }
 
-  void _drawAccentWaveRibbon({
-    required Canvas canvas,
-    required Size size,
-    required double baseY,
-    required double primaryAmp,
-    required double secondaryAmp,
-    required double wavelength1,
-    required double wavelength2,
-    required double phase1,
-    required double phase2,
-  }) {
+  void _drawCrestNodes(Canvas canvas, List<Offset> points, double centerY) {
+    if (points.isEmpty) return;
+
+    final dropLinePaint = Paint()
+      ..color = const Color(0xFF71717A).withOpacity(0.25)
+      ..strokeWidth = 1.0;
+
+    final haloPaint = Paint()
+      ..color = Colors.white.withOpacity(0.2)
+      ..style = PaintingStyle.fill;
+
+    final coreNodePaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+
+    for (final pt in points) {
+      // Hairline drop-line to 0 dB datum axis
+      canvas.drawLine(pt, Offset(pt.dx, centerY), dropLinePaint);
+
+      // Glowing peak bead
+      canvas.drawCircle(pt, 4.5, haloPaint);
+      canvas.drawCircle(pt, 1.6, coreNodePaint);
+    }
+  }
+
+  void _drawSubBassWave(Canvas canvas, Size size, double subY, double t) {
     final w = size.width;
     final path = Path();
+    const amp = 26.0;
 
     const step = 8.0;
     for (double x = 0; x <= w + step; x += step) {
-      final y = baseY +
-          primaryAmp * math.sin((x / wavelength1) * 2 * math.pi + phase1) +
-          secondaryAmp * math.cos((x / wavelength2) * 2 * math.pi + phase2);
+      final u = (x / w).clamp(0.0, 1.0);
+      final edge = math.sin(u * math.pi);
+
+      // Low frequency sub-bass harmonic (strictly integer 1 and -2 multipliers)
+      final wave = edge *
+          (math.sin(2.0 * math.pi * 1.5 * u + 1.0 * t) +
+              0.5 * math.sin(2.0 * math.pi * 3.0 * u - 2.0 * t + 1.0));
+      final y = subY + (wave * amp);
 
       if (x == 0) {
         path.moveTo(x, y);
@@ -405,50 +505,26 @@ class WaveBackgroundPainter extends CustomPainter {
       }
     }
 
-    final accentPaint = Paint()
+    final subPaint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.0
       ..strokeCap = StrokeCap.round
       ..shader = LinearGradient(
         colors: [
           Colors.transparent,
-          const Color(0xFF71717A).withOpacity(0.2),
-          const Color(0xFFE4E4E7).withOpacity(0.4),
-          const Color(0xFF71717A).withOpacity(0.2),
+          const Color(0xFF27272A).withOpacity(0.2),
+          const Color(0xFF71717A).withOpacity(0.35),
+          const Color(0xFF27272A).withOpacity(0.2),
           Colors.transparent,
         ],
-        stops: const [0.0, 0.3, 0.5, 0.7, 1.0],
-      ).createShader(Rect.fromLTWH(0, 0, w, size.height));
+        stops: const [0.0, 0.2, 0.5, 0.8, 1.0],
+      ).createShader(Rect.fromLTWH(0, subY - amp, w, amp * 2));
 
-    canvas.drawPath(path, accentPaint);
-  }
-
-  void _drawCrestNodes(Canvas canvas, List<Offset> points) {
-    if (points.isEmpty) return;
-
-    final nodePaint = Paint()
-      ..color = Colors.white.withOpacity(0.7)
-      ..style = PaintingStyle.fill;
-
-    final nodeHaloPaint = Paint()
-      ..color = Colors.white.withOpacity(0.18)
-      ..style = PaintingStyle.fill;
-
-    // Pick 5 harmonic rhythm intervals across the points
-    final interval = (points.length / 6).floor();
-    for (int i = 1; i <= 5; i++) {
-      final index = (i * interval).clamp(0, points.length - 1);
-      final pt = points[index];
-
-      // Outer delicate halo
-      canvas.drawCircle(pt, 5.0, nodeHaloPaint);
-      // Inner bead
-      canvas.drawCircle(pt, 1.8, nodePaint);
-    }
+    canvas.drawPath(path, subPaint);
   }
 
   @override
-  bool shouldRepaint(covariant WaveBackgroundPainter oldDelegate) {
+  bool shouldRepaint(covariant SoundwaveBackgroundPainter oldDelegate) {
     return oldDelegate.progress != progress ||
         oldDelegate.mouseFactor != mouseFactor ||
         oldDelegate.isInteractiveActive != isInteractiveActive;
