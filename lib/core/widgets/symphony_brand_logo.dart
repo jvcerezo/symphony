@@ -121,6 +121,7 @@ class SymphonyBrandHeader extends StatelessWidget {
   final String title;
   final String? subtitle;
   final SymphonyAccent? accent;
+  final Widget? trailing;
   final VoidCallback? onTap;
 
   const SymphonyBrandHeader({
@@ -128,6 +129,7 @@ class SymphonyBrandHeader extends StatelessWidget {
     this.title = 'SYMPHONY',
     this.subtitle,
     this.accent,
+    this.trailing,
     this.onTap,
   });
 
@@ -176,6 +178,10 @@ class SymphonyBrandHeader extends StatelessWidget {
                 ],
               ),
             ),
+            if (trailing != null) ...[
+              const SizedBox(width: 8),
+              trailing!,
+            ],
           ],
         ),
       ),

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/services/app_update_service.dart';
 import '../../../../core/theme/symphony_theme.dart';
+import '../../../../core/widgets/app_update_dialog.dart';
 import '../../../../core/widgets/symphony_brand_logo.dart';
 import '../../../settings/presentation/controllers/personalization_provider.dart';
 import '../../../settings/presentation/widgets/personalization_dialog.dart';
@@ -39,6 +41,7 @@ class _SidebarNavState extends ConsumerState<SidebarNav> {
     final offlineState = ref.watch(offlineProvider);
     final accent = ref.watch(accentThemeProvider);
     final personalization = ref.watch(personalizationProvider);
+    final updateState = ref.watch(appUpdateProvider);
 
     // Filter playlists
     var filteredPlaylists = importedPlaylists;
@@ -76,6 +79,27 @@ class _SidebarNavState extends ConsumerState<SidebarNav> {
                         ? personalization.userName
                         : 'Offline Music Engine',
                     accent: accent,
+                    trailing: updateState.hasUpdate && updateState.latestRelease != null
+                        ? InkWell(
+                            onTap: () => AppUpdateDialog.show(context, updateState.latestRelease!),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Text(
+                                'UPDATE',
+                                style: TextStyle(
+                                  color: Colors.black,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ),
+                          )
+                        : null,
                     onTap: () {
                       showDialog(
                         context: context,

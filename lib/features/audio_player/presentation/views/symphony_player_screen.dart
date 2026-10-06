@@ -2,7 +2,9 @@ import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/curated_playlists.dart';
+import '../../../../core/services/app_update_service.dart';
 import '../../../../core/theme/symphony_theme.dart';
+import '../../../../core/widgets/app_update_dialog.dart';
 import '../../../../core/widgets/symphony_brand_logo.dart';
 import '../../../metadata_search/presentation/views/search_view.dart';
 import '../../../playlist_import/domain/entities/spotify_playlist.dart';
@@ -124,6 +126,9 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
         bottom: false,
         child: Column(
           children: [
+            AppUpdateBanner(
+              onDismiss: () => ref.read(appUpdateProvider.notifier).markUserNotified(),
+            ),
             Expanded(
               child: Stack(
                 children: [

@@ -3,6 +3,7 @@ name: Build, Release & 24/7 Cloud Deploy
 on:
   push:
     branches: [ main ]
+    tags: [ 'v*' ]
   workflow_dispatch:
 
 permissions:
@@ -10,7 +11,7 @@ permissions:
   packages: write
 
 jobs:
-  test-and-build:
+  test-and-build-web-and-android:
     name: Test, Build Web & Android APK
     runs-on: ubuntu-latest
 
@@ -45,40 +46,116 @@ jobs:
       - name: Build Android APK
         run: flutter build apk --release
 
-      - name: Bundle APK into Web Distribution
+      - name: Prepare Android Binary
         run: |
           cp build/app/outputs/flutter-apk/app-release.apk build/web/symphony.apk
+          cp build/app/outputs/flutter-apk/app-release.apk build/symphony.apk
 
-      - name: Upload Build Artifacts
+      - name: Upload Web Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: symphony-release-bundle
-          path: |
-            build/app/outputs/flutter-apk/app-release.apk
-            build/web/
+          name: symphony-web-bundle
+          path: build/web/
 
-      - name: Publish Latest GitHub Release & APK Download
-        uses: softprops/action-gh-release@v2
-        if: github.ref == 'refs/heads/main'
+      - name: Upload Android APK Artifact
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: latest
-          name: "Symphony Latest Release (Auto-Build)"
+          name: symphony-android-apk
+          path: build/symphony.apk
+
+  build-windows:
+    name: Build Windows Desktop (x64)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Enable Windows Desktop
+        run: flutter config --enable-windows-desktop
+
+      - name: Install Dependencies
+        run: flutter pub get
+
+      - name: Build Windows Desktop Release
+        run: flutter build windows --release
+
+      - name: Compress Windows Distribution
+        run: |
+          New-Item -ItemType Directory -Force -Path build/dist
+          Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath build\dist\symphony-windows-x64.zip
+
+      - name: Upload Windows Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: symphony-windows-x64
+          path: build\dist\symphony-windows-x64.zip
+
+  publish-release:
+    name: Publish Multi-Platform GitHub Release
+    runs-on: ubuntu-latest
+    needs: [test-and-build-web-and-android, build-windows]
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Create Release Directory
+        run: mkdir -p release-assets
+
+      - name: Download Android APK
+        uses: actions/download-artifact@v4
+        with:
+          name: symphony-android-apk
+          path: release-assets/
+
+      - name: Download Windows ZIP
+        uses: actions/download-artifact@v4
+        with:
+          name: symphony-windows-x64
+          path: release-assets/
+
+      - name: Determine Release Tag
+        id: release_meta
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            echo "title=Symphony ${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=latest" >> $GITHUB_OUTPUT
+            echo "title=Symphony Latest Release (Auto-Build)" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_meta.outputs.tag }}
+          name: ${{ steps.release_meta.outputs.title }}
           body: |
-            ## 🎵 Symphony Latest Build
+            ## 🎵 Symphony Release Distribution
             - **Commit**: `${{ github.sha }}`
-            - **Android APK**: [Download symphony.apk](https://github.com/${{ github.repository }}/releases/download/latest/symphony.apk)
+            - **Windows Desktop (x64)**: [Download symphony-windows-x64.zip](https://github.com/${{ github.repository }}/releases/download/${{ steps.release_meta.outputs.tag }}/symphony-windows-x64.zip)
+            - **Android APK**: [Download symphony.apk](https://github.com/${{ github.repository }}/releases/download/${{ steps.release_meta.outputs.tag }}/symphony.apk)
             - **Web Deployment**: Auto-deployed to 24/7 Cloud Host (`https://symphony.jettimothycerezo.dev`)
           draft: false
           prerelease: false
           files: |
-            build/web/symphony.apk
+            release-assets/symphony.apk
+            release-assets/symphony-windows-x64.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   docker-ghcr:
     name: Build & Publish Docker Image to GHCR
     runs-on: ubuntu-latest
-    needs: test-and-build
+    needs: test-and-build-web-and-android
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -115,7 +192,7 @@ jobs:
   trigger-deploy:
     name: Trigger 24/7 Cloud Host Deployment
     runs-on: ubuntu-latest
-    needs: [test-and-build, docker-ghcr]
+    needs: [test-and-build-web-and-android, docker-ghcr]
     steps:
       - name: Trigger Render Deploy Hook (if RENDER_DEPLOY_HOOK secret is set)
         if: "${{ env.RENDER_DEPLOY_HOOK != '' }}"

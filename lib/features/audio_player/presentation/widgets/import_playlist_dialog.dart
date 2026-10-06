@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/theme/symphony_theme.dart';
 import '../../../settings/presentation/controllers/personalization_provider.dart';
 import '../controllers/audio_player_providers.dart';
 

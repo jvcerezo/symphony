@@ -45,6 +45,7 @@ dependencies:
   audio_session: ^0.2.4
   rxdart: ^0.28.0
   shared_preferences: ^2.5.5
+  url_launcher: ^6.3.3
 
 dev_dependencies:
   flutter_test:

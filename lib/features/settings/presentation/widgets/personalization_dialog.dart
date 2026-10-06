@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/services/app_update_service.dart';
 import '../../../../core/theme/symphony_theme.dart';
+import '../../../../core/widgets/app_update_dialog.dart';
 import '../../../../core/widgets/symphony_brand_logo.dart';
 import '../../../audio_player/presentation/controllers/audio_player_providers.dart';
 import '../controllers/personalization_provider.dart';
@@ -203,6 +205,20 @@ class _PersonalizationDialogState extends ConsumerState<PersonalizationDialog> {
                 const SizedBox(height: 16),
               ],
 
+              // Software & Updates
+              const Text(
+                'SOFTWARE & UPDATES',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.8,
+                  color: SymphonyTheme.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 8),
+              _buildUpdateSection(context, ref, accent),
+              const SizedBox(height: 18),
+
               // Save Button
               const SizedBox(height: 8),
               SizedBox(
@@ -272,6 +288,89 @@ class _PersonalizationDialogState extends ConsumerState<PersonalizationDialog> {
             fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildUpdateSection(BuildContext context, WidgetRef ref, SymphonyAccent accent) {
+    final updateState = ref.watch(appUpdateProvider);
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF141416),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF27272A)),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            updateState.hasUpdate
+                ? Icons.system_update_rounded
+                : Icons.check_circle_outline_rounded,
+            size: 20,
+            color: updateState.hasUpdate ? Colors.white : SymphonyTheme.textSecondary,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Symphony v${AppUpdateNotifier.currentVersion}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  updateState.isChecking
+                      ? 'Checking GitHub Releases...'
+                      : updateState.hasUpdate
+                          ? 'Update ${updateState.latestRelease?.tagName} available'
+                          : 'Symphony is up to date',
+                  style: TextStyle(
+                    color: updateState.hasUpdate ? Colors.white70 : SymphonyTheme.textMuted,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (updateState.hasUpdate && updateState.latestRelease != null)
+            ElevatedButton(
+              onPressed: () {
+                AppUpdateDialog.show(context, updateState.latestRelease!);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: Colors.black,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                elevation: 0,
+              ),
+              child: const Text('Update', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+            )
+          else
+            TextButton(
+              onPressed: updateState.isChecking
+                  ? null
+                  : () => ref.read(appUpdateProvider.notifier).checkForUpdates(),
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                foregroundColor: Colors.white70,
+              ),
+              child: updateState.isChecking
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Text('Check', style: TextStyle(fontSize: 12)),
+            ),
+        ],
       ),
     );
   }
