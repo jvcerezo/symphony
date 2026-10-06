@@ -46,14 +46,15 @@ class PersonalizationNotifier extends StateNotifier<PersonalizationState> {
     try {
       final prefs = await SharedPreferences.getInstance();
       var id = prefs.getString(_instanceIdKey);
-      if (id == null || id.isEmpty) {
+      if (id == null || id.isEmpty || id == 'inst_default') {
         final rand = Random().nextInt(900000) + 100000;
         id = 'inst_${DateTime.now().millisecondsSinceEpoch}_$rand';
         await prefs.setString(_instanceIdKey, id);
       }
       return id;
     } catch (_) {
-      return 'inst_default';
+      final rand = Random().nextInt(900000) + 100000;
+      return 'inst_${DateTime.now().millisecondsSinceEpoch}_$rand';
     }
   }
 
@@ -61,7 +62,7 @@ class PersonalizationNotifier extends StateNotifier<PersonalizationState> {
     try {
       final prefs = await SharedPreferences.getInstance();
       var instanceId = prefs.getString(_instanceIdKey);
-      if (instanceId == null || instanceId.isEmpty) {
+      if (instanceId == null || instanceId.isEmpty || instanceId == 'inst_default') {
         final rand = Random().nextInt(900000) + 100000;
         instanceId = 'inst_${DateTime.now().millisecondsSinceEpoch}_$rand';
         await prefs.setString(_instanceIdKey, instanceId);

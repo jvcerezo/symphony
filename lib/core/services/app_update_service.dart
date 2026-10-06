@@ -3,7 +3,7 @@ import 'dart:developer' as developer;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
-import 'package:url_launcher/url_launcher.dart';
+import '../utils/platform_url_launcher.dart';
 
 class AppReleaseInfo {
   final String tagName;
@@ -189,21 +189,8 @@ class AppUpdateNotifier extends StateNotifier<AppUpdateState> {
     return false;
   }
 
-  static Future<bool> openUrl(String url) async {
-    try {
-      Uri uri = Uri.parse(url);
-      if (!uri.hasScheme && kIsWeb) {
-        uri = Uri.base.resolve(url);
-      }
-      return await launchUrl(
-        uri,
-        mode: LaunchMode.platformDefault,
-        webOnlyWindowName: '_blank',
-      );
-    } catch (e) {
-      developer.log('Failed to launch URL: $url ($e)', name: 'AppUpdateService');
-    }
-    return false;
+  static Future<bool> openUrl(String url, {bool isDownload = false}) async {
+    return await platformLaunchUrl(url, isDownload: isDownload);
   }
 }
 

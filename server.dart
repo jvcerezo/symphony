@@ -460,6 +460,8 @@ Future<void> _handleRequest(HttpRequest request, Directory webDir) async {
     request.response.headers.contentLength = length;
     if (filePath.endsWith('.apk')) {
       request.response.headers.add('Content-Disposition', 'attachment; filename="symphony.apk"');
+    } else if (filePath.endsWith('.zip')) {
+      request.response.headers.add('Content-Disposition', 'attachment; filename="symphony-windows-x64.zip"');
     }
     request.response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
     request.response.headers.set('Pragma', 'no-cache');
@@ -470,6 +472,14 @@ Future<void> _handleRequest(HttpRequest request, Directory webDir) async {
     }
     await file.openRead().pipe(request.response);
   } else {
+    if (filePath.endsWith('symphony.apk')) {
+      await request.response.redirect(Uri.parse('https://github.com/jvcerezo/symphony/releases/download/latest/symphony.apk'));
+      return;
+    }
+    if (filePath.endsWith('symphony-windows-x64.zip')) {
+      await request.response.redirect(Uri.parse('https://github.com/jvcerezo/symphony/releases/download/latest/symphony-windows-x64.zip'));
+      return;
+    }
     // SPA fallback to index.html
     final indexFile = File('${webDir.path}/index.html');
     if (await indexFile.exists()) {
@@ -1303,9 +1313,8 @@ Future<void> _handlePlaylists(HttpRequest request) async {
   request.response.headers.contentType = ContentType.json;
   final instanceId = request.uri.queryParameters['instanceId']?.replaceAll(RegExp(r'[^a-zA-Z0-9_\-]'), '') ?? '';
 
-  if (instanceId.isEmpty) {
-    request.response.statusCode = HttpStatus.badRequest;
-    request.response.write(jsonEncode({'error': 'Missing instanceId parameter'}));
+  if (instanceId.isEmpty || instanceId == 'inst_default') {
+    request.response.write('[]');
     await request.response.close();
     return;
   }
@@ -1469,7 +1478,7 @@ Future<void> _handleSpotifyPlaylist(HttpRequest request) async {
     };
 
     final instanceId = request.uri.queryParameters['instanceId']?.replaceAll(RegExp(r'[^a-zA-Z0-9_\-]'), '');
-    if (instanceId != null && instanceId.isNotEmpty) {
+    if (instanceId != null && instanceId.isNotEmpty && instanceId != 'inst_default') {
       try {
         final userDir = Directory('${_cacheDir.path}/user_playlists');
         if (!await userDir.exists()) await userDir.create(recursive: true);
@@ -1512,6 +1521,7 @@ ContentType? _getContentType(String path) {
   if (path.endsWith('.wasm')) return ContentType('application', 'wasm');
   if (path.endsWith('.webp')) return ContentType('image', 'webp');
   if (path.endsWith('.apk')) return ContentType('application', 'vnd.android.package-archive');
+  if (path.endsWith('.zip')) return ContentType('application', 'zip');
   return null;
 }
 

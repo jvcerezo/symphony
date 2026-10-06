@@ -12,11 +12,13 @@ class SymphonyLandingPage extends ConsumerWidget {
 
   static const String repoUrl = 'https://github.com/jvcerezo/symphony';
   static const String portfolioUrl = 'https://jettimothycerezo.dev';
-  static const String fallbackWindowsUrl = 'https://github.com/jvcerezo/symphony/releases';
-  static const String fallbackAndroidUrl = 'https://github.com/jvcerezo/symphony/releases/download/latest/symphony.apk';
+  static const String fallbackWindowsUrl =
+      'https://github.com/jvcerezo/symphony/releases/download/latest/symphony-windows-x64.zip';
+  static const String fallbackAndroidUrl =
+      'https://github.com/jvcerezo/symphony/releases/download/latest/symphony.apk';
 
-  static void _openExternal(String url) {
-    AppUpdateNotifier.openUrl(url);
+  static void _openExternal(String url, {bool isDownload = false}) {
+    AppUpdateNotifier.openUrl(url, isDownload: isDownload);
   }
 
   void _launchWebPlayer(BuildContext context) {
@@ -35,8 +37,10 @@ class SymphonyLandingPage extends ConsumerWidget {
     final updateState = ref.watch(appUpdateProvider);
     final latestRelease = updateState.latestRelease;
     final versionTag = latestRelease?.tagName ?? 'v1.0.0';
-    final hasDirectWindowsAsset = latestRelease?.windowsDownloadUrl != null;
-    final winDownloadUrl = latestRelease?.windowsDownloadUrl ?? fallbackWindowsUrl;
+    final hasDirectWindowsAsset =
+        latestRelease?.windowsDownloadUrl != null || fallbackWindowsUrl.endsWith('.zip');
+    final winDownloadUrl = latestRelease?.windowsDownloadUrl ??
+        (kIsWeb ? '/symphony-windows-x64.zip' : fallbackWindowsUrl);
     final apkDownloadUrl = latestRelease?.androidDownloadUrl ??
         (kIsWeb ? '/symphony.apk' : fallbackAndroidUrl);
 
@@ -250,7 +254,7 @@ class SymphonyLandingPage extends ConsumerWidget {
           runSpacing: 12,
           children: [
             ElevatedButton.icon(
-              onPressed: () => _openExternal(winDownloadUrl),
+              onPressed: () => _openExternal(winDownloadUrl, isDownload: true),
               icon: const Icon(Icons.desktop_windows_rounded, size: 18),
               label: Text(hasDirectWindowsAsset
                   ? 'Download for Windows ($versionTag)'
@@ -264,7 +268,7 @@ class SymphonyLandingPage extends ConsumerWidget {
               ),
             ),
             OutlinedButton.icon(
-              onPressed: () => _openExternal(apkDownloadUrl),
+              onPressed: () => _openExternal(apkDownloadUrl, isDownload: true),
               icon: const Icon(Icons.android_rounded, size: 18, color: Colors.white),
               label: const Text('Download Android APK', style: TextStyle(color: Colors.white)),
               style: OutlinedButton.styleFrom(
@@ -331,7 +335,7 @@ class SymphonyLandingPage extends ConsumerWidget {
                       'Full client-side stream resolution, hardware media keys, system tray, and unlimited local hard drive audio caching.',
                   buttonText: hasDirectWindowsAsset ? 'Download .zip' : 'View on GitHub',
                   isPrimary: true,
-                  onTap: () => _openExternal(winDownloadUrl),
+                  onTap: () => _openExternal(winDownloadUrl, isDownload: true),
                 ),
 
                 // 2. Android Mobile Card
@@ -345,7 +349,7 @@ class SymphonyLandingPage extends ConsumerWidget {
                       'Lockscreen media session, background playback service, offline track management, and touch-optimized navigation.',
                   buttonText: 'Download .apk',
                   isPrimary: false,
-                  onTap: () => _openExternal(apkDownloadUrl),
+                  onTap: () => _openExternal(apkDownloadUrl, isDownload: true),
                 ),
 
                 // 3. Web Player Card

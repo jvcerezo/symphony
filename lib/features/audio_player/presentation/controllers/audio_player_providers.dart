@@ -125,6 +125,15 @@ class ImportedPlaylistsNotifier extends StateNotifier<List<SpotifyPlaylist>> {
             }
           }
           if (loaded.isNotEmpty) {
+            const legacyTestTitles = {
+              'jejemon playlist',
+              'who said music have no soul?',
+              'montaj of the heart',
+              'love in ray-trospect',
+              'mga poging tambay sa bgc soundtrip',
+            };
+            loaded.removeWhere((p) => legacyTestTitles.contains(p.title.trim().toLowerCase()));
+
             final currentAdded = state.where((p) => !CuratedPlaylists.all.any((c) => c.id == p.id)).toList();
             final merged = <SpotifyPlaylist>[...currentAdded];
             for (final p in loaded) {
@@ -135,6 +144,7 @@ class ImportedPlaylistsNotifier extends StateNotifier<List<SpotifyPlaylist>> {
             final existingIds = merged.map((p) => p.id).toSet();
             final missingCurated = CuratedPlaylists.all.where((c) => !existingIds.contains(c.id)).toList();
             state = [...merged, ...missingCurated];
+            await _saveToLocalPrefs();
             return;
           }
         }
@@ -170,7 +180,7 @@ class ImportedPlaylistsNotifier extends StateNotifier<List<SpotifyPlaylist>> {
 
   Future<void> _syncWithServer() async {
     final instId = _instanceId;
-    if (instId == null || instId.isEmpty) return;
+    if (instId == null || instId.isEmpty || instId == 'inst_default') return;
 
     final origins = _getCandidateServerOrigins();
     for (final origin in origins) {
