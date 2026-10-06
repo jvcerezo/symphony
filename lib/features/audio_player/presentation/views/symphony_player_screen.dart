@@ -1906,7 +1906,7 @@ class _SpotifyPlaylistCardState extends State<_SpotifyPlaylistCard> {
                               playlist.coverUrl!,
                               fit: BoxFit.cover,
                               filterQuality: FilterQuality.high,
-                              errorBuilder: (_, _, _) => Container(
+                              errorBuilder: (context, error, stackTrace) => Container(
                                 color: const Color(0xFF282828),
                                 child: const Icon(Icons.music_note, color: SymphonyTheme.textMuted, size: 40),
                               ),
