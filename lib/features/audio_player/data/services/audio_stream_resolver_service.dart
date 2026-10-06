@@ -11,11 +11,69 @@ class AudioStreamResolverService {
   final YoutubeExplode _yt;
   final http.Client _httpClient;
 
+  /// In-memory resolution cache keyed by track ID and normalized artist/title.
+  final Map<String, ResolvedAudioStream> _resolvedCache = {};
+
+  /// In-flight futures to coalesce simultaneous resolve requests for the same track.
+  final Map<String, Future<ResolvedAudioStream>> _inFlightResolutions = {};
+
   AudioStreamResolverService({
     YoutubeExplode? ytClient,
     http.Client? httpClient,
   })  : _yt = ytClient ?? YoutubeExplode(),
         _httpClient = httpClient ?? http.Client();
+
+  String _normKey(Track track) =>
+      '${_cleanSongArtist(track.artist).toLowerCase()} - ${_cleanSongTitle(track.title).toLowerCase()}';
+
+  /// Returns the cached stream if available (0ms instant lookup).
+  ResolvedAudioStream? getCachedStream(Track track) {
+    final primaryKey = track.id;
+    final normKey = _normKey(track);
+    return _resolvedCache[primaryKey] ?? _resolvedCache[normKey];
+  }
+
+  /// Whether a track has already been resolved into memory.
+  bool isTrackResolved(Track track) => getCachedStream(track) != null;
+
+  /// Cache a stream manually (e.g. for pre-seeded tracks).
+  void cacheResolvedStream(String key, ResolvedAudioStream stream) {
+    _resolvedCache[key] = stream;
+  }
+
+  /// Asynchronously preloads a single track without throwing on error.
+  Future<ResolvedAudioStream?> preloadTrack(Track track) async {
+    if (isTrackResolved(track)) {
+      return getCachedStream(track);
+    }
+    try {
+      final stream = await resolveBestAudioStream(track);
+      developer.log('Preloaded stream for: "${track.title}" -> ${stream.streamUri}', name: 'AudioStreamResolver');
+      return stream;
+    } catch (e) {
+      developer.log('Preload error for "${track.title}": $e', name: 'AudioStreamResolver');
+      return null;
+    }
+  }
+
+  /// Proactively preloads upcoming tracks sequentially in the background.
+  void preloadTracks(List<Track> tracks, {int count = 2}) {
+    if (tracks.isEmpty) return;
+    Future.microtask(() async {
+      for (final track in tracks.take(count)) {
+        if (!isTrackResolved(track)) {
+          await preloadTrack(track);
+          await Future.delayed(const Duration(milliseconds: 60));
+        }
+      }
+    });
+  }
+
+  /// Clears in-memory resolution cache.
+  void clearCache() {
+    _resolvedCache.clear();
+    _inFlightResolutions.clear();
+  }
 
   /// Resolves a playable full-length audio stream for a [Track].
   ///
@@ -25,6 +83,44 @@ class AudioStreamResolverService {
   /// On Native, extracts on-device YouTube streams via `youtube_explode_dart`,
   /// falling back to the global CDN if YouTube blocks or restricts the device.
   Future<ResolvedAudioStream> resolveBestAudioStream(Track track) async {
+    final primaryKey = track.id;
+    final normKey = _normKey(track);
+
+    // 0. Cache hit - 0ms instant playback!
+    final cached = _resolvedCache[primaryKey] ?? _resolvedCache[normKey];
+    if (cached != null) {
+      developer.log('Instant cache hit for "${track.title}"', name: 'AudioStreamResolver');
+      return cached;
+    }
+
+    // 1. In-flight request deduplication
+    if (_inFlightResolutions.containsKey(primaryKey)) {
+      return await _inFlightResolutions[primaryKey]!;
+    }
+    if (_inFlightResolutions.containsKey(normKey)) {
+      return await _inFlightResolutions[normKey]!;
+    }
+
+    final future = _doResolveBestAudioStream(track);
+    _inFlightResolutions[primaryKey] = future;
+    _inFlightResolutions[normKey] = future;
+
+    try {
+      final resolved = await future;
+      _resolvedCache[primaryKey] = resolved;
+      _resolvedCache[normKey] = resolved;
+      if (resolved.sourceVideoId.isNotEmpty) {
+        _resolvedCache['vid_${resolved.sourceVideoId}'] = resolved;
+        _resolvedCache[resolved.sourceVideoId] = resolved;
+      }
+      return resolved;
+    } finally {
+      _inFlightResolutions.remove(primaryKey);
+      _inFlightResolutions.remove(normKey);
+    }
+  }
+
+  Future<ResolvedAudioStream> _doResolveBestAudioStream(Track track) async {
     // 1. Direct YouTube video ID resolution if available (e.g. YouTube imported playlists)
     if (track.id.startsWith('yt_')) {
       final videoId = track.id.replaceFirst('yt_', '');
@@ -542,6 +638,7 @@ class AudioStreamResolverService {
   }
 
   void dispose() {
+    clearCache();
     _yt.close();
     _httpClient.close();
   }

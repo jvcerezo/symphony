@@ -37,6 +37,16 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
   Future<void> _initDefaultPlaylist() async {
     final active = ref.read(activePlaylistProvider);
     ref.read(navigationHistoryProvider.notifier).record('home', active);
+
+    // Proactively pre-warm top starter tracks so pressing Play starts in < 300ms
+    final isTest = WidgetsBinding.instance.runtimeType.toString().contains('Test');
+    if (!isTest) {
+      try {
+        final handler = ref.read(audioHandlerProvider);
+        final topTracks = CuratedPlaylists.todaysTopHits.tracks.take(4).toList();
+        handler.preloadTracks(topTracks, count: 4);
+      } catch (_) {}
+    }
   }
 
   @override
@@ -52,6 +62,15 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
       if (prev?.id != next?.id) {
         final tab = ref.read(activeNavTabProvider);
         ref.read(navigationHistoryProvider.notifier).record(tab, next);
+
+        // Pre-warm top tracks of the selected playlist
+        final isTest = WidgetsBinding.instance.runtimeType.toString().contains('Test');
+        if (!isTest && next != null && next.tracks.isNotEmpty) {
+          try {
+            final handler = ref.read(audioHandlerProvider);
+            handler.preloadTracks(next.tracks, count: 2);
+          } catch (_) {}
+        }
       }
     });
 

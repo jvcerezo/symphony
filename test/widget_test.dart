@@ -38,6 +38,7 @@ void main() {
     addTearDown(() {
       tester.view.resetPhysicalSize();
       tester.view.resetDevicePixelRatio();
+      fakeHandler.release();
     });
 
     await tester.pumpWidget(

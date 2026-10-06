@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:symphony/features/audio_player/domain/entities/track.dart';
 import 'package:symphony/features/audio_player/domain/entities/resolved_audio_stream.dart';
+import 'package:symphony/features/audio_player/data/services/audio_stream_resolver_service.dart';
 import 'package:symphony/core/errors/exceptions.dart';
 
 void main() {
@@ -75,6 +76,64 @@ void main() {
       expect(media.duration, equals(const Duration(minutes: 3, seconds: 50)));
       expect(media.title, equals('Starboy'));
       expect(media.artist, equals('The Weeknd'));
+    });
+  });
+
+  group('AudioStreamResolverService In-Memory Cache & Preloader', () {
+    test('cacheResolvedStream and isTrackResolved work accurately', () {
+      final service = AudioStreamResolverService();
+      addTearDown(() => service.dispose());
+
+      final track = Track(
+        id: 'cached-01',
+        title: 'Blinding Lights',
+        artist: 'The Weeknd',
+        expectedDuration: const Duration(seconds: 200),
+      );
+
+      expect(service.isTrackResolved(track), isFalse);
+
+      final mockResolved = ResolvedAudioStream(
+        streamUri: Uri.parse('https://example.com/stream.webm'),
+        duration: const Duration(seconds: 200),
+        bitrateKbps: 160,
+        format: 'webm',
+        sourceVideoId: 'vid123',
+      );
+
+      service.cacheResolvedStream(track.id, mockResolved);
+      expect(service.isTrackResolved(track), isTrue);
+      expect(service.getCachedStream(track)?.sourceVideoId, equals('vid123'));
+    });
+
+    test('resolveBestAudioStream returns cached stream instantly without network call', () async {
+      final service = AudioStreamResolverService();
+      addTearDown(() => service.dispose());
+
+      final track = Track(
+        id: 'fast-track',
+        title: 'Instant Play Track',
+        artist: 'Symphony Artist',
+        expectedDuration: const Duration(seconds: 180),
+      );
+
+      final expectedStream = ResolvedAudioStream(
+        streamUri: Uri.parse('https://symphony.jettimothycerezo.dev/api/stream?videoId=fast123'),
+        duration: const Duration(seconds: 180),
+        bitrateKbps: 160,
+        format: 'webm',
+        sourceVideoId: 'fast123',
+      );
+
+      service.cacheResolvedStream(track.id, expectedStream);
+
+      final stopwatch = Stopwatch()..start();
+      final resolved = await service.resolveBestAudioStream(track);
+      stopwatch.stop();
+
+      expect(resolved.streamUri, equals(expectedStream.streamUri));
+      expect(resolved.sourceVideoId, equals('fast123'));
+      expect(stopwatch.elapsedMilliseconds, lessThan(10)); // < 10ms instantaneous return
     });
   });
 }

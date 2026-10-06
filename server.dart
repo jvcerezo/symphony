@@ -95,6 +95,198 @@ void _saveResolveEntry(String primaryKey, Map<String, dynamic> data, {String? ar
   }
 }
 
+void _seedCuratedStarterTracks() {
+  final curated = [
+    {
+      'trackId': 'tth_01',
+      'artist': 'The Weeknd',
+      'title': 'Blinding Lights',
+      'videoId': 'fHI8X4OXluQ',
+      'durationMs': 200000,
+    },
+    {
+      'trackId': 'tth_02',
+      'artist': 'The Weeknd ft. Daft Punk',
+      'title': 'Starboy',
+      'videoId': 'Rif-RTvmmss',
+      'durationMs': 230000,
+    },
+    {
+      'trackId': 'tth_03',
+      'artist': 'Taylor Swift',
+      'title': 'Cruel Summer',
+      'videoId': 'ic8j13piAhQ',
+      'durationMs': 178000,
+    },
+    {
+      'trackId': 'tth_04',
+      'artist': 'Harry Styles',
+      'title': 'As It Was',
+      'videoId': 'V1Z586zoeeE',
+      'durationMs': 166000,
+    },
+    {
+      'trackId': 'tth_05',
+      'artist': 'Miley Cyrus',
+      'title': 'Flowers',
+      'videoId': 'SWpAYbgHmTo',
+      'durationMs': 200000,
+    },
+    {
+      'trackId': 'tth_06',
+      'artist': 'Dua Lipa',
+      'title': 'Levitating',
+      'videoId': 'WHuBW3qKm9g',
+      'durationMs': 203000,
+    },
+    {
+      'trackId': 'tth_07',
+      'artist': 'The Weeknd',
+      'title': 'Save Your Tears',
+      'videoId': 'u6lihZAcy4s',
+      'durationMs': 215000,
+    },
+    {
+      'trackId': 'tth_08',
+      'artist': 'Ed Sheeran',
+      'title': 'Shape of You',
+      'videoId': '_dK2tDK9grQ',
+      'durationMs': 233000,
+    },
+    {
+      'trackId': 'lofi_01',
+      'artist': 'Jinsang',
+      'title': 'Affection',
+      'videoId': 'NAkZ8gUXcIE',
+      'durationMs': 135000,
+    },
+    {
+      'trackId': 'lofi_02',
+      'artist': 'Wun Two',
+      'title': 'Again',
+      'videoId': 'gEf-lKXY_uw',
+      'durationMs': 144000,
+    },
+    {
+      'trackId': 'lofi_03',
+      'artist': 'Idealism',
+      'title': 'Controlla',
+      'videoId': 'LVbhQLYZEo8',
+      'durationMs': 160000,
+    },
+    {
+      'trackId': 'lofi_04',
+      'artist': 'WYS',
+      'title': 'Snowman',
+      'videoId': 'Fjh-UIwf2xw',
+      'durationMs': 196000,
+    },
+    {
+      'trackId': 'rock_01',
+      'artist': 'Queen',
+      'title': 'Bohemian Rhapsody',
+      'videoId': 'fJ9rUzIMcZQ',
+      'durationMs': 355000,
+    },
+    {
+      'trackId': 'rock_02',
+      'artist': 'Eagles',
+      'title': 'Hotel California',
+      'videoId': 'dLl4PZtxia8',
+      'durationMs': 390000,
+    },
+    {
+      'trackId': 'rock_03',
+      'artist': 'AC/DC',
+      'title': 'Back in Black',
+      'videoId': 'pAgnJDJN4VA',
+      'durationMs': 254000,
+    },
+    {
+      'trackId': 'rock_04',
+      'artist': 'Nirvana',
+      'title': 'Smells Like Teen Spirit',
+      'videoId': 'JyGNABrosb8',
+      'durationMs': 302000,
+    },
+    {
+      'trackId': 'night_01',
+      'artist': 'Bruno Mars',
+      'title': '24K Magic',
+      'videoId': 'f9imDgsjxXc',
+      'durationMs': 227000,
+    },
+    {
+      'trackId': 'night_02',
+      'artist': 'Daft Punk ft. Pharrell Williams',
+      'title': 'Get Lucky',
+      'videoId': '5NV6Rdv1a3I',
+      'durationMs': 249000,
+    },
+    {
+      'trackId': 'night_03',
+      'artist': 'Dua Lipa',
+      'title': "Don't Start Now",
+      'videoId': 'xjiYBGs0TUA',
+      'durationMs': 186000,
+    },
+  ];
+
+  for (final item in curated) {
+    final tid = item['trackId'] as String;
+    final art = item['artist'] as String;
+    final tit = item['title'] as String;
+    final vid = item['videoId'] as String;
+    final dur = item['durationMs'] as int;
+
+    final entry = {
+      'streamUrl': '/api/stream?videoId=$vid',
+      'durationMs': dur,
+      'bitrate': 160,
+      'format': 'webm',
+      'videoId': vid,
+      'title': '$art - $tit',
+      'artist': art,
+      'trackId': tid,
+    };
+
+    _resolveCache['track_$tid'] = entry;
+    _resolveCache[tid] = entry;
+    _resolveCache['vid_$vid'] = entry;
+    _resolveCache[vid] = entry;
+    _resolveCache['$art - $tit official audio'] = entry;
+    _resolveCache['$art $tit topic'] = entry;
+    _resolveCache['${art.toLowerCase()} - ${tit.toLowerCase()}'] = entry;
+    _resolveCache['${_normalizeKey(art)} - ${_normalizeKey(tit)}'] = entry;
+
+    final cleanArt = art.split('ft.')[0].split('feat.')[0].trim();
+    if (cleanArt != art) {
+      _resolveCache['${cleanArt.toLowerCase()} - ${tit.toLowerCase()}'] = entry;
+      _resolveCache['${_normalizeKey(cleanArt)} - ${_normalizeKey(tit)}'] = entry;
+    }
+  }
+}
+
+void _warmCuratedAudioCacheInBackground() {
+  Future.microtask(() async {
+    final vids = [
+      'fHI8X4OXluQ', 'Rif-RTvmmss', 'ic8j13piAhQ', 'V1Z586zoeeE',
+      'SWpAYbgHmTo', 'WHuBW3qKm9g', 'u6lihZAcy4s', '_dK2tDK9grQ',
+      'NAkZ8gUXcIE', 'gEf-lKXY_uw', 'LVbhQLYZEo8', 'Fjh-UIwf2xw',
+      'fJ9rUzIMcZQ', 'dLl4PZtxia8', 'pAgnJDJN4VA', 'JyGNABrosb8',
+      'f9imDgsjxXc', '5NV6Rdv1a3I', 'xjiYBGs0TUA'
+    ];
+    for (final vid in vids) {
+      final f = File('${_cacheDir.path}/audio_$vid.webm');
+      if (!await f.exists() || await f.length() < 50000) {
+        print('Warming curated audio file in background: audio_$vid.webm');
+        await _downloadTrackToDisk(vid);
+        await Future.delayed(const Duration(seconds: 1));
+      }
+    }
+  });
+}
+
 const int _defaultCacheQuotaBytes = 3 * 1024 * 1024 * 1024; // 3 GB quota
 
 Future<void> _cleanStaleTempFiles() async {
@@ -164,6 +356,8 @@ Future<void> main() async {
 
   await _cleanStaleTempFiles();
   await _loadResolveIndex();
+  _seedCuratedStarterTracks();
+  _warmCuratedAudioCacheInBackground();
   await _enforceCacheQuota();
 
   final server = await HttpServer.bind(InternetAddress.anyIPv6, port, v6Only: false);
@@ -510,6 +704,13 @@ Future<void> _handleResolve(HttpRequest request) async {
       (trackId != null ? (_resolveCache['track_$trackId'] ?? _resolveCache[trackId]) : null);
 
   if (cachedData != null) {
+    final vId = cachedData['videoId'] as String?;
+    if (vId != null && vId.isNotEmpty) {
+      final f = File('${_cacheDir.path}/audio_$vId.webm');
+      if (!f.existsSync()) {
+        _downloadTrackToDisk(vId).catchError((_) => false);
+      }
+    }
     request.response.headers.contentType = ContentType.json;
     request.response.write(jsonEncode(cachedData));
     await request.response.close();
@@ -614,6 +815,11 @@ Future<void> _handleResolve(HttpRequest request) async {
 
       _saveResolveEntry(cacheKey, data, artist: artist, title: title, trackId: trackId);
       print('Resolved: "$videoTitle" [${durationMs ~/ 1000}s] -> $streamProxyUrl');
+
+      final f = File('${_cacheDir.path}/audio_$resolvedVideoId.webm');
+      if (!f.existsSync()) {
+        _downloadTrackToDisk(resolvedVideoId).catchError((_) => false);
+      }
 
       request.response.headers.contentType = ContentType.json;
       request.response.write(jsonEncode(data));

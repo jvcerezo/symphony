@@ -52,6 +52,35 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
       ? _playlistQueue[currentIndex]
       : null;
 
+  AudioStreamResolverService get streamResolver => _streamResolver;
+
+  /// Proactively preloads tracks into memory cache.
+  void preloadTracks(List<Track> tracks, {int count = 2}) =>
+      _streamResolver.preloadTracks(tracks, count: count);
+
+  /// Preloads a single track.
+  Future<void> preloadTrack(Track track) => _streamResolver.preloadTrack(track);
+
+  /// Helper to pre-resolve upcoming tracks in the playlist queue.
+  void _preloadUpcomingTracks(int fromIndex) {
+    if (_playlistQueue.isEmpty) return;
+    final upcoming = <Track>[];
+    for (int offset = 1; offset <= 2; offset++) {
+      final nextIdx = (fromIndex + offset) % _playlistQueue.length;
+      if (nextIdx != fromIndex && nextIdx < _playlistQueue.length) {
+        upcoming.add(_playlistQueue[nextIdx]);
+      }
+    }
+    if (upcoming.isNotEmpty) {
+      _streamResolver.preloadTracks(upcoming, count: 2);
+      for (final t in upcoming) {
+        if (t.artworkUri == null) {
+          _artworkResolver.resolveArtwork(t).catchError((_) => null);
+        }
+      }
+    }
+  }
+
   Future<void> _initAudioSession() async {
     if (kIsWeb) return;
 
@@ -213,6 +242,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
 
     final targetIndex = startIndex.clamp(0, _playlistQueue.length - 1);
     _currentIndexSubject.add(targetIndex);
+    _preloadUpcomingTracks(targetIndex);
     await _loadAndPlayTrack(_playlistQueue[targetIndex]);
   }
 
@@ -335,6 +365,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
 
       await _player.play();
       _startCompletionWatchdog();
+      _preloadUpcomingTracks(currentIndex);
 
       developer.log(
         'Started: "${track.title}" by "${track.artist}" [${streamInfo.bitrateKbps}kbps, duration: ${streamInfo.duration.inSeconds}s]',
@@ -379,6 +410,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
     if (_playlistQueue.isEmpty) return;
     final nextIdx = (currentIndex + 1) % _playlistQueue.length;
     _currentIndexSubject.add(nextIdx);
+    _preloadUpcomingTracks(nextIdx);
     await _loadAndPlayTrack(_playlistQueue[nextIdx]);
   }
 
@@ -390,6 +422,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
     } else {
       final prevIdx = currentIndex > 0 ? currentIndex - 1 : _playlistQueue.length - 1;
       _currentIndexSubject.add(prevIdx);
+      _preloadUpcomingTracks(prevIdx);
       await _loadAndPlayTrack(_playlistQueue[prevIdx]);
     }
   }
