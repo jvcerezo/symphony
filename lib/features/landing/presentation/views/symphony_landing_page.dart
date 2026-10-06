@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/services/app_update_service.dart';
 import '../../../../core/widgets/symphony_brand_logo.dart';
 import '../../../audio_player/presentation/views/symphony_player_screen.dart';
+import '../../../audio_player/presentation/widgets/animated_equalizer.dart';
 
 /// The official public showcase & distribution landing page for Symphony.
 /// Designed with an architectural, monochrome aesthetic (consistent with jettimothycerezo.dev).
@@ -196,7 +197,7 @@ class SymphonyLandingPage extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Tagline Pill
+        // Tagline Pill with Live Soundwave
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           decoration: BoxDecoration(
@@ -204,14 +205,21 @@ class SymphonyLandingPage extends ConsumerWidget {
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: const Color(0xFF27272A)),
           ),
-          child: const Text(
-            'OFFLINE-FIRST • CLIENT-SIDE RESOLUTION • ZERO ADS',
-            style: TextStyle(
-              color: Color(0xFFA1A1AA),
-              fontSize: 10.5,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.0,
-            ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedEqualizer(isPlaying: true, height: 11, color: Colors.white),
+              SizedBox(width: 8),
+              Text(
+                'OFFLINE-FIRST • CLIENT-SIDE RESOLUTION • ZERO ADS',
+                style: TextStyle(
+                  color: Color(0xFFA1A1AA),
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.0,
+                ),
+              ),
+            ],
           ),
         ),
 

@@ -1,27 +1,69 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../theme/symphony_theme.dart';
 
 /// Minimalist, architectural brand logo for Symphony.
 /// High contrast, pure geometry, zero neon glow, matching the developer portfolio design language.
-class SymphonyBrandLogo extends StatelessWidget {
+/// Supports smooth harmonic soundwave animation during loading and playback.
+class SymphonyBrandLogo extends StatefulWidget {
   final double size;
   final double? borderRadius;
   final VoidCallback? onTap;
+  final bool animated;
 
   const SymphonyBrandLogo({
     super.key,
     this.size = 36.0,
     this.borderRadius,
     this.onTap,
+    this.animated = true,
   });
 
   @override
+  State<SymphonyBrandLogo> createState() => _SymphonyBrandLogoState();
+}
+
+class _SymphonyBrandLogoState extends State<SymphonyBrandLogo> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    );
+    if (widget.animated) {
+      _controller.repeat();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant SymphonyBrandLogo oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.animated != oldWidget.animated) {
+      if (widget.animated) {
+        _controller.repeat();
+      } else {
+        _controller.stop();
+        _controller.reset();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final radius = borderRadius ?? (size * 0.24);
+    final radius = widget.borderRadius ?? (widget.size * 0.24);
 
     Widget logoContent = Container(
-      width: size,
-      height: size,
+      width: widget.size,
+      height: widget.size,
       decoration: BoxDecoration(
         color: const Color(0xFF0A0A0A),
         borderRadius: BorderRadius.circular(radius),
@@ -32,24 +74,26 @@ class SymphonyBrandLogo extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(radius),
-        child: Image.asset(
-          'assets/images/symphony_icon_192.png',
-          width: size,
-          height: size,
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) {
-            return CustomPaint(
-              size: Size(size, size),
-              painter: const SymphonyMinimalistPainter(),
-            );
-          },
-        ),
+        child: widget.animated
+            ? AnimatedBuilder(
+                animation: _controller,
+                builder: (context, child) {
+                  return CustomPaint(
+                    size: Size(widget.size, widget.size),
+                    painter: SymphonyMinimalistPainter(progress: _controller.value),
+                  );
+                },
+              )
+            : CustomPaint(
+                size: Size(widget.size, widget.size),
+                painter: const SymphonyMinimalistPainter(progress: 0.0),
+              ),
       ),
     );
 
-    if (onTap != null) {
+    if (widget.onTap != null) {
       return InkWell(
-        onTap: onTap,
+        onTap: widget.onTap,
         borderRadius: BorderRadius.circular(radius),
         child: logoContent,
       );
@@ -61,7 +105,9 @@ class SymphonyBrandLogo extends StatelessWidget {
 
 /// Scalable CustomPainter rendering the minimalist 5-bar architectural soundwave.
 class SymphonyMinimalistPainter extends CustomPainter {
-  const SymphonyMinimalistPainter();
+  final double progress;
+
+  const SymphonyMinimalistPainter({this.progress = 0.0});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -101,7 +147,14 @@ class SymphonyMinimalistPainter extends CustomPainter {
     ];
 
     for (int i = 0; i < 5; i++) {
-      final barH = heights[i];
+      double scale = 1.0;
+      if (progress > 0.0) {
+        // Continuous harmonic wave oscillation across bars
+        final phase = (i / 5.0) * 2.0 * math.pi;
+        final wave = (math.sin(progress * 2.0 * math.pi - phase) + 1.0) / 2.0;
+        scale = 0.32 + (0.68 * wave);
+      }
+      final barH = heights[i] * scale;
       final x = startX + (i * (barW + gap));
       final y = (h - barH) / 2.0;
       final barRRect = RRect.fromRectAndRadius(
@@ -113,7 +166,8 @@ class SymphonyMinimalistPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant SymphonyMinimalistPainter oldDelegate) =>
+      oldDelegate.progress != progress;
 }
 
 /// Clean, typography-first minimalist header.
