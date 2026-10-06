@@ -1,71 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
-  <defs>
-    <!-- Background Gradient -->
-    <radialGradient id="bgGrad" cx="50%" cy="40%" r="60%">
-      <stop offset="0%" stop-color="#1A1829"/>
-      <stop offset="100%" stop-color="#08080C"/>
-    </radialGradient>
+  <!-- Minimalist Obsidian Tile -->
+  <rect width="512" height="512" rx="108" fill="#0A0A0A"/>
+  <rect x="2" y="2" width="508" height="508" rx="106" fill="none" stroke="#26262A" stroke-width="2"/>
 
-    <!-- Glow & Neon Filter -->
-    <filter id="neonGlow" x="-20%" y="-20%" width="140%" height="140%">
-      <feGaussianBlur stdDeviation="12" result="blur1"/>
-      <feGaussianBlur stdDeviation="24" result="blur2"/>
-      <feMerge>
-        <feMergeNode in="blur2"/>
-        <feMergeNode in="blur1"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
-
-    <!-- Symphony Primary Ribbon Gradient -->
-    <linearGradient id="symphonyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#C084FC"/>
-      <stop offset="35%" stop-color="#8B5CF6"/>
-      <stop offset="70%" stop-color="#6366F1"/>
-      <stop offset="100%" stop-color="#06B6D4"/>
-    </linearGradient>
-
-    <!-- Subtle Inner Highlight Gradient -->
-    <linearGradient id="innerLightGrad" x1="0%" y1="100%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.9"/>
-      <stop offset="50%" stop-color="#A78BFA" stop-opacity="0.95"/>
-      <stop offset="100%" stop-color="#F472B6" stop-opacity="0.8"/>
-    </linearGradient>
-
-    <!-- Soundwave Glow Gradient -->
-    <linearGradient id="waveGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#8B5CF6" stop-opacity="0.2"/>
-      <stop offset="50%" stop-color="#A78BFA" stop-opacity="0.7"/>
-      <stop offset="100%" stop-color="#06B6D4" stop-opacity="0.2"/>
-    </linearGradient>
-  </defs>
-
-  <!-- Squircle Base Tile -->
-  <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#bgGrad)" stroke="#262338" stroke-width="3"/>
-
-  <!-- Subtle Harmonic Frequency Resonance Lines behind S -->
-  <g opacity="0.35" stroke="url(#waveGrad)" stroke-width="2" fill="none">
-    <path d="M 60 256 Q 110 210, 160 256 T 260 256 T 360 256 T 452 256"/>
-    <path d="M 70 256 Q 120 180, 170 256 T 270 256 T 370 256 T 442 256" stroke-width="1.5"/>
-    <path d="M 80 256 Q 130 310, 180 256 T 280 256 T 380 256 T 432 256" stroke-width="1.5"/>
+  <!-- Pure White Architectural Soundwave Geometry -->
+  <g fill="#FFFFFF">
+    <rect x="119" y="208" width="34" height="96" rx="17"/>
+    <rect x="179" y="166" width="34" height="180" rx="17"/>
+    <rect x="239" y="118" width="34" height="276" rx="17"/>
+    <rect x="299" y="166" width="34" height="180" rx="17"/>
+    <rect x="359" y="208" width="34" height="96" rx="17"/>
   </g>
-
-  <!-- Ambient Backdrop Glow for the S Glyph -->
-  <circle cx="256" cy="256" r="130" fill="#8B5CF6" opacity="0.22" filter="url(#neonGlow)"/>
-
-  <!-- Fluid Harmonic Ribbon 'S' Glyph -->
-  <g filter="url(#neonGlow)">
-    <!-- Outer Main Harmonic Loop -->
-    <path d="M 334 168 C 334 130, 298 104, 252 104 C 196 104, 162 140, 162 186 C 162 252, 344 246, 344 326 C 344 374, 304 408, 250 408 C 190 408, 154 366, 154 324 C 154 310, 166 298, 180 298 C 194 298, 204 308, 206 322 C 210 348, 226 368, 250 368 C 278 368, 298 348, 298 326 C 298 266, 116 268, 116 186 C 116 120, 172 64, 252 64 C 322 64, 378 108, 378 168 C 378 182, 368 192, 356 192 C 344 192, 334 182, 334 168 Z"
-          fill="url(#symphonyGrad)"/>
-
-    <!-- Inner Harmonic Ribbon Resonance Layer -->
-    <path d="M 304 172 C 304 146, 280 126, 252 126 C 218 126, 192 148, 192 182 C 192 230, 314 236, 314 316 C 314 350, 286 376, 250 376 C 224 376, 202 360, 194 336 C 190 326, 180 320, 170 322 C 160 324, 154 334, 156 344 C 168 382, 204 414, 250 414 C 310 414, 354 370, 354 316 C 354 248, 232 242, 232 182 C 232 160, 244 148, 252 148 C 270 148, 282 158, 284 172 C 286 182, 294 188, 304 188 C 314 188, 320 180, 320 172 Z"
-          fill="url(#innerLightGrad)" opacity="0.85"/>
-  </g>
-
-  <!-- Specular Audio Resonance Nodes -->
-  <circle cx="356" cy="180" r="5" fill="#FFFFFF" opacity="0.9"/>
-  <circle cx="168" cy="334" r="5" fill="#38BDF8" opacity="0.9"/>
-  <circle cx="256" cy="256" r="3.5" fill="#FFFFFF" opacity="0.8"/>
 </svg>

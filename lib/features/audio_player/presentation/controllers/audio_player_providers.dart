@@ -16,8 +16,8 @@ import '../../../settings/presentation/controllers/personalization_provider.dart
 import '../../data/services/symphony_audio_handler.dart';
 import '../../domain/entities/track.dart';
 
-/// Symphony Brand & User Accent Theme Provider (Defaults to signature Symphony Violet #8B5CF6)
-final accentThemeProvider = StateProvider<SymphonyAccent>((ref) => SymphonyTheme.violet);
+/// Symphony Brand & User Accent Theme Provider (Defaults to clean Obsidian Monochrome)
+final accentThemeProvider = StateProvider<SymphonyAccent>((ref) => SymphonyTheme.monochrome);
 
 /// Global provider for the Symphony AudioHandler instance
 final audioHandlerProvider = Provider<SymphonyAudioHandler>((ref) {

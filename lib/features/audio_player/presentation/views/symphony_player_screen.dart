@@ -729,11 +729,7 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
               children: [
                 Row(
                   children: [
-                    SymphonyBrandLogo(
-                      size: 32,
-                      glowColor: accent.primary,
-                      showGlow: true,
-                    ),
+                    const SymphonyBrandLogo(size: 32),
                     const SizedBox(width: 10),
                     Text(
                       personalization.displayTitle.toUpperCase(),

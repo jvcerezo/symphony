@@ -63,11 +63,7 @@ class _PersonalizationDialogState extends ConsumerState<PersonalizationDialog> {
               Row(
                 children: [
                   enteredName.isEmpty
-                      ? SymphonyBrandLogo(
-                          size: 48,
-                          glowColor: accent.primary,
-                          showGlow: true,
-                        )
+                      ? const SymphonyBrandLogo(size: 48)
                       : Container(
                           width: 48,
                           height: 48,

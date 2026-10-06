@@ -1,14 +1,14 @@
 {
-    "name": "Symphony Music",
+    "name": "Symphony",
     "short_name": "Symphony",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0A0A0C",
-    "theme_color": "#8B5CF6",
-    "description": "Pure, high-fidelity offline music player and playlist hub.",
+    "background_color": "#0A0A0A",
+    "theme_color": "#0A0A0A",
+    "description": "Minimalist offline music player.",
     "orientation": "any",
     "prefer_related_applications": false,
-    "categories": ["music", "entertainment", "audio"],
+    "categories": ["music", "audio"],
     "icons": [
         {
             "src": "icons/Icon-192.png",
