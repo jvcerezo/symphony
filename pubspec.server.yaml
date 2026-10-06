@@ -1,0 +1,10 @@
+name: symphony_server
+description: "Symphony headless backend audio streaming & caching daemon"
+publish_to: 'none'
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  youtube_explode_dart: ^3.1.0
+  html: ^0.15.7
