@@ -5,6 +5,7 @@ import '../../../../core/services/app_update_service.dart';
 import '../../../../core/widgets/symphony_brand_logo.dart';
 import '../../../audio_player/presentation/views/symphony_player_screen.dart';
 import '../../../audio_player/presentation/widgets/animated_equalizer.dart';
+import '../widgets/wave_background.dart';
 
 /// The official public showcase & distribution landing page for Symphony.
 /// Designed with an architectural, monochrome aesthetic (consistent with jettimothycerezo.dev).
@@ -50,61 +51,73 @@ class SymphonyLandingPage extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 1100),
-              child: Padding(
-                padding: EdgeInsets.symmetric(
-                  horizontal: isDesktop ? 40 : 20,
-                  vertical: 24,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // 1. Navigation Header
-                    _buildNavBar(context, isDesktop, versionTag),
+      body: Stack(
+        children: [
+          // 0. Architectural Generative Wave Background Animation
+          const Positioned.fill(
+            child: IgnorePointer(
+              child: WaveBackground(),
+            ),
+          ),
 
-                    SizedBox(height: isDesktop ? 64 : 40),
-
-                    // 2. Hero Section
-                    _buildHeroSection(
-                      context,
-                      isDesktop,
-                      versionTag,
-                      hasDirectWindowsAsset,
-                      winDownloadUrl,
-                      apkDownloadUrl,
+          // 1. Interactive Page Showcase Content
+          SafeArea(
+            child: SingleChildScrollView(
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 1100),
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: isDesktop ? 40 : 20,
+                      vertical: 24,
                     ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // 1. Navigation Header
+                        _buildNavBar(context, isDesktop, versionTag),
 
-                    SizedBox(height: isDesktop ? 80 : 56),
+                        SizedBox(height: isDesktop ? 64 : 40),
 
-                    // 3. Platform Distribution Cards (Windows, Android, Web)
-                    _buildDistributionGrid(
-                      context,
-                      isDesktop,
-                      hasDirectWindowsAsset,
-                      winDownloadUrl,
-                      apkDownloadUrl,
-                      versionTag,
+                        // 2. Hero Section
+                        _buildHeroSection(
+                          context,
+                          isDesktop,
+                          versionTag,
+                          hasDirectWindowsAsset,
+                          winDownloadUrl,
+                          apkDownloadUrl,
+                        ),
+
+                        SizedBox(height: isDesktop ? 80 : 56),
+
+                        // 3. Platform Distribution Cards (Windows, Android, Web)
+                        _buildDistributionGrid(
+                          context,
+                          isDesktop,
+                          hasDirectWindowsAsset,
+                          winDownloadUrl,
+                          apkDownloadUrl,
+                          versionTag,
+                        ),
+
+                        SizedBox(height: isDesktop ? 80 : 56),
+
+                        // 4. Architectural Features Breakdown
+                        _buildFeaturesSection(isDesktop),
+
+                        SizedBox(height: isDesktop ? 80 : 56),
+
+                        // 5. Minimalist Portfolio Footer
+                        _buildFooter(context, isDesktop),
+                      ],
                     ),
-
-                    SizedBox(height: isDesktop ? 80 : 56),
-
-                    // 4. Architectural Features Breakdown
-                    _buildFeaturesSection(isDesktop),
-
-                    SizedBox(height: isDesktop ? 80 : 56),
-
-                    // 5. Minimalist Portfolio Footer
-                    _buildFooter(context, isDesktop),
-                  ],
+                  ),
                 ),
               ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }
