@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -18,6 +19,7 @@ class SearchView extends ConsumerStatefulWidget {
 
 class _SearchViewState extends ConsumerState<SearchView> {
   final _searchController = TextEditingController();
+  Timer? _debounceTimer;
 
   static const _genres = [
     (title: 'Pop', color1: Color(0xFF8D67AB), color2: Color(0xFF8D67AB), icon: Icons.star),
@@ -32,12 +34,22 @@ class _SearchViewState extends ConsumerState<SearchView> {
 
   @override
   void dispose() {
+    _debounceTimer?.cancel();
     _searchController.dispose();
     super.dispose();
   }
 
   void _onSearchChanged(String val) {
-    ref.read(searchQueryProvider.notifier).state = val;
+    _debounceTimer?.cancel();
+    if (val.trim().isEmpty) {
+      ref.read(searchQueryProvider.notifier).state = '';
+      return;
+    }
+    _debounceTimer = Timer(const Duration(milliseconds: 300), () {
+      if (mounted) {
+        ref.read(searchQueryProvider.notifier).state = val;
+      }
+    });
   }
 
   @override
@@ -272,15 +284,26 @@ class _SearchViewState extends ConsumerState<SearchView> {
             ),
             const SizedBox(height: 12),
             InkWell(
-              onTap: () {
-                if (isTopCurrent) {
-                  if (isPlaying) {
-                    handler.pause();
+              onTap: () async {
+                try {
+                  if (isTopCurrent) {
+                    if (isPlaying) {
+                      await handler.pause();
+                    } else {
+                      await handler.play();
+                    }
                   } else {
-                    handler.play();
+                    await handler.playQueue(tracks, startIndex: 0);
                   }
-                } else {
-                  handler.playQueue(tracks, startIndex: 0);
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        backgroundColor: SymphonyTheme.card,
+                        content: Text('Playback error: $e', style: const TextStyle(color: Colors.redAccent)),
+                      ),
+                    );
+                  }
                 }
               },
               borderRadius: BorderRadius.circular(8),
@@ -412,15 +435,26 @@ class _SearchViewState extends ConsumerState<SearchView> {
                     );
                   }
                 },
-                onTap: () {
-                  if (isCurrent) {
-                    if (isPlaying) {
-                      handler.pause();
+                onTap: () async {
+                  try {
+                    if (isCurrent) {
+                      if (isPlaying) {
+                        await handler.pause();
+                      } else {
+                        await handler.play();
+                      }
                     } else {
-                      handler.play();
+                      await handler.playQueue(tracks, startIndex: idx + 1);
                     }
-                  } else {
-                    handler.playQueue(tracks, startIndex: idx + 1);
+                  } catch (e) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          backgroundColor: SymphonyTheme.card,
+                          content: Text('Playback error: $e', style: const TextStyle(color: Colors.redAccent)),
+                        ),
+                      );
+                    }
                   }
                 },
               );

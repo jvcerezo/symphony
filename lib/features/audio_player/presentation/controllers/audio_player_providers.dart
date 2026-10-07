@@ -306,5 +306,9 @@ final searchResultsProvider = FutureProvider<List<Track>>((ref) async {
   if (query.trim().isEmpty) return [];
 
   final searchService = ref.watch(searchServiceProvider);
-  return searchService.searchTracks(query);
+  try {
+    return await searchService.searchTracks(query);
+  } catch (_) {
+    return [];
+  }
 });

@@ -121,6 +121,32 @@ class AudioStreamResolverService {
   }
 
   Future<ResolvedAudioStream> _doResolveBestAudioStream(Track track) async {
+    // 0. Direct stream attached to track (e.g. search results or pre-seeded streams)
+    if (track.streamUri != null) {
+      developer.log(
+        'Direct streamUri playback for: "${track.title}" -> ${track.streamUri}',
+        name: 'AudioStreamResolver',
+      );
+      return ResolvedAudioStream(
+        streamUri: track.streamUri!,
+        duration: track.expectedDuration ?? const Duration(seconds: 30),
+        bitrateKbps: 320,
+        format: track.streamUri!.path.endsWith('.m4a') ? 'aac' : 'mp3',
+        sourceVideoId: track.id,
+      );
+    }
+
+    final isWindows = !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+
+    // On Windows, Windows Media Foundation works best with AAC/M4A/MP3 streams.
+    // Try rapid direct CDN resolution first (< 300ms) to ensure instant native playback without WebM stalls.
+    if (isWindows) {
+      final cdnStream = await _resolveDirectCdnAudio(track);
+      if (cdnStream != null) {
+        return cdnStream;
+      }
+    }
+
     // 1. Direct YouTube video ID resolution if available (e.g. YouTube imported playlists)
     if (track.id.startsWith('yt_')) {
       final videoId = track.id.replaceFirst('yt_', '');
@@ -285,7 +311,6 @@ class AudioStreamResolverService {
     } else {
       for (final host in [
         'https://symphony.jettimothycerezo.dev',
-        'http://192.168.1.57:8080',
         'http://localhost:8080',
         'http://127.0.0.1:8080',
       ]) {
@@ -294,6 +319,8 @@ class AudioStreamResolverService {
         }
       }
     }
+
+    final isWindows = !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
 
     for (final origin in candidateOrigins) {
       try {
@@ -310,12 +337,18 @@ class AudioStreamResolverService {
         }
 
         final uri = Uri.parse('$origin/api/resolve').replace(queryParameters: queryParams);
-        final response = await _httpClient.get(uri).timeout(const Duration(seconds: 8));
+        final response = await _httpClient.get(uri).timeout(const Duration(seconds: 4));
 
         if (response.statusCode == 200) {
           final data = jsonDecode(response.body) as Map<String, dynamic>;
           final streamUrl = data['streamUrl'] as String?;
           final durationMs = data['durationMs'] as int?;
+          final format = (data['format'] as String?) ?? 'webm';
+
+          // On Windows, reject WebM server proxies to avoid unplayable Media Foundation stalls
+          if (isWindows && format.toLowerCase() == 'webm') {
+            continue;
+          }
 
           if (streamUrl != null && streamUrl.isNotEmpty) {
             final fullStreamUri = streamUrl.startsWith('http')
@@ -330,7 +363,7 @@ class AudioStreamResolverService {
               streamUri: fullStreamUri,
               duration: durationMs != null ? Duration(milliseconds: durationMs) : (track.expectedDuration ?? Duration.zero),
               bitrateKbps: (data['bitrate'] as num?)?.round() ?? 160,
-              format: (data['format'] as String?) ?? 'webm',
+              format: format,
               sourceVideoId: (data['videoId'] as String?) ?? track.id,
             );
           }

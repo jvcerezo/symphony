@@ -864,7 +864,7 @@ Future<void> _streamAudioBytes(HttpRequest request, String videoId) async {
           '-m',
           'yt_dlp',
           '-f',
-          'ba',
+          'ba[ext=m4a]/ba[ext=mp4]/ba',
           '-g',
           'https://www.youtube.com/watch?v=$videoId',
         ]);
@@ -923,7 +923,8 @@ Future<void> _streamAudioBytes(HttpRequest request, String videoId) async {
     if (remoteRes.headers.contentType != null) {
       request.response.headers.contentType = remoteRes.headers.contentType;
     } else {
-      request.response.headers.set('Content-Type', 'audio/webm');
+      final isMp4 = remoteStreamUrl.contains('mime=audio%2Fmp4') || remoteStreamUrl.contains('.m4a');
+      request.response.headers.set('Content-Type', isMp4 ? 'audio/mp4' : 'audio/webm');
     }
 
     request.response.headers.set('Accept-Ranges', 'bytes');
@@ -985,9 +986,13 @@ Future<void> _streamLocalFile(HttpRequest request, File file) async {
   final totalSize = await file.length();
   final rangeHeader = request.headers.value('range');
 
+  final pLower = file.path.toLowerCase();
+  final cType = (pLower.endsWith('.m4a') || pLower.endsWith('.mp4'))
+      ? 'audio/mp4'
+      : (pLower.endsWith('.mp3') ? 'audio/mpeg' : 'audio/webm');
   request.response.headers.add('Access-Control-Allow-Origin', '*');
   request.response.headers.add('Accept-Ranges', 'bytes');
-  request.response.headers.add('Content-Type', 'audio/webm');
+  request.response.headers.add('Content-Type', cType);
 
   if (rangeHeader != null && rangeHeader.startsWith('bytes=')) {
     final parts = rangeHeader.substring(6).split('-');

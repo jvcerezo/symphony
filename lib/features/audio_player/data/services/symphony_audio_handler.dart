@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:rxdart/rxdart.dart';
 import '../../../../core/errors/exceptions.dart';
+import '../../domain/entities/resolved_audio_stream.dart';
 import '../../domain/entities/track.dart';
 import '../../../metadata_search/data/services/artwork_resolver_service.dart';
 import 'audio_stream_resolver_service.dart';
@@ -82,7 +83,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   }
 
   Future<void> _initAudioSession() async {
-    if (kIsWeb) return;
+    if (kIsWeb || (!kIsWeb && (defaultTargetPlatform == TargetPlatform.windows || defaultTargetPlatform == TargetPlatform.linux))) return;
 
     try {
       final session = await AudioSession.instance;
@@ -319,35 +320,52 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
         return null;
       }
 
+      ResolvedAudioStream activeStream = streamInfo;
+      final isWindows = !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+
+      // On Windows, Windows Media Foundation cannot decode WebM out of the box.
+      // If the primary stream is WebM, preemptively switch to AAC CDN to guarantee instant native playback.
+      if (isWindows && (activeStream.format.toLowerCase() == 'webm' || activeStream.streamUri.path.endsWith('.webm'))) {
+        try {
+          final aacFallback = await _streamResolver.resolveFallbackCdn(track);
+          if (aacFallback != null) {
+            activeStream = aacFallback;
+            developer.log('Switched Windows stream to native AAC container for: "${track.title}"', name: 'AudioHandler');
+          }
+        } catch (_) {}
+      }
+
       try {
-        final headers = getHeadersForUri(streamInfo.streamUri);
-        final audioSource = AudioSource.uri(streamInfo.streamUri, headers: headers, tag: item);
+        final headers = getHeadersForUri(activeStream.streamUri);
+        final audioSource = AudioSource.uri(activeStream.streamUri, headers: headers, tag: item);
         await _player.setAudioSource(
           audioSource,
           preload: true,
           initialPosition: Duration.zero,
-        );
+        ).timeout(const Duration(seconds: 4));
       } catch (loadErr) {
-        developer.log('Primary stream load failed with $loadErr, attempting server proxy resolve...', name: 'AudioHandler');
+        developer.log('Primary stream load failed with $loadErr, attempting fallback...', name: 'AudioHandler');
         if (requestId != _playRequestId) return;
 
         bool recovered = false;
-        try {
-          final serverResolved = await _streamResolver.resolveViaWebServer(track);
-          if (serverResolved != null) {
-            final serverSource = AudioSource.uri(serverResolved.streamUri, tag: item);
-            await _player.setAudioSource(
-              serverSource,
-              preload: true,
-              initialPosition: Duration.zero,
-            );
-            recovered = true;
-            developer.log('Recovered playback via Symphony server stream proxy for: "${track.title}"', name: 'AudioHandler');
-          }
-        } catch (_) {}
+        if (!isWindows) {
+          try {
+            final serverResolved = await _streamResolver.resolveViaWebServer(track);
+            if (serverResolved != null) {
+              final serverSource = AudioSource.uri(serverResolved.streamUri, tag: item);
+              await _player.setAudioSource(
+                serverSource,
+                preload: true,
+                initialPosition: Duration.zero,
+              ).timeout(const Duration(seconds: 4));
+              recovered = true;
+              developer.log('Recovered playback via Symphony server stream proxy for: "${track.title}"', name: 'AudioHandler');
+            }
+          } catch (_) {}
+        }
 
         if (!recovered) {
-          developer.log('Server resolve also failed, activating resilient fallback CDN...', name: 'AudioHandler');
+          developer.log('Activating resilient fallback CDN...', name: 'AudioHandler');
           final fallback = await _streamResolver.resolveFallbackCdn(track);
           if (fallback != null) {
             final fallbackSource = AudioSource.uri(fallback.streamUri, tag: item);
@@ -355,7 +373,8 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
               fallbackSource,
               preload: true,
               initialPosition: Duration.zero,
-            );
+            ).timeout(const Duration(seconds: 4));
+            recovered = true;
           } else {
             rethrow;
           }

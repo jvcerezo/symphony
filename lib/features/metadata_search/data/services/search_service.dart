@@ -19,7 +19,7 @@ class SearchService {
 
     try {
       developer.log('Searching tracks for: "$cleanQuery"', name: 'SearchService');
-      final response = await _httpClient.get(uri).timeout(const Duration(seconds: 8));
+      final response = await _httpClient.get(uri).timeout(const Duration(seconds: 5));
 
       if (response.statusCode != 200) {
         return [];
