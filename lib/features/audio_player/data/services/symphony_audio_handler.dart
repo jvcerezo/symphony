@@ -123,42 +123,53 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
     }
   }
 
-  void _broadcastPlaybackState() {
-    _playbackEventSub = _player.playbackEventStream.listen((PlaybackEvent event) {
-      final isPlaying = _player.playing;
-      final processingState = _transformProcessingState(_player.processingState);
+  void _updatePlaybackState() {
+    final isPlaying = _player.playing;
+    final processingState = _transformProcessingState(_player.processingState);
 
-      playbackState.add(
-        PlaybackState(
-          controls: [
-            MediaControl.skipToPrevious,
-            if (isPlaying) MediaControl.pause else MediaControl.play,
-            MediaControl.stop,
-            MediaControl.skipToNext,
-          ],
-          systemActions: const {
-            MediaAction.seek,
-            MediaAction.seekForward,
-            MediaAction.seekBackward,
-          },
-          androidCompactActionIndices: const [0, 1, 3],
-          processingState: processingState,
-          playing: isPlaying,
-          updatePosition: _player.position,
-          bufferedPosition: _player.bufferedPosition,
-          speed: _player.speed,
-          queueIndex: currentIndex >= 0 ? currentIndex : null,
-        ),
-      );
+    playbackState.add(
+      PlaybackState(
+        controls: [
+          MediaControl.skipToPrevious,
+          if (isPlaying) MediaControl.pause else MediaControl.play,
+          MediaControl.stop,
+          MediaControl.skipToNext,
+        ],
+        systemActions: const {
+          MediaAction.seek,
+          MediaAction.seekForward,
+          MediaAction.seekBackward,
+        },
+        androidCompactActionIndices: const [0, 1, 3],
+        processingState: processingState,
+        playing: isPlaying,
+        updatePosition: _player.position,
+        bufferedPosition: _player.bufferedPosition,
+        speed: _player.speed,
+        queueIndex: currentIndex >= 0 ? currentIndex : null,
+      ),
+    );
+  }
+
+  void _broadcastPlaybackState() {
+    _playbackEventSub = _player.playbackEventStream.listen((_) {
+      _updatePlaybackState();
     });
   }
 
   void _listenToCompletion() {
     _playerStateSub = _player.playerStateStream.listen((state) {
-      if (state.processingState == ProcessingState.completed &&
-          !_isAutoSkipping &&
-          _player.position > const Duration(seconds: 3)) {
-        _handleTrackCompleted('ProcessingState.completed event');
+      _updatePlaybackState();
+      if (state.processingState == ProcessingState.completed && !_isAutoSkipping) {
+        final dur = _player.duration ?? mediaItem.value?.duration ?? currentTrack?.expectedDuration;
+        if (dur != null && dur > const Duration(seconds: 15)) {
+          final pos = _player.position;
+          if (pos >= dur - const Duration(milliseconds: 2500)) {
+            _handleTrackCompleted('ProcessingState.completed at end: $pos / $dur');
+          } else {
+            developer.log('Ignored premature completed event: pos=$pos, dur=$dur', name: 'AudioHandler');
+          }
+        }
       }
     });
   }
@@ -168,11 +179,11 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
     _lastObservedPosition = Duration.zero;
     _lastPositionAdvanceTime = DateTime.now();
 
-    _completionWatchdogTimer = Timer.periodic(const Duration(milliseconds: 350), (_) {
+    _completionWatchdogTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
       if (_isAutoSkipping || _playlistQueue.isEmpty || !_player.playing) return;
 
       final dur = _player.duration ?? mediaItem.value?.duration ?? currentTrack?.expectedDuration;
-      if (dur == null || dur <= const Duration(seconds: 5)) return;
+      if (dur == null || dur <= const Duration(seconds: 15)) return;
 
       final pos = _player.position;
 
@@ -188,14 +199,14 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
         return;
       }
 
-      // 2. Near end stall watchdog: within 2.5 seconds of end and position hasn't advanced for > 850ms,
-      // or browser audio entered buffering/idle at EOF
-      if (pos >= dur - const Duration(milliseconds: 2500)) {
+      // 2. Near end stall watchdog: within 2.0 seconds of end and position hasn't advanced for > 1500ms
+      if (pos >= dur - const Duration(milliseconds: 2000)) {
         final timeSinceAdvance = DateTime.now().difference(_lastPositionAdvanceTime);
         final isBufferingOrIdle = _player.processingState == ProcessingState.buffering ||
-            _player.processingState == ProcessingState.idle;
+            _player.processingState == ProcessingState.idle ||
+            _player.processingState == ProcessingState.completed;
 
-        if (timeSinceAdvance > const Duration(milliseconds: 850) || isBufferingOrIdle) {
+        if (timeSinceAdvance > const Duration(milliseconds: 1500) || isBufferingOrIdle) {
           _handleTrackCompleted('stalled at end: $pos / $dur, state: ${_player.processingState}');
           return;
         }
@@ -278,9 +289,6 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
     );
 
     try {
-      // 3. Stop existing playback to reset browser HTML5 audio element cleanly
-      await _player.stop();
-      await _player.seek(Duration.zero);
       if (requestId != _playRequestId) return; // Superceded by another user tap
 
       final streamInfo = await _streamResolver.resolveBestAudioStream(track);
@@ -311,7 +319,6 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
           return null;
         }
         if (host.contains('googlevideo.com')) {
-          // Clean standard headers without Desktop Windows spoofing that triggers TLS JA3 mismatch on mobile
           return const {
             'Accept': '*/*',
             'Accept-Encoding': 'identity;q=1, *;q=0',
@@ -320,20 +327,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
         return null;
       }
 
-      ResolvedAudioStream activeStream = streamInfo;
-      final isWindows = !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
-
-      // On Windows, Windows Media Foundation cannot decode WebM out of the box.
-      // If the primary stream is WebM, preemptively switch to AAC CDN to guarantee instant native playback.
-      if (isWindows && (activeStream.format.toLowerCase() == 'webm' || activeStream.streamUri.path.endsWith('.webm'))) {
-        try {
-          final aacFallback = await _streamResolver.resolveFallbackCdn(track);
-          if (aacFallback != null) {
-            activeStream = aacFallback;
-            developer.log('Switched Windows stream to native AAC container for: "${track.title}"', name: 'AudioHandler');
-          }
-        } catch (_) {}
-      }
+      final activeStream = streamInfo;
 
       try {
         final headers = getHeadersForUri(activeStream.streamUri);
@@ -341,28 +335,24 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
         await _player.setAudioSource(
           audioSource,
           preload: true,
-          initialPosition: Duration.zero,
         ).timeout(const Duration(seconds: 4));
       } catch (loadErr) {
         developer.log('Primary stream load failed with $loadErr, attempting fallback...', name: 'AudioHandler');
         if (requestId != _playRequestId) return;
 
         bool recovered = false;
-        if (!isWindows) {
-          try {
-            final serverResolved = await _streamResolver.resolveViaWebServer(track);
-            if (serverResolved != null) {
-              final serverSource = AudioSource.uri(serverResolved.streamUri, tag: item);
-              await _player.setAudioSource(
-                serverSource,
-                preload: true,
-                initialPosition: Duration.zero,
-              ).timeout(const Duration(seconds: 4));
-              recovered = true;
-              developer.log('Recovered playback via Symphony server stream proxy for: "${track.title}"', name: 'AudioHandler');
-            }
-          } catch (_) {}
-        }
+        try {
+          final serverResolved = await _streamResolver.resolveViaWebServer(track);
+          if (serverResolved != null) {
+            final serverSource = AudioSource.uri(serverResolved.streamUri, tag: item);
+            await _player.setAudioSource(
+              serverSource,
+              preload: true,
+            ).timeout(const Duration(seconds: 4));
+            recovered = true;
+            developer.log('Recovered playback via Symphony server stream proxy for: "${track.title}"', name: 'AudioHandler');
+          }
+        } catch (_) {}
 
         if (!recovered) {
           developer.log('Activating resilient fallback CDN...', name: 'AudioHandler');
@@ -372,7 +362,6 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
             await _player.setAudioSource(
               fallbackSource,
               preload: true,
-              initialPosition: Duration.zero,
             ).timeout(const Duration(seconds: 4));
             recovered = true;
           } else {
@@ -383,6 +372,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
       if (requestId != _playRequestId) return;
 
       await _player.play();
+      _updatePlaybackState();
       _startCompletionWatchdog();
       _preloadUpcomingTracks(currentIndex);
 
@@ -410,19 +400,27 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
       await seek(Duration.zero);
     }
     await _player.play();
+    _updatePlaybackState();
   }
 
   @override
-  Future<void> pause() => _player.pause();
+  Future<void> pause() async {
+    await _player.pause();
+    _updatePlaybackState();
+  }
 
   @override
   Future<void> stop() async {
     await _player.stop();
+    _updatePlaybackState();
     await super.stop();
   }
 
   @override
-  Future<void> seek(Duration position) => _player.seek(position);
+  Future<void> seek(Duration position) async {
+    await _player.seek(position);
+    _updatePlaybackState();
+  }
 
   @override
   Future<void> skipToNext() async {

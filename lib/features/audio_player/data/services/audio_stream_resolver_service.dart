@@ -121,30 +121,19 @@ class AudioStreamResolverService {
   }
 
   Future<ResolvedAudioStream> _doResolveBestAudioStream(Track track) async {
-    // 0. Direct stream attached to track (e.g. search results or pre-seeded streams)
-    if (track.streamUri != null) {
+    // 0. Direct full stream attached to track (e.g. pre-seeded master streams, local files, or server proxies)
+    if (track.streamUri != null && !_isShortPreviewStream(track.streamUri)) {
       developer.log(
-        'Direct streamUri playback for: "${track.title}" -> ${track.streamUri}',
+        'Direct full streamUri playback for: "${track.title}" -> ${track.streamUri}',
         name: 'AudioStreamResolver',
       );
       return ResolvedAudioStream(
         streamUri: track.streamUri!,
-        duration: track.expectedDuration ?? const Duration(seconds: 30),
+        duration: track.expectedDuration ?? Duration.zero,
         bitrateKbps: 320,
         format: track.streamUri!.path.endsWith('.m4a') ? 'aac' : 'mp3',
         sourceVideoId: track.id,
       );
-    }
-
-    final isWindows = !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
-
-    // On Windows, Windows Media Foundation works best with AAC/M4A/MP3 streams.
-    // Try rapid direct CDN resolution first (< 300ms) to ensure instant native playback without WebM stalls.
-    if (isWindows) {
-      final cdnStream = await _resolveDirectCdnAudio(track);
-      if (cdnStream != null) {
-        return cdnStream;
-      }
     }
 
     // 1. Direct YouTube video ID resolution if available (e.g. YouTube imported playlists)
@@ -320,8 +309,6 @@ class AudioStreamResolverService {
       }
     }
 
-    final isWindows = !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
-
     for (final origin in candidateOrigins) {
       try {
         final queryParams = <String, String>{};
@@ -344,11 +331,6 @@ class AudioStreamResolverService {
           final streamUrl = data['streamUrl'] as String?;
           final durationMs = data['durationMs'] as int?;
           final format = (data['format'] as String?) ?? 'webm';
-
-          // On Windows, reject WebM server proxies to avoid unplayable Media Foundation stalls
-          if (isWindows && format.toLowerCase() == 'webm') {
-            continue;
-          }
 
           if (streamUrl != null && streamUrl.isNotEmpty) {
             final fullStreamUri = streamUrl.startsWith('http')
@@ -373,6 +355,15 @@ class AudioStreamResolverService {
       }
     }
     return null;
+  }
+
+  bool _isShortPreviewStream(Uri? uri) {
+    if (uri == null) return false;
+    final s = uri.toString().toLowerCase();
+    return s.contains('audio-ssl.itunes.apple.com') ||
+        s.contains('itunes.apple.com') ||
+        s.contains('cdns-preview') ||
+        s.contains('/preview/');
   }
 
   String _cleanSongTitle(String title) {
