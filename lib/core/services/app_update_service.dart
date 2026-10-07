@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import '../utils/platform_url_launcher.dart';
+import 'windows_auto_updater.dart';
 
 class AppReleaseInfo {
   final String tagName;
@@ -66,6 +67,9 @@ class AppUpdateState {
   final AppReleaseInfo? latestRelease;
   final String? errorMessage;
   final bool userNotified;
+  final bool isDownloading;
+  final double downloadProgress;
+  final bool isInstalling;
 
   const AppUpdateState({
     this.isChecking = false,
@@ -73,6 +77,9 @@ class AppUpdateState {
     this.latestRelease,
     this.errorMessage,
     this.userNotified = false,
+    this.isDownloading = false,
+    this.downloadProgress = 0.0,
+    this.isInstalling = false,
   });
 
   AppUpdateState copyWith({
@@ -81,6 +88,9 @@ class AppUpdateState {
     AppReleaseInfo? latestRelease,
     String? errorMessage,
     bool? userNotified,
+    bool? isDownloading,
+    double? downloadProgress,
+    bool? isInstalling,
   }) {
     return AppUpdateState(
       isChecking: isChecking ?? this.isChecking,
@@ -88,6 +98,9 @@ class AppUpdateState {
       latestRelease: latestRelease ?? this.latestRelease,
       errorMessage: errorMessage ?? this.errorMessage,
       userNotified: userNotified ?? this.userNotified,
+      isDownloading: isDownloading ?? this.isDownloading,
+      downloadProgress: downloadProgress ?? this.downloadProgress,
+      isInstalling: isInstalling ?? this.isInstalling,
     );
   }
 }
@@ -157,6 +170,48 @@ class AppUpdateNotifier extends StateNotifier<AppUpdateState> {
 
   void markUserNotified() {
     state = state.copyWith(userNotified: true);
+  }
+
+  /// Downloads the Windows update bundle with progress tracking and applies the hot-swap
+  Future<void> downloadAndApplyWindowsUpdate([String? directUrl]) async {
+    final targetUrl = directUrl ?? state.latestRelease?.windowsDownloadUrl;
+    if (targetUrl == null || targetUrl.isEmpty) {
+      state = state.copyWith(errorMessage: 'No Windows update download available.');
+      return;
+    }
+
+    if (state.isDownloading || state.isInstalling) return;
+
+    state = state.copyWith(
+      isDownloading: true,
+      downloadProgress: 0.0,
+      isInstalling: false,
+      errorMessage: null,
+    );
+
+    try {
+      await platformWindowsAutoUpdate(
+        targetUrl,
+        onProgress: (progress) {
+          state = state.copyWith(
+            downloadProgress: progress,
+          );
+        },
+        onInstalling: () {
+          state = state.copyWith(
+            isDownloading: false,
+            isInstalling: true,
+          );
+        },
+      );
+    } catch (e) {
+      developer.log('Auto-update failed: $e', name: 'AppUpdateService');
+      state = state.copyWith(
+        isDownloading: false,
+        isInstalling: false,
+        errorMessage: 'Auto-update failed: $e',
+      );
+    }
   }
 
   static bool isNewerVersion(String remoteTag, String localVersion, {String? remoteTitle}) {

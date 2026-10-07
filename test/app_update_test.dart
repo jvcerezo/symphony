@@ -94,14 +94,30 @@ void main() {
       expect(state.hasUpdate, isFalse);
       expect(state.latestRelease, isNull);
       expect(state.userNotified, isFalse);
+      expect(state.isDownloading, isFalse);
+      expect(state.downloadProgress, equals(0.0));
+      expect(state.isInstalling, isFalse);
 
       final updated = state.copyWith(
         hasUpdate: true,
         userNotified: true,
+        isDownloading: true,
+        downloadProgress: 0.65,
+        isInstalling: false,
       );
       expect(updated.hasUpdate, isTrue);
       expect(updated.userNotified, isTrue);
       expect(updated.isChecking, isFalse);
+      expect(updated.isDownloading, isTrue);
+      expect(updated.downloadProgress, equals(0.65));
+      expect(updated.isInstalling, isFalse);
+
+      final installing = updated.copyWith(
+        isDownloading: false,
+        isInstalling: true,
+      );
+      expect(installing.isDownloading, isFalse);
+      expect(installing.isInstalling, isTrue);
     });
   });
 }
