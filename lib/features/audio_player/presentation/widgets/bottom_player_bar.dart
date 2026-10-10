@@ -1,9 +1,11 @@
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/layout/breakpoints.dart';
 import '../../../../core/theme/symphony_theme.dart';
 import '../../domain/entities/track.dart';
 import '../controllers/audio_player_providers.dart';
+import '../desktop/desktop_volume_provider.dart';
 import 'symphony_artwork.dart';
 
 class BottomPlayerBar extends ConsumerStatefulWidget {
@@ -14,8 +16,6 @@ class BottomPlayerBar extends ConsumerStatefulWidget {
 }
 
 class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
-  double _volume = 1.0;
-  bool _isMuted = false;
   bool _isLiked = false;
   bool _isShuffle = false;
   bool _isRepeat = false;
@@ -37,8 +37,7 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
       return const SizedBox.shrink();
     }
 
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isMobile = screenWidth < 750;
+    final isMobile = Breakpoints.isMobile(context);
 
     return Container(
       height: isMobile ? 68 : 76,
@@ -71,6 +70,7 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
   Widget _buildDesktopLayout(MediaItem mediaItem, bool isPlaying, bool isBuffering) {
     final handler = ref.read(audioHandlerProvider);
     final accent = ref.watch(accentThemeProvider);
+    final volume = ref.watch(volumeProvider);
 
     return Row(
       children: [
@@ -323,17 +323,12 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                 icon: Icon(
-                  _isMuted || _volume == 0
+                  volume.effective == 0
                       ? Icons.volume_off_rounded
-                      : (_volume < 0.5 ? Icons.volume_down_rounded : Icons.volume_up_rounded),
+                      : (volume.level < 0.5 ? Icons.volume_down_rounded : Icons.volume_up_rounded),
                   color: SymphonyTheme.textSecondary,
                 ),
-                onPressed: () {
-                  setState(() {
-                    _isMuted = !_isMuted;
-                    handler.setVolume(_isMuted ? 0.0 : _volume);
-                  });
-                },
+                onPressed: () => ref.read(volumeProvider.notifier).toggleMute(),
               ),
               MouseRegion(
                 onEnter: (_) => setState(() => _isVolumeHovered = true),
@@ -356,16 +351,10 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
                       thumbColor: Colors.white,
                     ),
                     child: Slider(
-                      value: _isMuted ? 0.0 : _volume,
+                      value: volume.effective,
                       min: 0.0,
                       max: 1.0,
-                      onChanged: (val) {
-                        setState(() {
-                          _volume = val;
-                          _isMuted = false;
-                        });
-                        handler.setVolume(val);
-                      },
+                      onChanged: (val) => ref.read(volumeProvider.notifier).setLevel(val),
                     ),
                   ),
                 ),

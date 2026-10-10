@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/layout/breakpoints.dart';
 import '../../../../core/theme/symphony_theme.dart';
 import '../../domain/entities/track.dart';
 import '../controllers/audio_player_providers.dart';
@@ -144,8 +145,8 @@ class _SpotifyTrackRowState extends ConsumerState<SpotifyTrackRow> {
     final track = widget.track;
     final isCurrent = widget.isCurrent;
     final isBuffering = widget.isBuffering;
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isMobile = screenWidth < 800;
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final isMobile = Breakpoints.isMobile(context);
 
     if (isMobile) {
       return _buildMobileRow(accent, track, isCurrent, isBuffering);

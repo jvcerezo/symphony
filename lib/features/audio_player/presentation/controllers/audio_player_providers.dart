@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:developer' as developer;
 import 'package:audio_service/audio_service.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -15,6 +14,7 @@ import '../../../playlist_import/domain/entities/spotify_playlist.dart';
 import '../../../settings/presentation/controllers/personalization_provider.dart';
 import '../../data/services/symphony_audio_handler.dart';
 import '../../domain/entities/track.dart';
+import '../../../../core/config/server_config.dart';
 
 /// Symphony Brand & User Accent Theme Provider (Defaults to clean Obsidian Monochrome)
 final accentThemeProvider = StateProvider<SymphonyAccent>((ref) => SymphonyTheme.monochrome);
@@ -158,25 +158,7 @@ class ImportedPlaylistsNotifier extends StateNotifier<List<SpotifyPlaylist>> {
     }
   }
 
-  List<String> _getCandidateServerOrigins() {
-    final origins = <String>[];
-    if (kIsWeb) {
-      try {
-        final origin = Uri.base.origin;
-        if (origin.isNotEmpty && !origin.startsWith('null')) {
-          origins.add(origin);
-        }
-      } catch (_) {}
-    } else {
-      origins.addAll([
-        'https://symphony.jettimothycerezo.dev',
-        'http://192.168.1.57:8080',
-        'http://localhost:8080',
-        'http://127.0.0.1:8080',
-      ]);
-    }
-    return origins;
-  }
+  List<String> _getCandidateServerOrigins() => ServerConfig.candidateOrigins();
 
   Future<void> _syncWithServer() async {
     final instId = _instanceId;

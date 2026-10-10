@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../../../audio_player/domain/entities/track.dart';
 import '../../../metadata_search/data/services/artwork_resolver_service.dart';
 import '../../domain/entities/spotify_playlist.dart';
+import '../../../../core/config/server_config.dart';
 
 class SpotifyEmbedScraperService {
   final http.Client _httpClient;
@@ -192,26 +193,7 @@ class SpotifyEmbedScraperService {
 
   /// Calls the local Symphony server to scrape Spotify without browser CORS limits.
   Future<SpotifyPlaylist?> _importViaServer(String playlistId, {String? instanceId}) async {
-    final candidateOrigins = <String>[];
-    if (kIsWeb) {
-      try {
-        final origin = Uri.base.origin;
-        if (origin.isNotEmpty && !origin.startsWith('null')) {
-          candidateOrigins.add(origin);
-        }
-      } catch (_) {}
-    } else {
-      for (final host in [
-        'https://symphony.jettimothycerezo.dev',
-        'http://192.168.1.57:8080',
-        'http://localhost:8080',
-        'http://127.0.0.1:8080',
-      ]) {
-        if (!candidateOrigins.contains(host)) {
-          candidateOrigins.add(host);
-        }
-      }
-    }
+    final candidateOrigins = ServerConfig.candidateOrigins();
 
     for (final origin in candidateOrigins) {
       try {
