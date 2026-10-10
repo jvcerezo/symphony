@@ -150,7 +150,7 @@ jobs:
             - **Commit**: `${{ github.sha }}`
             - **Windows Desktop (x64)**: [Download symphony-windows-x64.zip](https://github.com/${{ github.repository }}/releases/download/${{ steps.release_meta.outputs.tag }}/symphony-windows-x64.zip)
             - **Android APK**: [Download symphony.apk](https://github.com/${{ github.repository }}/releases/download/${{ steps.release_meta.outputs.tag }}/symphony.apk)
-            - **Web Deployment**: Auto-deployed to 24/7 Cloud Host (`https://symphony.jettimothycerezo.dev`)
+            - **Landing Page**: https://symphony.jettimothycerezo.dev
           draft: false
           prerelease: false
           files: |

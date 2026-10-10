@@ -10,8 +10,9 @@ import 'package:flutter/foundation.dart';
 ///    Native: production, then (debug builds only) the LAN dev host, then
 ///    localhost. With `preferLocal: true`: localhost, production, LAN.
 abstract final class ServerConfig {
-  /// Public production backend.
-  static const String productionOrigin = 'https://symphony.jettimothycerezo.dev';
+  /// Production backend (`server.dart` behind the Cloudflare tunnel). The bare
+  /// `symphony.` host is the static landing page on GitHub Pages.
+  static const String productionOrigin = 'https://symphony-api.jettimothycerezo.dev';
 
   /// Developer machine on the local network. Only tried in debug builds.
   static const String lanDevOrigin = 'http://192.168.1.57:8080';
