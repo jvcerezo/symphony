@@ -6,7 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:rxdart/rxdart.dart';
 import '../../../../core/errors/exceptions.dart';
-import '../../domain/entities/resolved_audio_stream.dart';
+import '../../../../core/services/notification_permission_service.dart';
 import '../../domain/entities/track.dart';
 import '../../../metadata_search/data/services/artwork_resolver_service.dart';
 import 'audio_stream_resolver_service.dart';
@@ -15,6 +15,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   final AudioPlayer _player;
   final AudioStreamResolverService _streamResolver;
   final ArtworkResolverService _artworkResolver;
+  final NotificationPermissionService _notificationPermission;
 
   final List<Track> _playlistQueue = [];
   final BehaviorSubject<int> _currentIndexSubject = BehaviorSubject<int>.seeded(-1);
@@ -35,9 +36,11 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
     AudioPlayer? player,
     AudioStreamResolverService? streamResolver,
     ArtworkResolverService? artworkResolver,
+    NotificationPermissionService? notificationPermission,
   })  : _player = player ?? AudioPlayer(),
         _streamResolver = streamResolver ?? AudioStreamResolverService(),
-        _artworkResolver = artworkResolver ?? ArtworkResolverService() {
+        _artworkResolver = artworkResolver ?? ArtworkResolverService(),
+        _notificationPermission = notificationPermission ?? NotificationPermissionService() {
     _initAudioSession();
     _broadcastPlaybackState();
     _listenToCompletion();
@@ -270,6 +273,10 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
 
   Future<void> _loadAndPlayTrack(Track track) async {
     final requestId = ++_playRequestId;
+
+    // Android 13+: ask for POST_NOTIFICATIONS on first playback so the media
+    // notification is visible. Memoized and non-blocking; no-op elsewhere.
+    unawaited(_notificationPermission.ensureRequested());
 
     // 1. Immediately cut off previous audio with zero latency
     try {
