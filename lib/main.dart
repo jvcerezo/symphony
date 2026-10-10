@@ -19,7 +19,7 @@ Future<void> main() async {
       androidNotificationChannelName: 'Symphony Playback',
       androidNotificationOngoing: true,
       androidStopForegroundOnPause: true,
-      androidNotificationIcon: 'mipmap/ic_launcher',
+      androidNotificationIcon: 'drawable/ic_stat_symphony',
     ),
   );
 
