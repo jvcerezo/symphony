@@ -139,10 +139,10 @@ class AudioStreamResolverService {
     // 1. Direct YouTube video ID resolution if available (e.g. YouTube imported playlists)
     if (track.id.startsWith('yt_')) {
       final videoId = track.id.replaceFirst('yt_', '');
-      if (kIsWeb) {
-        final serverResolved = await resolveViaWebServer(track, videoId: videoId);
-        if (serverResolved != null) return serverResolved;
-      } else {
+      final serverResolved = await resolveViaWebServer(track, videoId: videoId);
+      if (serverResolved != null) return serverResolved;
+
+      if (!kIsWeb) {
         try {
           final manifest = await _yt.videos.streamsClient.getManifest(videoId);
           final audioStreams = manifest.audioOnly;
@@ -159,20 +159,24 @@ class AudioStreamResolverService {
             );
           }
         } catch (e) {
-          developer.log('Direct YouTube video extraction failed: $e. Falling back to server resolver.', name: 'AudioStreamResolver');
-          final serverResolved = await resolveViaWebServer(track, videoId: videoId);
-          if (serverResolved != null) return serverResolved;
+          developer.log('Direct YouTube video extraction failed: $e', name: 'AudioStreamResolver');
         }
       }
     }
 
-    // 2. Full YouTube audio stream extraction (Plays complete 3-4 min master from 0:00:00 intro to end)
-    if (kIsWeb) {
+    // 2. PRIMARY: Query Symphony high-fidelity audio resolver (/api/resolve -> /api/stream)
+    // Streams full 3-4 min master from 0:00:00 to end, pre-warmed on server, bypassing client 403s
+    try {
       final serverResolved = await resolveViaWebServer(track);
       if (serverResolved != null) {
         return serverResolved;
       }
-    } else {
+    } catch (e) {
+      developer.log('Server resolve attempt failed: $e', name: 'AudioStreamResolver');
+    }
+
+    // 3. SECONDARY: On-device search via youtube_explode_dart (if offline or server unreachable)
+    if (!kIsWeb) {
       final cleanTitle = _cleanSongTitle(track.title);
       final cleanArtist = _cleanSongArtist(track.artist);
       final queries = [
@@ -244,37 +248,23 @@ class AudioStreamResolverService {
           }
         }
       } catch (e) {
-        developer.log('YouTube on-device extraction failed: $e. Falling back to resilient streams.', name: 'AudioStreamResolver');
+        developer.log('YouTube on-device extraction failed: $e', name: 'AudioStreamResolver');
       }
-
-      // Try server resolve if on-device search was unable to produce a playable audio stream
-      try {
-        final serverResolved = await resolveViaWebServer(track);
-        if (serverResolved != null) {
-          return serverResolved;
-        }
-      } catch (_) {}
     }
 
-    // 3. Direct stream attached to track (if provided and full audio)
-    if (track.streamUri != null) {
+    // 4. Direct stream attached to track (if provided and full audio)
+    if (track.streamUri != null && !_isShortPreviewStream(track.streamUri)) {
       developer.log(
         'Direct streamUri fallback for: "${track.title}" -> ${track.streamUri}',
         name: 'AudioStreamResolver',
       );
       return ResolvedAudioStream(
         streamUri: track.streamUri!,
-        duration: track.expectedDuration ?? const Duration(seconds: 30),
+        duration: track.expectedDuration ?? Duration.zero,
         bitrateKbps: 320,
         format: track.streamUri!.path.endsWith('.m4a') ? 'aac' : 'mp3',
         sourceVideoId: track.id,
       );
-    }
-
-    // 4. Fallback to resilient CDN stream (with candidate scoring to pick original studio master)
-    final fallbackCdn = await _resolveDirectCdnAudio(track);
-    if (fallbackCdn != null) {
-      return fallbackCdn;
     }
 
     throw AudioStreamResolutionException(
@@ -299,9 +289,9 @@ class AudioStreamResolverService {
       } catch (_) {}
     } else {
       for (final host in [
-        'https://symphony.jettimothycerezo.dev',
-        'http://localhost:8080',
         'http://127.0.0.1:8080',
+        'http://localhost:8080',
+        'https://symphony.jettimothycerezo.dev',
       ]) {
         if (!candidateOrigins.contains(host)) {
           candidateOrigins.add(host);
@@ -330,7 +320,7 @@ class AudioStreamResolverService {
           final data = jsonDecode(response.body) as Map<String, dynamic>;
           final streamUrl = data['streamUrl'] as String?;
           final durationMs = data['durationMs'] as int?;
-          final format = (data['format'] as String?) ?? 'webm';
+          final format = (data['format'] as String?) ?? 'm4a';
 
           if (streamUrl != null && streamUrl.isNotEmpty) {
             final fullStreamUri = streamUrl.startsWith('http')
@@ -384,97 +374,8 @@ class AudioStreamResolverService {
         .trim();
   }
 
-  /// Public fallback method to resolve high-fidelity AAC stream via Apple CDN if primary YouTube stream fails in player
-  Future<ResolvedAudioStream?> resolveFallbackCdn(Track track) => _resolveDirectCdnAudio(track);
-
-  /// Resolves an unauthenticated, zero-cost high-fidelity AAC stream via Apple CDN.
-  Future<ResolvedAudioStream?> _resolveDirectCdnAudio(Track track) async {
-    final cleanTitle = _cleanSongTitle(track.title);
-    final cleanArtist = _cleanSongArtist(track.artist);
-
-    final queryVariations = [
-      '$cleanArtist $cleanTitle'.trim(),
-      cleanTitle,
-      '${track.artist} ${track.title}'.trim(),
-    ];
-
-    for (final query in queryVariations) {
-      if (query.isEmpty) continue;
-      final uri = Uri.parse(
-        'https://itunes.apple.com/search?term=${Uri.encodeComponent(query)}&media=music&entity=song&limit=10',
-      );
-
-      try {
-        final response = await _httpClient.get(uri).timeout(const Duration(seconds: 5));
-        if (response.statusCode == 200) {
-          final Map<String, dynamic> data = jsonDecode(response.body) as Map<String, dynamic>;
-          final results = (data['results'] as List<dynamic>?) ?? [];
-
-          Map<String, dynamic>? bestCandidate;
-          int highestScore = -999;
-
-          final targetTitleLower = cleanTitle.toLowerCase();
-          final targetArtistLower = cleanArtist.toLowerCase();
-
-          for (final item in results) {
-            if (item is! Map<String, dynamic>) continue;
-            final previewUrl = item['previewUrl'] as String?;
-            if (previewUrl == null || previewUrl.isEmpty) continue;
-
-            final itemTitle = (item['trackName'] as String? ?? '').toLowerCase();
-            final itemArtist = (item['artistName'] as String? ?? '').toLowerCase();
-
-            int score = 0;
-            if (itemTitle == targetTitleLower) {
-              score += 100;
-            } else if (itemTitle.contains(targetTitleLower) || targetTitleLower.contains(itemTitle)) {
-              score += 50;
-            }
-
-            if (itemArtist.contains(targetArtistLower)) {
-              score += 50;
-            }
-            if (itemArtist == targetArtistLower) {
-              score += 30;
-            }
-
-            if (itemTitle.contains('remix') && !targetTitleLower.contains('remix')) score -= 80;
-            if (itemTitle.contains('live') && !targetTitleLower.contains('live')) score -= 80;
-            if (itemTitle.contains('karaoke') || itemArtist.contains('karaoke')) score -= 200;
-            if (itemTitle.contains('tribute') || itemArtist.contains('tribute')) score -= 200;
-            if (itemTitle.contains('cover') || itemArtist.contains('cover')) score -= 200;
-            if (itemTitle.contains('instrumental') && !targetTitleLower.contains('instrumental')) score -= 100;
-
-            if (score > highestScore) {
-              highestScore = score;
-              bestCandidate = item;
-            }
-          }
-
-          if (bestCandidate != null && highestScore > 0) {
-            final previewUrl = bestCandidate['previewUrl'] as String;
-            final durationMs = bestCandidate['trackTimeMillis'] as int? ?? 30000;
-            developer.log(
-              'Selected best master match: "${bestCandidate['trackName']}" by "${bestCandidate['artistName']}" [score: $highestScore] -> $previewUrl',
-              name: 'AudioStreamResolver',
-            );
-
-            return ResolvedAudioStream(
-              streamUri: Uri.parse(previewUrl),
-              duration: track.expectedDuration ?? Duration(milliseconds: durationMs),
-              bitrateKbps: 256,
-              format: 'aac',
-              sourceVideoId: 'itunes_cdn_${bestCandidate['trackId'] ?? 0}',
-            );
-          }
-        }
-      } catch (e) {
-        developer.log('CDN resolution error for "$query": $e', name: 'AudioStreamResolver');
-      }
-    }
-
-    return null;
-  }
+  /// Fallback method to resolve full master audio stream via Symphony server proxy
+  Future<ResolvedAudioStream?> resolveFallbackCdn(Track track) => resolveViaWebServer(track);
 
   static int scoreVideoCandidate({
     required String videoTitle,

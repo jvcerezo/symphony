@@ -40,9 +40,13 @@ Future<void> _loadResolveIndex() async {
         if (isBad) {
           keysToRemove.add(entry.key);
           if (vid != null) {
-            final f = File('${_cacheDir.path}/audio_$vid.webm');
-            if (f.existsSync()) {
-              try { f.deleteSync(); } catch (_) {}
+            final fM4a = File('${_cacheDir.path}/audio_$vid.m4a');
+            final fWebm = File('${_cacheDir.path}/audio_$vid.webm');
+            if (fM4a.existsSync()) {
+              try { fM4a.deleteSync(); } catch (_) {}
+            }
+            if (fWebm.existsSync()) {
+              try { fWebm.deleteSync(); } catch (_) {}
             }
           }
         }
@@ -243,7 +247,7 @@ void _seedCuratedStarterTracks() {
       'streamUrl': '/api/stream?videoId=$vid',
       'durationMs': dur,
       'bitrate': 160,
-      'format': 'webm',
+      'format': 'm4a',
       'videoId': vid,
       'title': '$art - $tit',
       'artist': art,
@@ -277,9 +281,12 @@ void _warmCuratedAudioCacheInBackground() {
       'f9imDgsjxXc', '5NV6Rdv1a3I', 'xjiYBGs0TUA'
     ];
     for (final vid in vids) {
-      final f = File('${_cacheDir.path}/audio_$vid.webm');
-      if (!await f.exists() || await f.length() < 50000) {
-        print('Warming curated audio file in background: audio_$vid.webm');
+      final fM4a = File('${_cacheDir.path}/audio_$vid.m4a');
+      final fWebm = File('${_cacheDir.path}/audio_$vid.webm');
+      final exists = (await fM4a.exists() && await fM4a.length() > 50000) ||
+          (await fWebm.exists() && await fWebm.length() > 50000);
+      if (!exists) {
+        print('Warming curated audio file in background: audio_$vid.m4a');
         await _downloadTrackToDisk(vid);
         await Future.delayed(const Duration(seconds: 1));
       }
@@ -793,8 +800,10 @@ Future<void> _handleResolve(HttpRequest request) async {
           if (titleMatches && artistMatches) {
             final vid = entry['videoId'] as String?;
             if (vid != null) {
-              final cachedFile = File('${_cacheDir.path}/audio_$vid.webm');
-              if (cachedFile.existsSync() && cachedFile.lengthSync() > 50000) {
+              final m4a = File('${_cacheDir.path}/audio_$vid.m4a');
+              final webm = File('${_cacheDir.path}/audio_$vid.webm');
+              if ((m4a.existsSync() && m4a.lengthSync() > 50000) ||
+                  (webm.existsSync() && webm.lengthSync() > 50000)) {
                 resolvedVideoId = vid;
                 durationMs = entry['durationMs'] as int? ?? 200000;
                 videoTitle = entry['title'] as String? ?? videoTitle;
@@ -812,7 +821,7 @@ Future<void> _handleResolve(HttpRequest request) async {
         'streamUrl': streamProxyUrl,
         'durationMs': durationMs,
         'bitrate': 160,
-        'format': 'webm',
+        'format': 'm4a',
         'videoId': resolvedVideoId,
         'title': videoTitle,
         'artist': artist,
@@ -822,8 +831,9 @@ Future<void> _handleResolve(HttpRequest request) async {
       _saveResolveEntry(cacheKey, data, artist: artist, title: title, trackId: trackId);
       print('Resolved: "$videoTitle" [${durationMs ~/ 1000}s] -> $streamProxyUrl');
 
-      final f = File('${_cacheDir.path}/audio_$resolvedVideoId.webm');
-      if (!f.existsSync()) {
+      final fM4a = File('${_cacheDir.path}/audio_$resolvedVideoId.m4a');
+      final fWebm = File('${_cacheDir.path}/audio_$resolvedVideoId.webm');
+      if (!fM4a.existsSync() && !fWebm.existsSync()) {
         _downloadTrackToDisk(resolvedVideoId).catchError((_) => false);
       }
 
@@ -848,11 +858,16 @@ Future<void> _handleResolve(HttpRequest request) async {
 
 Future<void> _streamAudioBytes(HttpRequest request, String videoId) async {
   try {
-    final cachedAudioFile = File('${_cacheDir.path}/audio_$videoId.webm');
+    final cachedAudioM4a = File('${_cacheDir.path}/audio_$videoId.m4a');
+    final cachedAudioWebm = File('${_cacheDir.path}/audio_$videoId.webm');
 
     // 1. If audio is already cached locally, stream directly from disk (100% offline!)
-    if (await cachedAudioFile.exists() && await cachedAudioFile.length() > 50000) {
-      await _streamLocalFile(request, cachedAudioFile);
+    if (await cachedAudioM4a.exists() && await cachedAudioM4a.length() > 50000) {
+      await _streamLocalFile(request, cachedAudioM4a);
+      return;
+    }
+    if (await cachedAudioWebm.exists() && await cachedAudioWebm.length() > 50000) {
+      await _streamLocalFile(request, cachedAudioWebm);
       return;
     }
 
@@ -939,9 +954,15 @@ Future<void> _streamAudioBytes(HttpRequest request, String videoId) async {
     // Stream to client
     await remoteRes.pipe(request.response);
 
-    // 4. Cache full track to disk in background if not already cached
-    if (!await cachedAudioFile.exists()) {
-      _cacheTrackInBackground(remoteStreamUrl, cachedAudioFile);
+    // 4. Cache full track to disk in background if not already cached,
+    // using the extension that matches the container actually streamed
+    final remoteMime = remoteRes.headers.contentType?.mimeType ?? '';
+    final isRemoteMp4 = remoteMime.contains('mp4') ||
+        remoteStreamUrl.contains('mime=audio%2Fmp4') ||
+        remoteStreamUrl.contains('.m4a');
+    final cacheTarget = isRemoteMp4 ? cachedAudioM4a : cachedAudioWebm;
+    if (!await cachedAudioM4a.exists() && !await cachedAudioWebm.exists()) {
+      _cacheTrackInBackground(remoteStreamUrl, cacheTarget);
     }
   } catch (e) {
     try {
@@ -1033,10 +1054,10 @@ Future<void> _handleOfflineStatus(HttpRequest request) async {
       for (final entity in _cacheDir.listSync()) {
         if (entity is File &&
             entity.path.contains('audio_') &&
-            entity.path.endsWith('.webm') &&
+            (entity.path.endsWith('.m4a') || entity.path.endsWith('.webm')) &&
             entity.lengthSync() > 50000) {
           final base = entity.uri.pathSegments.last;
-          final vid = base.replaceFirst('audio_', '').replaceFirst('.webm', '');
+          final vid = base.replaceFirst('audio_', '').replaceAll('.m4a', '').replaceAll('.webm', '');
           cachedVideoIds.add(vid);
         }
       }
@@ -1063,8 +1084,10 @@ Future<void> _handleOfflineStatus(HttpRequest request) async {
 
   for (final id in ids) {
     bool isCached = false;
-    final directFile = File('${_cacheDir.path}/audio_$id.webm');
-    if (directFile.existsSync() && directFile.lengthSync() > 50000) {
+    final directM4a = File('${_cacheDir.path}/audio_$id.m4a');
+    final directWebm = File('${_cacheDir.path}/audio_$id.webm');
+    if ((directM4a.existsSync() && directM4a.lengthSync() > 50000) ||
+        (directWebm.existsSync() && directWebm.lengthSync() > 50000)) {
       isCached = true;
     } else {
       final entry = _resolveCache[id] ??
@@ -1074,8 +1097,10 @@ Future<void> _handleOfflineStatus(HttpRequest request) async {
       if (entry != null) {
         final vid = entry['videoId'] as String?;
         if (vid != null) {
-          final f = File('${_cacheDir.path}/audio_$vid.webm');
-          if (f.existsSync() && f.lengthSync() > 50000) {
+          final fM4a = File('${_cacheDir.path}/audio_$vid.m4a');
+          final fWebm = File('${_cacheDir.path}/audio_$vid.webm');
+          if ((fM4a.existsSync() && fM4a.lengthSync() > 50000) ||
+              (fWebm.existsSync() && fWebm.lengthSync() > 50000)) {
             isCached = true;
           }
         }
@@ -1213,7 +1238,7 @@ Future<String?> _resolveAndDownloadSingleTrack(Map<String, dynamic> track) async
         'streamUrl': '/api/stream?videoId=$videoId',
         'durationMs': durationMs,
         'bitrate': 160,
-        'format': 'webm',
+        'format': 'm4a',
         'videoId': videoId,
         'title': title,
         'artist': artist,
@@ -1230,7 +1255,7 @@ Future<String?> _resolveAndDownloadSingleTrack(Map<String, dynamic> track) async
 }
 
 Future<bool> _downloadTrackToDisk(String videoId) async {
-  final targetFile = File('${_cacheDir.path}/audio_$videoId.webm');
+  final targetFile = File('${_cacheDir.path}/audio_$videoId.m4a');
   if (await targetFile.exists() && await targetFile.length() > 50000) {
     return true;
   }
@@ -1243,7 +1268,7 @@ Future<bool> _downloadTrackToDisk(String videoId) async {
           '-m',
           'yt_dlp',
           '-f',
-          'ba',
+          'ba[ext=m4a]/ba[ext=mp4]/ba',
           '-g',
           'https://www.youtube.com/watch?v=$videoId',
         ]);
@@ -1537,7 +1562,9 @@ Future<void> _handleCacheInfo(HttpRequest request) async {
 
   if (await _cacheDir.exists()) {
     for (final entity in _cacheDir.listSync()) {
-      if (entity is File && entity.path.contains('audio_') && entity.path.endsWith('.webm')) {
+      if (entity is File &&
+          entity.path.contains('audio_') &&
+          (entity.path.endsWith('.m4a') || entity.path.endsWith('.webm'))) {
         totalBytes += entity.lengthSync();
         trackCount++;
       }
@@ -1606,11 +1633,20 @@ Future<void> _handleDeletePlaylistCache(HttpRequest request) async {
         if (entry != null) {
           final vid = entry['videoId'] as String?;
           if (vid != null) {
-            final audioFile = File('${_cacheDir.path}/audio_$vid.webm');
-            if (audioFile.existsSync()) {
-              final len = audioFile.lengthSync();
+            final audioM4a = File('${_cacheDir.path}/audio_$vid.m4a');
+            final audioWebm = File('${_cacheDir.path}/audio_$vid.webm');
+            if (audioM4a.existsSync()) {
+              final len = audioM4a.lengthSync();
               try {
-                audioFile.deleteSync();
+                audioM4a.deleteSync();
+                deletedAudioCount++;
+                freedBytes += len;
+              } catch (_) {}
+            }
+            if (audioWebm.existsSync()) {
+              final len = audioWebm.lengthSync();
+              try {
+                audioWebm.deleteSync();
                 deletedAudioCount++;
                 freedBytes += len;
               } catch (_) {}
