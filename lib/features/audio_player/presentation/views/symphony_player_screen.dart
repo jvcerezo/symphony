@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/curated_playlists.dart';
 import '../../../../core/services/app_update_service.dart';
+import '../../../../core/layout/breakpoints.dart';
 import '../../../../core/theme/symphony_theme.dart';
 import '../../../../core/widgets/app_update_dialog.dart';
 import '../../../../core/widgets/symphony_brand_logo.dart';
@@ -89,8 +90,7 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
     final isBuffering = playbackState?.processingState == AudioProcessingState.buffering ||
         playbackState?.processingState == AudioProcessingState.loading;
 
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isDesktop = screenWidth >= 850;
+    final isDesktop = Breakpoints.isDesktop(context);
 
     return Scaffold(
       backgroundColor: SymphonyTheme.obsidian,
@@ -1875,7 +1875,7 @@ class _SpotifyPlaylistCardState extends State<_SpotifyPlaylistCard> {
   @override
   Widget build(BuildContext context) {
     final playlist = widget.playlist;
-    final isMobile = MediaQuery.of(context).size.width < 700;
+    final isMobile = Breakpoints.isMobile(context);
     final showPlay = _isHovered || isMobile;
 
     return MouseRegion(
@@ -2128,7 +2128,7 @@ class _SpotifyQuickTileState extends State<_SpotifyQuickTile> {
 
   @override
   Widget build(BuildContext context) {
-    final isMobile = MediaQuery.of(context).size.width < 700;
+    final isMobile = Breakpoints.isMobile(context);
     final showPlay = _isHovered || widget.isCurrent || isMobile;
 
     return MouseRegion(

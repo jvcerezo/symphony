@@ -1,6 +1,7 @@
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/layout/breakpoints.dart';
 import '../../../../core/theme/symphony_theme.dart';
 import '../../domain/entities/track.dart';
 import '../controllers/audio_player_providers.dart';
@@ -37,8 +38,7 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
       return const SizedBox.shrink();
     }
 
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isMobile = screenWidth < 750;
+    final isMobile = Breakpoints.isMobile(context);
 
     return Container(
       height: isMobile ? 68 : 76,

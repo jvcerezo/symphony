@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/layout/breakpoints.dart';
 import '../../../../core/theme/symphony_theme.dart';
 import '../../../audio_player/domain/entities/track.dart';
 import '../../../audio_player/presentation/controllers/audio_player_providers.dart';
@@ -65,8 +66,7 @@ class _SearchViewState extends ConsumerState<SearchView> {
     final isBuffering = playbackState?.processingState == AudioProcessingState.buffering ||
         playbackState?.processingState == AudioProcessingState.loading;
 
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isMobile = screenWidth < 700;
+    final isMobile = Breakpoints.isMobile(context);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
