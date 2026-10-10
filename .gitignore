@@ -46,3 +46,8 @@ app.*.map.json
 
 # Symphony local offline audio cache
 .symphony_cache/
+
+# Android release signing (never commit keystores or their passwords)
+android/key.properties
+*.jks
+*.keystore
