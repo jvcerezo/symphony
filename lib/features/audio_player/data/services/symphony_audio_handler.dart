@@ -10,6 +10,7 @@ import '../../domain/entities/resolved_audio_stream.dart';
 import '../../domain/entities/track.dart';
 import '../../../metadata_search/data/services/artwork_resolver_service.dart';
 import 'audio_stream_resolver_service.dart';
+import '../../../../core/config/server_config.dart';
 
 class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   final AudioPlayer _player;
@@ -310,10 +311,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
       Map<String, String>? getHeadersForUri(Uri uri) {
         final host = uri.host.toLowerCase();
         // Never send YouTube headers to our server or Apple/iTunes CDN
-        if (host.contains('jettimothycerezo.dev') ||
-            host.contains('localhost') ||
-            host.contains('192.168.') ||
-            host.contains('127.0.0.1') ||
+        if (ServerConfig.isSymphonyHost(host) ||
             host.contains('apple.com') ||
             host.contains('itunes')) {
           return null;

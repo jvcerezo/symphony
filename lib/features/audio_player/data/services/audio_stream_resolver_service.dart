@@ -6,6 +6,7 @@ import 'package:youtube_explode_dart/youtube_explode_dart.dart' hide AudioStream
 import '../../../../core/errors/exceptions.dart';
 import '../../domain/entities/resolved_audio_stream.dart';
 import '../../domain/entities/track.dart';
+import '../../../../core/config/server_config.dart';
 
 class AudioStreamResolverService {
   final YoutubeExplode _yt;
@@ -279,25 +280,7 @@ class AudioStreamResolverService {
     final cleanArtist = _cleanSongArtist(track.artist);
     final query = '$cleanArtist - $cleanTitle official audio';
 
-    final candidateOrigins = <String>[];
-    if (kIsWeb) {
-      try {
-        final origin = Uri.base.origin;
-        if (origin.isNotEmpty && !origin.startsWith('null')) {
-          candidateOrigins.add(origin);
-        }
-      } catch (_) {}
-    } else {
-      for (final host in [
-        'http://127.0.0.1:8080',
-        'http://localhost:8080',
-        'https://symphony.jettimothycerezo.dev',
-      ]) {
-        if (!candidateOrigins.contains(host)) {
-          candidateOrigins.add(host);
-        }
-      }
-    }
+    final candidateOrigins = ServerConfig.candidateOrigins(preferLocal: true);
 
     for (final origin in candidateOrigins) {
       try {

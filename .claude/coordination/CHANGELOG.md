@@ -2,6 +2,29 @@
 
 Newest first. Note what changed in Shared code and how the other side should adapt.
 
+## 2026-10-10 — [desktop] Phase 0c: central server config
+
+- New `lib/core/config/server_config.dart`:
+  - `ServerConfig.candidateOrigins({bool preferLocal = false})` — ordered,
+    de-duplicated origins. Native: prod → LAN `192.168.1.57:8080`
+    (**debug builds only**) → localhost → 127.0.0.1. `preferLocal: true`
+    (used by `/api/resolve`): 127.0.0.1 → localhost → prod → LAN. Web: page
+    origin only.
+  - `ServerConfig.primaryOrigin()` — single origin for non-retried calls
+    (offline download/remove; was hardcoded prod / page origin).
+  - `ServerConfig.isSymphonyHost(host)` — used by the audio handler to skip
+    YouTube headers for our own backends.
+  - `--dart-define=SYMPHONY_SERVER=http://host:port` is tried first
+    everywhere (fallbacks remain) and becomes `primaryOrigin()`.
+- Replaced the duplicated lists in `audio_player_providers.dart`,
+  `offline_provider.dart`, `audio_stream_resolver_service.dart`,
+  `spotify_embed_scraper_service.dart`; host check in
+  `symphony_audio_handler.dart`.
+- **Behavior change:** release builds no longer try the hardcoded LAN IP.
+  Mobile: to test a phone against a dev machine, run
+  `flutter run --dart-define=SYMPHONY_SERVER=http://<your-lan-ip>:8080`.
+  Never add hosts in services — extend `ServerConfig`.
+
 ## 2026-10-10 — [desktop] Phase 0b: player screen split (WHERE MOBILE UI NOW LIVES)
 
 `symphony_player_screen.dart` (was 2,242 lines) is now a thin router. Pure

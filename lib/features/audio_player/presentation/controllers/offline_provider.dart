@@ -1,9 +1,9 @@
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import '../../../playlist_import/domain/entities/spotify_playlist.dart';
 import '../../domain/entities/track.dart';
+import '../../../../core/config/server_config.dart';
 
 class DownloadProgress {
   final String title;
@@ -79,37 +79,14 @@ class OfflineManagerNotifier extends StateNotifier<OfflineState> {
     refreshOfflineStatus();
   }
 
-  String _getServerOrigin() {
-    if (kIsWeb) {
-      try {
-        final origin = Uri.base.origin;
-        if (origin.isNotEmpty && !origin.startsWith('null')) return origin;
-      } catch (_) {}
-    }
-    return 'https://symphony.jettimothycerezo.dev';
-  }
+  String _getServerOrigin() => ServerConfig.primaryOrigin();
 
   void dismissProgress() {
     state = state.copyWith(activeProgress: () => null);
   }
 
   Future<void> refreshOfflineStatus() async {
-    final candidateOrigins = <String>[];
-    if (kIsWeb) {
-      try {
-        final origin = Uri.base.origin;
-        if (origin.isNotEmpty && !origin.startsWith('null')) candidateOrigins.add(origin);
-      } catch (_) {}
-    } else {
-      for (final host in [
-        'https://symphony.jettimothycerezo.dev',
-        'http://192.168.1.57:8080',
-        'http://localhost:8080',
-        'http://127.0.0.1:8080',
-      ]) {
-        if (!candidateOrigins.contains(host)) candidateOrigins.add(host);
-      }
-    }
+    final candidateOrigins = ServerConfig.candidateOrigins();
 
     for (final origin in candidateOrigins) {
       try {
