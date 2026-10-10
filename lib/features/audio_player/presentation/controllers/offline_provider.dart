@@ -3,7 +3,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import '../../../playlist_import/domain/entities/spotify_playlist.dart';
+import '../../data/services/offline/offline_download_service.dart';
 import '../../domain/entities/track.dart';
+import 'audio_player_providers.dart';
 
 class DownloadProgress {
   final String title;
@@ -72,11 +74,79 @@ class OfflineState {
   bool isPlaylistDownloading(String playlistId) => downloadingPlaylistIds.contains(playlistId);
 }
 
+/// Downloads for offline playback.
+///
+/// Native (Android/Windows/…): when [deviceDownloads] is supplied, audio is
+/// saved to on-device storage and `cachedKeys` reflects the local index, so
+/// "downloaded" means playable with no network. Web: the server-side cache
+/// (`/api/offline/*`) is used as before.
 class OfflineManagerNotifier extends StateNotifier<OfflineState> {
-  final http.Client _client = http.Client();
+  final http.Client _client;
+  final OfflineDownloadService? _deviceDownloads;
 
-  OfflineManagerNotifier() : super(const OfflineState()) {
+  OfflineManagerNotifier({
+    OfflineDownloadService? deviceDownloads,
+    http.Client? client,
+  })  : _deviceDownloads = deviceDownloads,
+        _client = client ?? http.Client(),
+        super(const OfflineState()) {
     refreshOfflineStatus();
+  }
+
+  bool get _useDevice => _deviceDownloads?.isSupported ?? false;
+
+  /// Bytes used by on-device downloads (0 on web / server-cache mode).
+  Future<int> deviceStorageBytes() async => _useDevice ? _deviceDownloads!.totalBytes() : 0;
+
+  @override
+  void dispose() {
+    _deviceDownloads?.dispose();
+    _client.close();
+    super.dispose();
+  }
+
+  static Set<String> _keysFor(Track t) => {
+        t.id,
+        t.id.replaceAll('spotify:track:', '').trim(),
+        '${t.artist.toLowerCase()} - ${t.title.toLowerCase()}'.trim(),
+      };
+
+  /// Downloads one track via the device store or the server cache. Returns
+  /// false on a non-200 server reply; throws on transport/storage errors.
+  Future<bool> _downloadOne(Track t, Duration serverTimeout) async {
+    if (_useDevice) {
+      await _deviceDownloads!.download(t);
+      return true;
+    }
+    final res = await _client.post(
+      Uri.parse('${_getServerOrigin()}/api/offline/download'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'track': {
+          'id': t.id,
+          'title': t.title,
+          'artist': t.artist,
+          'durationMs': t.expectedDuration?.inMilliseconds ?? 200000,
+        },
+      }),
+    ).timeout(serverTimeout);
+    return res.statusCode == 200;
+  }
+
+  /// Removes a single on-device download. Returns bytes freed (0 on web).
+  Future<int> removeDownloadedTrack(Track track) async {
+    if (!_useDevice) return 0;
+    final freed = await _deviceDownloads!.remove(track);
+    state = state.copyWith(cachedKeys: Set<String>.from(state.cachedKeys)..removeAll(_keysFor(track)));
+    await refreshOfflineStatus();
+    return freed;
+  }
+
+  static String _formatBytes(int bytes) {
+    if (bytes >= 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+    if (bytes >= 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    if (bytes >= 1024) return '${(bytes / 1024).toStringAsFixed(0)} KB';
+    return '$bytes B';
   }
 
   String _getServerOrigin() {
@@ -94,6 +164,15 @@ class OfflineManagerNotifier extends StateNotifier<OfflineState> {
   }
 
   Future<void> refreshOfflineStatus() async {
+    if (_useDevice) {
+      try {
+        final entries = await _deviceDownloads!.entries();
+        if (!mounted) return;
+        state = state.copyWith(cachedKeys: {for (final e in entries) ...e.matchKeys});
+      } catch (_) {}
+      return;
+    }
+
     final candidateOrigins = <String>[];
     if (kIsWeb) {
       try {
@@ -139,21 +218,7 @@ class OfflineManagerNotifier extends StateNotifier<OfflineState> {
     );
 
     try {
-      final origin = _getServerOrigin();
-      final res = await _client.post(
-        Uri.parse('$origin/api/offline/download'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'track': {
-            'id': track.id,
-            'title': track.title,
-            'artist': track.artist,
-            'durationMs': track.expectedDuration?.inMilliseconds ?? 200000,
-          },
-        }),
-      ).timeout(const Duration(seconds: 45));
-
-      if (res.statusCode == 200) {
+      if (await _downloadOne(track, const Duration(seconds: 45))) {
         final norm = '${track.artist.toLowerCase()} - ${track.title.toLowerCase()}'.trim();
         final cleanId = track.id.replaceAll('spotify:track:', '').trim();
         final updatedKeys = {...state.cachedKeys, track.id, cleanId, norm};
@@ -209,7 +274,6 @@ class OfflineManagerNotifier extends StateNotifier<OfflineState> {
     );
 
     int completedCount = 0;
-    final origin = _getServerOrigin();
 
     try {
       for (int i = 0; i < tracks.length; i++) {
@@ -224,20 +288,7 @@ class OfflineManagerNotifier extends StateNotifier<OfflineState> {
         );
 
         try {
-          final res = await _client.post(
-            Uri.parse('$origin/api/offline/download'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'track': {
-                'id': t.id,
-                'title': t.title,
-                'artist': t.artist,
-                'durationMs': t.expectedDuration?.inMilliseconds ?? 200000,
-              },
-            }),
-          ).timeout(const Duration(seconds: 40));
-
-          if (res.statusCode == 200) {
+          if (await _downloadOne(t, const Duration(seconds: 40))) {
             completedCount++;
             final norm = '${t.artist.toLowerCase()} - ${t.title.toLowerCase()}'.trim();
             final cleanId = t.id.replaceAll('spotify:track:', '').trim();
@@ -293,6 +344,22 @@ class OfflineManagerNotifier extends StateNotifier<OfflineState> {
     final tracks = playlist.tracks;
     if (tracks.isEmpty) return null;
 
+    if (_useDevice) {
+      try {
+        var freed = 0;
+        for (final t in tracks) {
+          freed += await _deviceDownloads!.remove(t);
+        }
+        state = state.copyWith(
+          cachedKeys: Set<String>.from(state.cachedKeys)..removeAll(tracks.expand(_keysFor)),
+        );
+        await refreshOfflineStatus();
+        return _formatBytes(freed);
+      } catch (_) {
+        return null;
+      }
+    }
+
     try {
       final origin = _getServerOrigin();
       final tracksPayload = tracks.map((t) => {
@@ -335,5 +402,12 @@ class OfflineManagerNotifier extends StateNotifier<OfflineState> {
 }
 
 final offlineProvider = StateNotifierProvider<OfflineManagerNotifier, OfflineState>((ref) {
-  return OfflineManagerNotifier();
+  return OfflineManagerNotifier(
+    deviceDownloads: kIsWeb
+        ? null
+        : OfflineDownloadService(
+            // Share the player's resolver (and its in-memory cache).
+            resolve: (track) => ref.read(audioHandlerProvider).streamResolver.resolveBestAudioStream(track),
+          ),
+  );
 });

@@ -6,10 +6,13 @@ import 'package:youtube_explode_dart/youtube_explode_dart.dart' hide AudioStream
 import '../../../../core/errors/exceptions.dart';
 import '../../domain/entities/resolved_audio_stream.dart';
 import '../../domain/entities/track.dart';
+import 'offline/local_track_store.dart';
 
 class AudioStreamResolverService {
   final YoutubeExplode _yt;
   final http.Client _httpClient;
+  final LocalTrackStore _localTracks;
+  final bool _isWeb;
 
   /// In-memory resolution cache keyed by track ID and normalized artist/title.
   final Map<String, ResolvedAudioStream> _resolvedCache = {};
@@ -20,8 +23,15 @@ class AudioStreamResolverService {
   AudioStreamResolverService({
     YoutubeExplode? ytClient,
     http.Client? httpClient,
+    LocalTrackStore? localTracks,
+    @visibleForTesting bool? isWeb,
   })  : _yt = ytClient ?? YoutubeExplode(),
-        _httpClient = httpClient ?? http.Client();
+        _httpClient = httpClient ?? http.Client(),
+        _localTracks = localTracks ?? LocalTrackStore.platform(),
+        _isWeb = isWeb ?? kIsWeb;
+
+  /// On-device downloads consulted before any network resolution (non-web).
+  LocalTrackStore get localTracks => _localTracks;
 
   String _normKey(Track track) =>
       '${_cleanSongArtist(track.artist).toLowerCase()} - ${_cleanSongTitle(track.title).toLowerCase()}';
@@ -82,7 +92,14 @@ class AudioStreamResolverService {
   /// without browser CORS limitations and with full Range/seeking support.
   /// On Native, extracts on-device YouTube streams via `youtube_explode_dart`,
   /// falling back to the global CDN if YouTube blocks or restricts the device.
+  ///
+  /// Order: on-device download (non-web only) → in-memory cache → in-flight
+  /// request → network resolution. Local hits are never put in the memory
+  /// cache so deleting a download takes effect immediately.
   Future<ResolvedAudioStream> resolveBestAudioStream(Track track) async {
+    final local = await resolveLocal(track);
+    if (local != null) return local;
+
     final primaryKey = track.id;
     final normKey = _normKey(track);
 
@@ -117,6 +134,28 @@ class AudioStreamResolverService {
     } finally {
       _inFlightResolutions.remove(primaryKey);
       _inFlightResolutions.remove(normKey);
+    }
+  }
+
+  /// The downloaded file for [track] as a `file://` stream, or null (always
+  /// null on web or if the local index can't be read).
+  Future<ResolvedAudioStream?> resolveLocal(Track track) async {
+    if (_isWeb || !_localTracks.isSupported) return null;
+    try {
+      final entry = await _localTracks.lookup(track);
+      if (entry == null) return null;
+      developer.log('On-device file for "${track.title}" -> ${entry.fileUri}', name: 'AudioStreamResolver');
+      final seconds = entry.duration.inSeconds;
+      return ResolvedAudioStream(
+        streamUri: entry.fileUri,
+        duration: entry.duration > Duration.zero ? entry.duration : (track.expectedDuration ?? Duration.zero),
+        bitrateKbps: seconds > 0 ? (entry.bytes * 8 / 1000 / seconds).round() : 0,
+        format: entry.format,
+        sourceVideoId: entry.sourceVideoId,
+      );
+    } catch (e) {
+      developer.log('Local lookup failed for "${track.title}": $e', name: 'AudioStreamResolver');
+      return null;
     }
   }
 
