@@ -10,6 +10,7 @@ import '../../../audio_player/presentation/controllers/offline_provider.dart';
 import '../../../audio_player/presentation/widgets/nav_history_controls.dart';
 import '../../../audio_player/presentation/widgets/symphony_artwork.dart';
 import '../../../audio_player/presentation/widgets/spotify_track_row.dart';
+import '../controllers/search_focus_provider.dart';
 
 class SearchView extends ConsumerStatefulWidget {
   const SearchView({super.key});
@@ -100,6 +101,7 @@ class _SearchViewState extends ConsumerState<SearchView> {
                   height: 48,
                   child: TextField(
                     controller: _searchController,
+                    focusNode: ref.watch(searchFieldFocusNodeProvider),
                     onChanged: _onSearchChanged,
                     style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
                     decoration: InputDecoration(

@@ -2,6 +2,20 @@
 
 Newest first. Note what changed in Shared code and how the other side should adapt.
 
+## 2026-10-10 — [desktop] Desktop keyboard shortcuts
+
+- New `presentation/desktop/desktop_shortcuts.dart` (`DesktopShortcuts`,
+  installed only by `DesktopShell`; mobile unaffected). Space, Ctrl+←/→,
+  Shift+←/→ (±10 s), Ctrl+↑/↓, Ctrl+F or `/`, Alt+←/→, Esc, `?` overlay.
+  Shortcuts are disabled while a text field is focused.
+- New `presentation/desktop/desktop_volume_provider.dart` (`volumeProvider`):
+  the desktop player bar's volume/mute state moved here from the bar's
+  private fields so shortcuts and the slider agree. Only the desktop branch
+  of `bottom_player_bar.dart` changed.
+- New `metadata_search/presentation/controllers/search_focus_provider.dart`
+  (`searchFieldFocusNodeProvider`), attached to the Search tab's TextField in
+  `search_view.dart` (one added line). Mobile can reuse it to focus search.
+
 ## 2026-10-10 — [desktop] Phase 0c: central server config
 
 - New `lib/core/config/server_config.dart`:

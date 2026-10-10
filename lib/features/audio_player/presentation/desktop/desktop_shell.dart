@@ -6,9 +6,11 @@ import '../../../../core/widgets/app_update_dialog.dart';
 import '../widgets/bottom_player_bar.dart';
 import '../widgets/realtime_download_toast.dart';
 import '../widgets/sidebar_nav.dart';
+import 'desktop_shortcuts.dart';
 
 /// Wide-window chrome: sidebar navigation, rounded content panel and the
-/// full-width player bar. [content] is the active tab's view.
+/// full-width player bar, with desktop keyboard shortcuts installed
+/// ([DesktopShortcuts]). [content] is the active tab's view.
 class DesktopShell extends ConsumerWidget {
   final Widget content;
 
@@ -16,53 +18,55 @@ class DesktopShell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return Scaffold(
-      backgroundColor: SymphonyTheme.obsidian,
-      body: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            AppUpdateBanner(
-              onDismiss: () => ref.read(appUpdateProvider.notifier).markUserNotified(),
-            ),
-            Expanded(
-              child: Stack(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
-                    child: Row(
-                      children: [
-                        const SidebarNav(),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: Container(
-                              color: SymphonyTheme.panel,
-                              child: content,
+    return DesktopShortcuts(
+      child: Scaffold(
+        backgroundColor: SymphonyTheme.obsidian,
+        body: SafeArea(
+          bottom: false,
+          child: Column(
+            children: [
+              AppUpdateBanner(
+                onDismiss: () => ref.read(appUpdateProvider.notifier).markUserNotified(),
+              ),
+              Expanded(
+                child: Stack(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+                      child: Row(
+                        children: [
+                          const SidebarNav(),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Container(
+                                color: SymphonyTheme.panel,
+                                child: content,
+                              ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  // Real-time live download toast overlay
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: 8,
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 480),
-                        child: const RealtimeDownloadToast(),
+                        ],
                       ),
                     ),
-                  ),
-                ],
+                    // Real-time live download toast overlay
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 8,
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 480),
+                          child: const RealtimeDownloadToast(),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const BottomPlayerBar(),
-          ],
+              const BottomPlayerBar(),
+            ],
+          ),
         ),
       ),
     );
