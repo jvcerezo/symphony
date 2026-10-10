@@ -2,6 +2,7 @@ import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'core/config/feature_flags.dart';
 import 'core/theme/symphony_theme.dart';
 import 'features/audio_player/data/services/symphony_audio_handler.dart';
 import 'features/audio_player/presentation/controllers/audio_player_providers.dart';
@@ -41,10 +42,10 @@ class SymphonyApp extends StatelessWidget {
     Widget initialHome;
     if (kIsWeb) {
       final uri = Uri.base;
-      final isDirectPlayer = uri.fragment == 'player' ||
+      final isDirectPlayer = FeatureFlags.webDemoEnabled && (uri.fragment == 'player' ||
           uri.path.contains('/player') ||
           uri.queryParameters['view'] == 'player' ||
-          uri.queryParameters['demo'] == 'true';
+          uri.queryParameters['demo'] == 'true');
 
       initialHome = isDirectPlayer
           ? const SymphonyPlayerScreen(isWebDemoMode: true)

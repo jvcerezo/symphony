@@ -48,7 +48,6 @@ jobs:
 
       - name: Prepare Android Binary
         run: |
-          cp build/app/outputs/flutter-apk/app-release.apk build/web/symphony.apk
           cp build/app/outputs/flutter-apk/app-release.apk build/symphony.apk
 
       - name: Upload Web Artifact
@@ -158,6 +157,36 @@ jobs:
             release-assets/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  deploy-landing:
+    name: Deploy Landing Page to GitHub Pages
+    runs-on: ubuntu-latest
+    needs: test-and-build-web-and-android
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Download Web Bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: symphony-web-bundle
+          path: site/
+
+      - name: Add Custom Domain
+        run: echo "symphony.jettimothycerezo.dev" > site/CNAME
+
+      - name: Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
 
   docker-ghcr:
     name: Build & Publish Docker Image to GHCR

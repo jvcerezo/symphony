@@ -29,7 +29,9 @@ void main() {
     // Verify Platform Cards
     expect(find.text('Windows Desktop'), findsOneWidget);
     expect(find.text('Android Mobile'), findsOneWidget);
-    expect(find.text('Web Player Demo'), findsOneWidget);
+    // Web demo is off unless built with --dart-define=SYMPHONY_WEB_DEMO=true
+    expect(find.text('Web Player Demo'), findsNothing);
+    expect(find.textContaining('Web Demo'), findsNothing);
 
     // Verify Core Capabilities
     expect(find.text('Native Client Resolution'), findsOneWidget);

@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import '../../../../core/config/feature_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/services/app_update_service.dart';
@@ -41,10 +41,8 @@ class SymphonyLandingPage extends ConsumerWidget {
     final versionTag = latestRelease?.tagName ?? 'v1.0.0';
     final hasDirectWindowsAsset =
         latestRelease?.windowsDownloadUrl != null || fallbackWindowsUrl.endsWith('.zip');
-    final winDownloadUrl = latestRelease?.windowsDownloadUrl ??
-        (kIsWeb ? '/symphony-windows-x64.zip' : fallbackWindowsUrl);
-    final apkDownloadUrl = latestRelease?.androidDownloadUrl ??
-        (kIsWeb ? '/symphony.apk' : fallbackAndroidUrl);
+    final winDownloadUrl = latestRelease?.windowsDownloadUrl ?? fallbackWindowsUrl;
+    final apkDownloadUrl = latestRelease?.androidDownloadUrl ?? fallbackAndroidUrl;
 
     final screenWidth = MediaQuery.of(context).size.width;
     final isDesktop = screenWidth >= 860;
@@ -175,7 +173,8 @@ class SymphonyLandingPage extends ConsumerWidget {
               ),
               const SizedBox(width: 12),
             ],
-            OutlinedButton(
+            if (FeatureFlags.webDemoEnabled)
+              OutlinedButton(
               onPressed: () => _launchWebPlayer(context),
               style: OutlinedButton.styleFrom(
                 side: const BorderSide(color: Color(0xFF3F3F46)),
@@ -298,7 +297,8 @@ class SymphonyLandingPage extends ConsumerWidget {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
             ),
-            TextButton.icon(
+            if (FeatureFlags.webDemoEnabled)
+              TextButton.icon(
               onPressed: () => _launchWebPlayer(context),
               icon: const Icon(Icons.open_in_browser_rounded, size: 18, color: Color(0xFFA1A1AA)),
               label: const Text(
@@ -339,7 +339,8 @@ class SymphonyLandingPage extends ConsumerWidget {
         const SizedBox(height: 14),
         LayoutBuilder(
           builder: (context, constraints) {
-            final cardWidth = isDesktop ? (constraints.maxWidth - 32) / 3 : constraints.maxWidth;
+            final columns = FeatureFlags.webDemoEnabled ? 3 : 2;
+            final cardWidth = isDesktop ? (constraints.maxWidth - 16 * (columns - 1)) / columns : constraints.maxWidth;
 
             return Wrap(
               spacing: 16,
@@ -373,8 +374,9 @@ class SymphonyLandingPage extends ConsumerWidget {
                   onTap: () => _openExternal(apkDownloadUrl, isDownload: true),
                 ),
 
-                // 3. Web Player Card
-                _buildPlatformCard(
+                // 3. Web Player Card (needs a live server.dart backend)
+                if (FeatureFlags.webDemoEnabled)
+                  _buildPlatformCard(
                   width: cardWidth,
                   icon: Icons.language_rounded,
                   title: 'Web Player Demo',
@@ -653,8 +655,9 @@ class SymphonyLandingPage extends ConsumerWidget {
                 icon: const Icon(Icons.code_rounded, size: 16, color: Color(0xFFA1A1AA)),
                 tooltip: 'Source Code',
               ),
-              const SizedBox(width: 4),
-              TextButton(
+              if (FeatureFlags.webDemoEnabled) const SizedBox(width: 4),
+              if (FeatureFlags.webDemoEnabled)
+                TextButton(
                 onPressed: () => _launchWebPlayer(context),
                 child: const Text(
                   'Launch Web Demo',
