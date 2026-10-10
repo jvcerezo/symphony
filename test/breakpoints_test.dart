@@ -19,7 +19,8 @@ void main() {
     return result;
   }
 
-  testWidgets('desktop layout starts exactly at the 850px breakpoint', (tester) async {
+  testWidgets('desktop layout starts exactly at the 850px breakpoint',
+      (tester) async {
     expect(Breakpoints.desktop, 850);
     expect(await isDesktopAt(tester, 849.9), isFalse);
     expect(await isDesktopAt(tester, 850), isTrue);
