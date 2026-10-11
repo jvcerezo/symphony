@@ -96,15 +96,18 @@ jobs:
         run: flutter build windows --release -v --build-name=${{ env.SYMPHONY_VERSION }} --build-number=${{ github.run_number }} --dart-define=SYMPHONY_VERSION=${{ env.SYMPHONY_VERSION }}
 
       # Audio is extracted on the user's PC by yt-dlp (no Symphony server).
-      # Ship the latest official standalone build next to symphony.exe; the
-      # app self-updates a copy in its app-support dir. Never committed to git.
-      - name: Bundle yt-dlp.exe
+      # Ship the official *folder* build in Release\yt-dlp\: it starts ~0.5 s
+      # faster per song than the single-file yt-dlp.exe, which unpacks itself
+      # to %TEMP% on every launch. The app runs `-U` on it daily. Never in git.
+      - name: Bundle yt-dlp (folder build)
         if: steps.build_windows.outcome == 'success'
         run: |
-          $dest = 'build\windows\x64\runner\Release\yt-dlp.exe'
-          Invoke-WebRequest -Uri 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe' -OutFile $dest
-          & $dest --version
-          if ($LASTEXITCODE -ne 0) { throw 'downloaded yt-dlp.exe does not run' }
+          $zip = 'build\yt-dlp_win.zip'
+          $dest = 'build\windows\x64\runner\Release\yt-dlp'
+          Invoke-WebRequest -Uri 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_win.zip' -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath $dest -Force
+          & "$dest\yt-dlp.exe" --version
+          if ($LASTEXITCODE -ne 0) { throw 'bundled yt-dlp does not run' }
 
       - name: Compress Windows Distribution
         if: steps.build_windows.outcome == 'success'
