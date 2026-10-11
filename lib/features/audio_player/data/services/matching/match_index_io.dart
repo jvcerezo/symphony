@@ -9,7 +9,7 @@ import 'match_index.dart';
 
 MatchIndex createPlatformMatchIndex() => FileMatchIndex();
 
-/// `<app support>/match_index.json`: `{ "artist - title": "videoId", ... }`.
+/// `<app support>/match_index.json`: `{ "artist - title": {v, u, e, d, c}, ... }`.
 /// Writes are debounced; a corrupt or missing file just starts empty.
 class FileMatchIndex implements MatchIndex {
   FileMatchIndex({Future<File> Function()? file, this.maxEntries = 5000})
@@ -17,42 +17,55 @@ class FileMatchIndex implements MatchIndex {
 
   final Future<File> Function() _file;
   final int maxEntries;
-  Map<String, String>? _map;
-  Future<Map<String, String>>? _loading;
+  Map<String, MatchEntry>? _map;
+  Future<Map<String, MatchEntry>>? _loading;
   Timer? _saveTimer;
 
   static Future<File> _defaultFile() async =>
       File('${(await getApplicationSupportDirectory()).path}${Platform.pathSeparator}match_index.json');
 
-  Future<Map<String, String>> _load() => _loading ??= () async {
+  Future<Map<String, MatchEntry>> _load() => _loading ??= () async {
         try {
           final f = await _file();
           if (await f.exists()) {
             final decoded = jsonDecode(await f.readAsString());
             if (decoded is Map) {
-              _map = decoded.map((k, v) => MapEntry('$k', '$v'));
-              return _map!;
+              final map = <String, MatchEntry>{};
+              decoded.forEach((k, v) {
+                final entry = MatchEntry.fromJson(v);
+                if (entry != null) map['$k'] = entry;
+              });
+              return _map = map;
             }
           }
         } catch (e) {
           developer.log('Match index unreadable, starting empty: $e', name: 'MatchIndex');
         }
-        return _map = <String, String>{};
+        return _map = <String, MatchEntry>{};
       }();
 
   @override
-  Future<String?> lookup(String key) async => (await _load())[key];
+  Future<MatchEntry?> lookup(String key) async => (await _load())[key];
 
   @override
-  Future<void> remember(String key, String videoId) async {
+  Future<void> remember(String key, MatchEntry entry) async {
     final map = await _load();
-    if (map[key] == videoId) return;
     map.remove(key); // re-insert so the newest entries survive trimming
-    map[key] = videoId;
+    map[key] = entry;
     while (map.length > maxEntries) {
       map.remove(map.keys.first);
     }
     _scheduleSave();
+  }
+
+  @override
+  Future<void> forgetLink(String key) async {
+    final map = await _load();
+    final e = map[key];
+    if (e != null && e.url != null) {
+      map[key] = e.withoutLink();
+      _scheduleSave();
+    }
   }
 
   @override
@@ -74,7 +87,7 @@ class FileMatchIndex implements MatchIndex {
       final f = await _file();
       await f.parent.create(recursive: true);
       final tmp = File('${f.path}.tmp');
-      await tmp.writeAsString(jsonEncode(map));
+      await tmp.writeAsString(jsonEncode(map.map((k, v) => MapEntry(k, v.toJson()))));
       await tmp.rename(f.path);
     } catch (e) {
       developer.log('Match index save failed: $e', name: 'MatchIndex');

@@ -107,6 +107,13 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
         for (final t in upcoming) {
           unawaited(_warmTrack(t));
         }
+        // Prepare stream links for the few after that, so skipping ahead
+        // also starts at once. Background, one at a time, yields to taps.
+        final later = <Track>[];
+        for (int offset = ahead + 1; offset <= ahead + 4 && offset < _playlistQueue.length; offset++) {
+          later.add(_playlistQueue[(fromIndex + offset) % _playlistQueue.length]);
+        }
+        _streamResolver.prefetch(later, replace: true);
       } else {
         _streamResolver.preloadTracks(upcoming, count: 2);
       }

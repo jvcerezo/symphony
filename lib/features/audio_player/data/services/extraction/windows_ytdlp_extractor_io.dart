@@ -91,7 +91,9 @@ class WindowsYtDlpExtractor implements AudioExtractor {
 
   /// Each yt-dlp.exe launch unpacks itself and starts Python, so cap how many
   /// run at once; extra lookups wait their turn.
-  static const maxConcurrentRuns = 2;
+  /// Background work (next-song warm-up + link prefetch) uses at most two,
+  /// so a song the user taps always has a free slot.
+  static const maxConcurrentRuns = 3;
   int _running = 0;
   final _waiting = <Completer<void>>[];
 

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
 import 'package:flutter/foundation.dart';
@@ -25,6 +26,12 @@ class AudioStreamResolverService {
 
   /// In-flight futures to coalesce simultaneous resolve requests for the same track.
   final Map<String, Future<ResolvedAudioStream>> _inFlightResolutions = {};
+
+  /// Resolves the user is waiting on; background prefetching pauses for them.
+  int _foregroundResolves = 0;
+  final List<Track> _prefetchQueue = [];
+  bool _prefetchRunning = false;
+  static const _maxPrefetchQueue = 12;
 
   factory AudioStreamResolverService({
     YoutubeExplode? ytClient,
@@ -78,13 +85,14 @@ class AudioStreamResolverService {
     _resolvedCache[key] = stream;
   }
 
-  /// Asynchronously preloads a single track without throwing on error.
+  /// Resolves a track in the background (yielding to anything the user is
+  /// waiting on) without throwing.
   Future<ResolvedAudioStream?> preloadTrack(Track track) async {
     if (isTrackResolved(track)) {
       return getCachedStream(track);
     }
     try {
-      final stream = await resolveBestAudioStream(track);
+      final stream = await _resolveShared(track);
       developer.log('Preloaded stream for: "${track.title}" -> ${stream.streamUri}', name: 'AudioStreamResolver');
       return stream;
     } catch (e) {
@@ -94,8 +102,13 @@ class AudioStreamResolverService {
   }
 
   /// Proactively preloads upcoming tracks sequentially in the background.
+  /// Native: queued for [prefetch] (newest request first).
   void preloadTracks(List<Track> tracks, {int count = 2}) {
     if (tracks.isEmpty) return;
+    if (!_isWeb) {
+      prefetch(tracks.take(count), replace: true);
+      return;
+    }
     Future.microtask(() async {
       for (final track in tracks.take(count)) {
         if (!isTrackResolved(track)) {
@@ -104,6 +117,58 @@ class AudioStreamResolverService {
         }
       }
     });
+  }
+
+  /// Resolves [tracks] in the background so tapping them later plays at once:
+  /// one at a time, pausing whenever the user is waiting on a resolve, and
+  /// skipping tracks that already have a local file or a fresh stream link.
+  /// With [replace], anything still queued is dropped first.
+  void prefetch(Iterable<Track> tracks, {bool replace = false}) {
+    if (_isWeb) return;
+    if (replace) _prefetchQueue.clear();
+    for (final t in tracks) {
+      final key = _normKey(t);
+      if (_prefetchQueue.every((q) => _normKey(q) != key)) _prefetchQueue.add(t);
+    }
+    if (_prefetchQueue.length > _maxPrefetchQueue) {
+      _prefetchQueue.removeRange(_maxPrefetchQueue, _prefetchQueue.length);
+    }
+    if (!_prefetchRunning) unawaited(_runPrefetch());
+  }
+
+  Future<void> _runPrefetch() async {
+    _prefetchRunning = true;
+    try {
+      while (_prefetchQueue.isNotEmpty) {
+        while (_foregroundResolves > 0) {
+          await Future<void>.delayed(const Duration(milliseconds: 250));
+        }
+        final track = _prefetchQueue.removeAt(0);
+        if (await hasInstantSource(track)) continue;
+        try {
+          await _resolveShared(track);
+        } catch (e) {
+          developer.log('Prefetch failed for "${track.title}": $e', name: 'AudioStreamResolver');
+        }
+      }
+    } finally {
+      _prefetchRunning = false;
+    }
+  }
+
+  /// Whether [track] can start without running yt-dlp: a downloaded file, an
+  /// unexpired in-memory stream, or a fresh remembered link.
+  Future<bool> hasInstantSource(Track track) async {
+    if (await resolveLocal(track) != null) return true;
+    final cached = getCachedStream(track);
+    if (cached != null && !_isExpired(cached)) return true;
+    if (_isWeb) return false;
+    return (await _matchIndex.lookup(_normKey(track)))?.hasFreshLink ?? false;
+  }
+
+  static bool _isExpired(ResolvedAudioStream stream) {
+    final expiry = MatchEntry.expiryOf(stream.streamUri);
+    return expiry != null && !expiry.isAfter(DateTime.now().add(MatchEntry.expiryMargin));
   }
 
   /// Clears in-memory resolution cache.
@@ -124,18 +189,28 @@ class AudioStreamResolverService {
   /// request → network resolution. Local hits are never put in the memory
   /// cache so deleting a download takes effect immediately.
   Future<ResolvedAudioStream> resolveBestAudioStream(Track track) async {
+    _foregroundResolves++;
+    try {
+      return await _resolveShared(track);
+    } finally {
+      _foregroundResolves--;
+    }
+  }
+
+  Future<ResolvedAudioStream> _resolveShared(Track track) async {
     final local = await resolveLocal(track);
     if (local != null) return local;
 
     final primaryKey = track.id;
     final normKey = _normKey(track);
 
-    // 0. Cache hit - 0ms instant playback!
+    // 0. Cache hit - 0ms instant playback! (unless the link has expired)
     final cached = _resolvedCache[primaryKey] ?? _resolvedCache[normKey];
-    if (cached != null) {
+    if (cached != null && !_isExpired(cached)) {
       developer.log('Instant cache hit for "${track.title}"', name: 'AudioStreamResolver');
       return cached;
     }
+    if (cached != null) forgetTrack(track);
 
     // 1. In-flight request deduplication
     if (_inFlightResolutions.containsKey(primaryKey)) {
@@ -214,24 +289,42 @@ class AudioStreamResolverService {
     }
 
     // Native: everything below runs on this device. No Symphony server.
+    final matchKey = _normKey(track);
+    final remembered = await _matchIndex.lookup(matchKey);
+
+    // 0. A still-valid stream link from an earlier resolve: no yt-dlp at all.
+    if (remembered != null && remembered.hasFreshLink) {
+      developer.log('Fresh remembered link for "${track.title}"', name: 'AudioStreamResolver');
+      return ResolvedAudioStream(
+        streamUri: remembered.url!,
+        duration: remembered.durationMs != null
+            ? Duration(milliseconds: remembered.durationMs!)
+            : (track.expectedDuration ?? Duration.zero),
+        bitrateKbps: 0,
+        format: remembered.container ?? 'm4a',
+        sourceVideoId: remembered.videoId,
+      );
+    }
+
     // 1. Known YouTube video id (e.g. YouTube-imported playlists)
     if (knownVideoId != null) {
       try {
-        return await _extractOnDevice(knownVideoId, fallbackDuration: track.expectedDuration);
+        final resolved = await _extractOnDevice(knownVideoId, fallbackDuration: track.expectedDuration);
+        await _rememberResolved(matchKey, resolved);
+        return resolved;
       } catch (e) {
         developer.log('On-device extraction failed for $knownVideoId: $e', name: 'AudioStreamResolver');
       }
     }
 
-    final matchKey = _normKey(track);
-
     // 2. A video this track matched before (survives app restarts and cache eviction)
-    final remembered = await _matchIndex.lookup(matchKey);
     if (remembered != null) {
       try {
-        return await _extractOnDevice(remembered, fallbackDuration: track.expectedDuration);
+        final resolved = await _extractOnDevice(remembered.videoId, fallbackDuration: track.expectedDuration);
+        await _rememberResolved(matchKey, resolved);
+        return resolved;
       } catch (e) {
-        developer.log('Remembered match $remembered failed, searching again: $e', name: 'AudioStreamResolver');
+        developer.log('Remembered match ${remembered.videoId} failed, searching again: $e', name: 'AudioStreamResolver');
         await _matchIndex.forget(matchKey);
       }
     }
@@ -251,8 +344,9 @@ class AudioStreamResolverService {
             targetTitle: cleanTitle,
             expectedSec: expectedSec != null && expectedSec > 0 ? expectedSec : null,
           )) {
-        await _matchIndex.remember(matchKey, song.videoId!);
-        return _toResolved(song, song.videoId!, fallbackDuration: track.expectedDuration);
+        final resolved = _toResolved(song, song.videoId!, fallbackDuration: track.expectedDuration);
+        await _rememberResolved(matchKey, resolved);
+        return resolved;
       }
       developer.log(
         'Song search result rejected for "$cleanArtist - $cleanTitle": "${song.title}" (${song.duration?.inSeconds}s vs $expectedSec s)',
@@ -316,7 +410,7 @@ class AudioStreamResolverService {
               candidate.id.value,
               fallbackDuration: candidate.duration ?? track.expectedDuration,
             );
-            await _matchIndex.remember(matchKey, candidate.id.value);
+            await _rememberResolved(matchKey, resolved);
             developer.log(
               'Resolved on-device via ${_extractor.name}: ${candidate.id.value} [${resolved.bitrateKbps} kbps, ${resolved.format}, score: ${scored.score}]',
               name: 'AudioStreamResolver',
@@ -351,9 +445,23 @@ class AudioStreamResolverService {
     );
   }
 
+  /// Remembers the video and, while it is valid, the stream link itself.
+  Future<void> _rememberResolved(String key, ResolvedAudioStream resolved) => _matchIndex.remember(
+        key,
+        MatchEntry(
+          resolved.sourceVideoId,
+          url: resolved.streamUri,
+          expiresAt: MatchEntry.expiryOf(resolved.streamUri),
+          durationMs: resolved.duration > Duration.zero ? resolved.duration.inMilliseconds : null,
+          container: resolved.format,
+        ),
+      );
+
   /// Drops every cached entry for [track] so the next resolve starts fresh
   /// (stream URLs expire, and a URL that failed to load should not be reused).
+  /// The remembered video stays; only its link is dropped.
   void forgetTrack(Track track) {
+    if (!_isWeb) unawaited(_matchIndex.forgetLink(_normKey(track)));
     final cached = getCachedStream(track);
     _resolvedCache.remove(track.id);
     _resolvedCache.remove(_normKey(track));

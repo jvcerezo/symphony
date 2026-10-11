@@ -90,13 +90,13 @@ void main() {
 
       expect(resolved.sourceVideoId, 'dNNf9rJMt8E');
       expect(ex.searched.single, 'EDEN sex');
-      expect(await index.lookup('eden - sex'), 'dNNf9rJMt8E');
+      expect((await index.lookup('eden - sex'))?.videoId, 'dNNf9rJMt8E');
     });
 
     test('a remembered match skips searching entirely', () async {
       final ex = _FakeExtractor();
       final index = MemoryMatchIndex();
-      await index.remember('eden - sex', 'dNNf9rJMt8E');
+      await index.remember('eden - sex', const MatchEntry('dNNf9rJMt8E'));
       final r = _resolver(ex, index);
       addTearDown(r.dispose);
 
@@ -105,6 +105,84 @@ void main() {
       expect(resolved.sourceVideoId, 'dNNf9rJMt8E');
       expect(ex.extracted, ['dNNf9rJMt8E']);
       expect(ex.searched, isEmpty);
+    });
+  });
+
+  group('remembered stream links', () {
+    Uri link(DateTime expires) => Uri.parse(
+        'https://rr1---sn.googlevideo.com/videoplayback?id=x&expire=${expires.millisecondsSinceEpoch ~/ 1000}');
+
+    test('a fresh remembered link plays without running yt-dlp', () async {
+      final ex = _FakeExtractor();
+      final index = MemoryMatchIndex();
+      final url = link(DateTime.now().add(const Duration(hours: 5)));
+      await index.remember('eden - sex', MatchEntry('dNNf9rJMt8E', url: url, expiresAt: MatchEntry.expiryOf(url), durationMs: 219000));
+      final r = _resolver(ex, index);
+      addTearDown(r.dispose);
+
+      final resolved = await r.resolveBestAudioStream(_eden);
+
+      expect(resolved.streamUri, url);
+      expect(resolved.duration, const Duration(seconds: 219));
+      expect(ex.extracted, isEmpty);
+      expect(ex.searched, isEmpty);
+      expect(await r.hasInstantSource(_eden), isTrue);
+    });
+
+    test('an expiring link is re-extracted from the remembered video', () async {
+      final ex = _FakeExtractor();
+      final index = MemoryMatchIndex();
+      final url = link(DateTime.now().add(const Duration(minutes: 5)));
+      await index.remember('eden - sex', MatchEntry('dNNf9rJMt8E', url: url, expiresAt: MatchEntry.expiryOf(url)));
+      final r = _resolver(ex, index);
+      addTearDown(r.dispose);
+
+      expect(await r.hasInstantSource(_eden), isFalse);
+      await r.resolveBestAudioStream(_eden);
+
+      expect(ex.extracted, ['dNNf9rJMt8E']);
+      expect(ex.searched, isEmpty);
+    });
+
+    test('forgetTrack drops the link but keeps the video', () async {
+      final ex = _FakeExtractor();
+      final index = MemoryMatchIndex();
+      final url = link(DateTime.now().add(const Duration(hours: 5)));
+      await index.remember('eden - sex', MatchEntry('dNNf9rJMt8E', url: url, expiresAt: MatchEntry.expiryOf(url)));
+      final r = _resolver(ex, index);
+      addTearDown(r.dispose);
+
+      r.forgetTrack(_eden);
+      await Future<void>.delayed(Duration.zero);
+      final entry = await index.lookup('eden - sex');
+
+      expect(entry?.videoId, 'dNNf9rJMt8E');
+      expect(entry?.url, isNull);
+    });
+
+    test('old files with a bare video id still load', () {
+      expect(MatchEntry.fromJson('dNNf9rJMt8E')?.videoId, 'dNNf9rJMt8E');
+      expect(MatchEntry.fromJson({'v': 'abc', 'e': 1}).toString(), isNotEmpty);
+    });
+  });
+
+  group('prefetch', () {
+    test('resolves queued tracks in the background and skips ready ones', () async {
+      final ex = _FakeExtractor();
+      final index = MemoryMatchIndex();
+      await index.remember('eden - sex', const MatchEntry('dNNf9rJMt8E'));
+      await index.remember('eden - start', const MatchEntry('startaaaaaa'));
+      final r = _resolver(ex, index);
+      addTearDown(r.dispose);
+      const start = Track(id: 'spotify:track:start', title: 'start', artist: 'EDEN', expectedDuration: Duration(seconds: 219));
+
+      r.prefetch([_eden, start, _eden]); // duplicate is ignored
+      for (var i = 0; i < 20 && ex.extracted.length < 2; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+
+      expect(ex.extracted, ['dNNf9rJMt8E', 'startaaaaaa']);
+      expect(await r.hasInstantSource(_eden), isTrue);
     });
   });
 

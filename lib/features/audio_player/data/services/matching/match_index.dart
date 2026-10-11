@@ -1,26 +1,85 @@
 import 'match_index_stub.dart' if (dart.library.io) 'match_index_io.dart' as impl;
 
-/// Remembers which YouTube video a track resolved to, so replaying it later
-/// (even after its cached audio is evicted) skips the search entirely.
+/// What a track resolved to: the YouTube video, plus (while still valid) the
+/// stream link itself, so a replay within a few hours needs no yt-dlp run.
+class MatchEntry {
+  final String videoId;
+  final Uri? url;
+  final DateTime? expiresAt;
+  final int? durationMs;
+  final String? container;
+
+  const MatchEntry(this.videoId, {this.url, this.expiresAt, this.durationMs, this.container});
+
+  /// Safety margin so a link never expires mid-song.
+  static const expiryMargin = Duration(minutes: 20);
+
+  bool get hasFreshLink =>
+      url != null && expiresAt != null && expiresAt!.isAfter(DateTime.now().add(expiryMargin));
+
+  MatchEntry withoutLink() => MatchEntry(videoId);
+
+  Map<String, dynamic> toJson() => {
+        'v': videoId,
+        if (url != null) 'u': url.toString(),
+        if (expiresAt != null) 'e': expiresAt!.millisecondsSinceEpoch ~/ 1000,
+        if (durationMs != null) 'd': durationMs,
+        if (container != null) 'c': container,
+      };
+
+  /// Accepts the compact map form, or a bare video id (older files).
+  static MatchEntry? fromJson(Object? json) {
+    if (json is String && json.isNotEmpty) return MatchEntry(json);
+    if (json is! Map) return null;
+    final v = json['v'];
+    if (v is! String || v.isEmpty) return null;
+    final e = json['e'];
+    return MatchEntry(
+      v,
+      url: json['u'] is String ? Uri.tryParse(json['u'] as String) : null,
+      expiresAt: e is int ? DateTime.fromMillisecondsSinceEpoch(e * 1000) : null,
+      durationMs: json['d'] is int ? json['d'] as int : null,
+      container: json['c'] as String?,
+    );
+  }
+
+  /// Expiry encoded in a YouTube CDN link (`expire=<unix seconds>`), if any.
+  static DateTime? expiryOf(Uri url) {
+    final e = int.tryParse(url.queryParameters['expire'] ?? '');
+    return e == null ? null : DateTime.fromMillisecondsSinceEpoch(e * 1000);
+  }
+}
+
+/// Remembers which YouTube video (and, briefly, which stream link) a track
+/// resolved to, so replays skip the search and often yt-dlp entirely.
 abstract interface class MatchIndex {
   /// Shared instance: file-backed on native, in-memory on web.
   static MatchIndex platform() => _platform ??= impl.createPlatformMatchIndex();
   static MatchIndex? _platform;
 
-  Future<String?> lookup(String key);
-  Future<void> remember(String key, String videoId);
+  Future<MatchEntry?> lookup(String key);
+  Future<void> remember(String key, MatchEntry entry);
+
+  /// Keeps the video id but drops the link (it failed or expired).
+  Future<void> forgetLink(String key);
   Future<void> forget(String key);
 }
 
 /// Process-lifetime index (web, tests).
 class MemoryMatchIndex implements MatchIndex {
-  final _map = <String, String>{};
+  final _map = <String, MatchEntry>{};
 
   @override
-  Future<String?> lookup(String key) async => _map[key];
+  Future<MatchEntry?> lookup(String key) async => _map[key];
 
   @override
-  Future<void> remember(String key, String videoId) async => _map[key] = videoId;
+  Future<void> remember(String key, MatchEntry entry) async => _map[key] = entry;
+
+  @override
+  Future<void> forgetLink(String key) async {
+    final e = _map[key];
+    if (e != null) _map[key] = e.withoutLink();
+  }
 
   @override
   Future<void> forget(String key) async => _map.remove(key);

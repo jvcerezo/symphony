@@ -290,7 +290,7 @@ void main() {
     });
   });
 
-  test('never runs more than two yt-dlp processes at once', () async {
+  test('never runs more than maxConcurrentRuns yt-dlp processes at once', () async {
     await createBundled();
     var running = 0;
     var peak = 0;

@@ -2,6 +2,19 @@
 
 Newest first. Note what changed in Shared code and how the other side should adapt.
 
+## 2026-10-12 — [core] Instant starts: remembered links + background prefetch
+
+- `MatchIndex` entries are now `MatchEntry` (video id + stream link,
+  expiry, duration, container); YouTube links last ~6 h and are IP-bound.
+  A fresh link (>20 min left) resolves with no yt-dlp run. Bare-id entries
+  from older files still load. `forgetTrack` drops the link, keeps the id.
+- `AudioStreamResolverService.prefetch(tracks, replace:)` resolves in the
+  background one at a time and pauses while the user waits on a resolve;
+  `hasInstantSource(track)`. `preloadTracks` routes to it on native.
+- Handler: next song still downloads; the 4 after it get links prefetched.
+  Opening a playlist prefetches its first 5 (native).
+- Windows `maxConcurrentRuns` 2 -> 3 so a tap always has a free slot.
+
 ## 2026-10-12 — [core] Accurate matching + faster starts
 
 - `AudioExtractor.searchSong(query)` (all implementations; Android channel
