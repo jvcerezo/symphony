@@ -13,6 +13,9 @@ class WindowsYtDlpExtractor implements AudioExtractor {
   Future<ExtractedAudio> extract(String videoId) =>
       throw const AudioStreamResolutionException('yt-dlp is not available on this platform');
 
+  /// No self-update on web.
+  Future<String?> update() async => null;
+
   @override
   void dispose() {}
 }

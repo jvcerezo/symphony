@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/config/feature_flags.dart';
 import 'core/theme/symphony_theme.dart';
+import 'features/audio_player/data/services/extraction/windows_ytdlp_extractor.dart';
+import 'features/audio_player/data/services/extraction/ytdlp_update_scheduler.dart';
 import 'features/audio_player/data/services/symphony_audio_handler.dart';
 import 'features/audio_player/presentation/controllers/audio_player_providers.dart';
 import 'features/audio_player/presentation/views/symphony_player_screen.dart';
@@ -32,6 +34,13 @@ Future<void> main() async {
       child: const SymphonyApp(),
     ),
   );
+
+  // Keep the bundled yt-dlp current (YouTube changes often). Background,
+  // at most once a day; playback never waits on it.
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
+    final ytDlp = WindowsYtDlpExtractor();
+    YtDlpUpdateScheduler(isAvailable: ytDlp.isAvailable, update: ytDlp.update).scheduleAfterStart();
+  }
 }
 
 class SymphonyApp extends StatelessWidget {

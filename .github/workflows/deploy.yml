@@ -90,6 +90,17 @@ jobs:
         continue-on-error: true
         run: flutter build windows --release -v
 
+      # Audio is extracted on the user's PC by yt-dlp (no Symphony server).
+      # Ship the latest official standalone build next to symphony.exe; the
+      # app self-updates a copy in its app-support dir. Never committed to git.
+      - name: Bundle yt-dlp.exe
+        if: steps.build_windows.outcome == 'success'
+        run: |
+          $dest = 'build\windows\x64\runner\Release\yt-dlp.exe'
+          Invoke-WebRequest -Uri 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe' -OutFile $dest
+          & $dest --version
+          if ($LASTEXITCODE -ne 0) { throw 'downloaded yt-dlp.exe does not run' }
+
       - name: Compress Windows Distribution
         if: steps.build_windows.outcome == 'success'
         run: |
