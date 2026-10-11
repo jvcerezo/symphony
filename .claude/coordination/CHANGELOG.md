@@ -2,6 +2,26 @@
 
 Newest first. Note what changed in Shared code and how the other side should adapt.
 
+## 2026-10-11 — [core] Native apps no longer use any Symphony server
+
+- New `lib/features/audio_player/data/services/extraction/`: `AudioExtractor`,
+  `ExtractedAudio`, `ChainedAudioExtractor`, `createPlatformAudioExtractor(yt)`.
+  - `WindowsYtDlpExtractor` (`_io`/`_stub` conditional import) — **stub,
+    Desktop implements** (bundled `yt-dlp.exe`).
+  - `AndroidYtDlpExtractor` — Dart side done; **Mobile implements the Kotlin
+    side** of channel `com.symphony.symphony/ytdlp` (`isAvailable`, `extract`,
+    `update`; contract in the file's doc comment).
+  - `YoutubeExplodeExtractor` — last resort.
+- `AudioStreamResolverService` is now a factory taking optional `extractor:`.
+  Native never calls `/api/*`; web still uses the server. New `forgetTrack()`;
+  `resolveFallbackCdn()` re-extracts fresh on native.
+- `ResolvedAudioStream.headers` (optional) is honored by the audio handler and
+  `OfflineDownloadService`.
+- `ServerConfig.candidateOrigins()` returns nothing on native unless
+  `SYMPHONY_SERVER` is defined; `preferLocal`, `isDebug`, `lanDevOrigin`,
+  `localOrigins` were removed. Playlist sync, Spotify-import-via-server and
+  server offline status are therefore off on native.
+
 ## 2026-10-10 — [mobile] On-device offline downloads, data layer (branch `mobile/release-hygiene`)
 
 New (all under `lib/features/audio_player/data/services/offline/`):

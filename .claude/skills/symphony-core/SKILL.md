@@ -32,7 +32,8 @@ lib/
       domain/entities/                Track, ResolvedAudioStream (pure Dart)
       data/services/
         symphony_audio_handler.dart   BaseAudioHandler: queue, skip, completion watchdog
-        audio_stream_resolver_service.dart  resolve order: server /api/resolve → on-device youtube_explode → track.streamUri
+        audio_stream_resolver_service.dart  native: local file → on-device extractor; web: server /api/resolve
+        extraction/                   AudioExtractor contract + per-platform yt-dlp extractors
       presentation/
         controllers/                  Riverpod providers (StateProvider/StateNotifier/StreamProvider)
         views/symphony_player_screen.dart   2.2k-line shell: Home / Search / Library / Playlist
@@ -41,7 +42,7 @@ lib/
     playlist_import/                  Spotify embed scraper, universal importer
     settings/                         personalization (accent, instance id)
     landing/                          web landing page + wave background
-server.dart                           headless Dart backend: /api/resolve, /api/stream, /api/playlists, /api/offline/*
+server.dart                           web-only backend (/api/*); native apps never use it
 .github/workflows/deploy.yml          analyze → test → web + APK → Windows zip → GitHub Release "latest" → GHCR → Render/Koyeb
 ```
 
@@ -55,12 +56,23 @@ Do not migrate to codegen/Notifier in passing; follow the file's existing style.
 `bottom_player_bar.dart` uses `< 750`, track cards use `< 700`. These
 inconsistent breakpoints are a known defect (see "Phase 0").
 
-**Backend coupling:** the client tries several server origins in order
-(prod `https://symphony.jettimothycerezo.dev`, a hardcoded LAN IP, localhost).
-The same origin list is duplicated in `audio_player_providers.dart`,
-`offline_provider.dart` and `audio_stream_resolver_service.dart`.
-"Offline" downloads are currently a **server-side cache**, not files on the
-device.
+**No server on native (hard rule):** Windows and Android find, stream and
+download audio entirely on the user's device. `ServerConfig.candidateOrigins()`
+returns nothing on native unless `--dart-define=SYMPHONY_SERVER` is set, and
+the resolver never calls `/api/*` on native. Only the web build (landing page;
+demo player off by default) may use `server.dart`. Never add a native code
+path that depends on a Symphony-hosted server.
+
+**Audio extraction:** `data/services/extraction/` — `AudioExtractor` turns a
+YouTube video id into a playable URL. `createPlatformAudioExtractor()` chains
+`WindowsYtDlpExtractor` (bundled `yt-dlp.exe`, Desktop owns) →
+`AndroidYtDlpExtractor` (`youtubedl-android` over method channel
+`com.symphony.symphony/ytdlp`, Mobile owns) → `YoutubeExplodeExtractor`
+(pure-Dart last resort; YouTube 403s its mid-file ranges, so songs can stall).
+Search + candidate scoring still use `youtube_explode` (search works fine).
+Native resolve order: downloaded file → memory cache → `track.streamUri` →
+known `yt_` id → on-device search. After a load failure the handler calls
+`resolveFallbackCdn`, which on native forgets the cached URL and re-extracts.
 
 ## Ownership map — who may edit what
 

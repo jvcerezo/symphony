@@ -7,10 +7,13 @@ import '../../../../core/errors/exceptions.dart';
 import '../../domain/entities/resolved_audio_stream.dart';
 import '../../domain/entities/track.dart';
 import '../../../../core/config/server_config.dart';
+import 'extraction/audio_extractor.dart';
+import 'extraction/platform_audio_extractor.dart';
 import 'offline/local_track_store.dart';
 
 class AudioStreamResolverService {
   final YoutubeExplode _yt;
+  final AudioExtractor _extractor;
   final http.Client _httpClient;
   final LocalTrackStore _localTracks;
   final bool _isWeb;
@@ -21,13 +24,30 @@ class AudioStreamResolverService {
   /// In-flight futures to coalesce simultaneous resolve requests for the same track.
   final Map<String, Future<ResolvedAudioStream>> _inFlightResolutions = {};
 
-  AudioStreamResolverService({
+  factory AudioStreamResolverService({
     YoutubeExplode? ytClient,
+    AudioExtractor? extractor,
     http.Client? httpClient,
     LocalTrackStore? localTracks,
     @visibleForTesting bool? isWeb,
-  })  : _yt = ytClient ?? YoutubeExplode(),
-        _httpClient = httpClient ?? http.Client(),
+  }) {
+    final yt = ytClient ?? YoutubeExplode();
+    return AudioStreamResolverService._(
+      yt,
+      extractor ?? createPlatformAudioExtractor(yt),
+      httpClient: httpClient,
+      localTracks: localTracks,
+      isWeb: isWeb,
+    );
+  }
+
+  AudioStreamResolverService._(
+    this._yt,
+    this._extractor, {
+    http.Client? httpClient,
+    LocalTrackStore? localTracks,
+    bool? isWeb,
+  })  : _httpClient = httpClient ?? http.Client(),
         _localTracks = localTracks ?? LocalTrackStore.platform(),
         _isWeb = isWeb ?? kIsWeb;
 
@@ -161,7 +181,7 @@ class AudioStreamResolverService {
   }
 
   Future<ResolvedAudioStream> _doResolveBestAudioStream(Track track) async {
-    // 0. Direct full stream attached to track (e.g. pre-seeded master streams, local files, or server proxies)
+    // 0. Direct full stream attached to track (e.g. pre-seeded master streams or local files)
     if (track.streamUri != null && !_isShortPreviewStream(track.streamUri)) {
       developer.log(
         'Direct full streamUri playback for: "${track.title}" -> ${track.streamUri}',
@@ -176,135 +196,90 @@ class AudioStreamResolverService {
       );
     }
 
-    // 1. Direct YouTube video ID resolution if available (e.g. YouTube imported playlists)
-    if (track.id.startsWith('yt_')) {
-      final videoId = track.id.replaceFirst('yt_', '');
-      final serverResolved = await resolveViaWebServer(track, videoId: videoId);
-      if (serverResolved != null) return serverResolved;
+    final knownVideoId = track.id.startsWith('yt_') ? track.id.replaceFirst('yt_', '') : null;
 
-      if (!kIsWeb) {
-        try {
-          final manifest = await _yt.videos.streamsClient.getManifest(videoId);
-          final audioStreams = manifest.audioOnly;
-          if (audioStreams.isNotEmpty) {
-            final aacStreams = audioStreams.where((s) => s.container.name == 'mp4' || s.codec.mimeType.contains('mp4') || s.codec.mimeType.contains('aac'));
-            final bestAudio = aacStreams.isNotEmpty ? aacStreams.withHighestBitrate() : audioStreams.withHighestBitrate();
-            developer.log('Resolved direct YouTube stream for video: $videoId', name: 'AudioStreamResolver');
-            return ResolvedAudioStream(
-              streamUri: bestAudio.url,
-              duration: track.expectedDuration ?? Duration.zero,
-              bitrateKbps: bestAudio.bitrate.kiloBitsPerSecond.round(),
-              format: bestAudio.container.name,
-              sourceVideoId: videoId,
-            );
-          }
-        } catch (e) {
-          developer.log('Direct YouTube video extraction failed: $e', name: 'AudioStreamResolver');
-        }
+    // Web cannot extract in the browser, so it asks the Symphony server.
+    if (_isWeb) {
+      final serverResolved = await resolveViaWebServer(track, videoId: knownVideoId);
+      if (serverResolved != null) return serverResolved;
+      throw AudioStreamResolutionException(
+        'Could not resolve a playable audio stream for "${track.title}" by "${track.artist}"',
+      );
+    }
+
+    // Native: everything below runs on this device. No Symphony server.
+    // 1. Known YouTube video id (e.g. YouTube-imported playlists)
+    if (knownVideoId != null) {
+      try {
+        return await _extractOnDevice(knownVideoId, fallbackDuration: track.expectedDuration);
+      } catch (e) {
+        developer.log('On-device extraction failed for $knownVideoId: $e', name: 'AudioStreamResolver');
       }
     }
 
-    // 2. PRIMARY: Query Symphony high-fidelity audio resolver (/api/resolve -> /api/stream)
-    // Streams full 3-4 min master from 0:00:00 to end, pre-warmed on server, bypassing client 403s
+    // 2. Search YouTube on-device, score candidates, extract the best match
+    final cleanTitle = _cleanSongTitle(track.title);
+    final cleanArtist = _cleanSongArtist(track.artist);
+    final queries = [
+      '$cleanArtist $cleanTitle topic',
+      '$cleanArtist - $cleanTitle official audio',
+      '$cleanArtist - $cleanTitle',
+      '$cleanTitle $cleanArtist',
+    ];
+    developer.log('Resolving full YouTube audio via client for: "$cleanArtist - $cleanTitle"', name: 'AudioStreamResolver');
+
     try {
-      final serverResolved = await resolveViaWebServer(track);
-      if (serverResolved != null) {
-        return serverResolved;
+      final seenVideoIds = <String>{};
+      final scoredCandidates = <({Video video, int score})>[];
+
+      for (final q in queries) {
+        try {
+          final searchResults = await _yt.search.search(q);
+          for (final v in searchResults.take(6)) {
+            if (v.isLive) continue;
+            if (seenVideoIds.add(v.id.value)) {
+              final sc = scoreVideoCandidate(
+                videoTitle: v.title,
+                videoAuthor: v.author,
+                durationSec: v.duration?.inSeconds ?? 0,
+                targetTitle: track.title,
+                targetArtist: track.artist,
+                expectedDurationMs: track.expectedDuration?.inMilliseconds,
+              );
+              if (sc > 0) {
+                scoredCandidates.add((video: v, score: sc));
+              }
+            }
+          }
+          if (scoredCandidates.isNotEmpty && scoredCandidates.any((c) => c.score >= 120)) {
+            break;
+          }
+        } catch (_) {}
+      }
+
+      if (scoredCandidates.isNotEmpty) {
+        scoredCandidates.sort((a, b) => b.score.compareTo(a.score));
+
+        for (final scored in scoredCandidates.where((c) => c.score >= 50)) {
+          final candidate = scored.video;
+          try {
+            final resolved = await _extractOnDevice(
+              candidate.id.value,
+              fallbackDuration: candidate.duration ?? track.expectedDuration,
+            );
+            developer.log(
+              'Resolved on-device via ${_extractor.name}: ${candidate.id.value} [${resolved.bitrateKbps} kbps, ${resolved.format}, score: ${scored.score}]',
+              name: 'AudioStreamResolver',
+            );
+            return resolved;
+          } catch (e) {
+            developer.log('Candidate ${candidate.id.value} extraction failed: $e', name: 'AudioStreamResolver');
+            continue;
+          }
+        }
       }
     } catch (e) {
-      developer.log('Server resolve attempt failed: $e', name: 'AudioStreamResolver');
-    }
-
-    // 3. SECONDARY: On-device search via youtube_explode_dart (if offline or server unreachable)
-    if (!kIsWeb) {
-      final cleanTitle = _cleanSongTitle(track.title);
-      final cleanArtist = _cleanSongArtist(track.artist);
-      final queries = [
-        '$cleanArtist $cleanTitle topic',
-        '$cleanArtist - $cleanTitle official audio',
-        '$cleanArtist - $cleanTitle',
-        '$cleanTitle $cleanArtist',
-      ];
-      developer.log('Resolving full YouTube audio via client for: "$cleanArtist - $cleanTitle"', name: 'AudioStreamResolver');
-
-      try {
-        final seenVideoIds = <String>{};
-        final scoredCandidates = <({Video video, int score})>[];
-
-        for (final q in queries) {
-          try {
-            final searchResults = await _yt.search.search(q);
-            for (final v in searchResults.take(6)) {
-              if (v.isLive) continue;
-              if (seenVideoIds.add(v.id.value)) {
-                final sc = scoreVideoCandidate(
-                  videoTitle: v.title,
-                  videoAuthor: v.author,
-                  durationSec: v.duration?.inSeconds ?? 0,
-                  targetTitle: track.title,
-                  targetArtist: track.artist,
-                  expectedDurationMs: track.expectedDuration?.inMilliseconds,
-                );
-                if (sc > 0) {
-                  scoredCandidates.add((video: v, score: sc));
-                }
-              }
-            }
-            if (scoredCandidates.isNotEmpty && scoredCandidates.any((c) => c.score >= 120)) {
-              break;
-            }
-          } catch (_) {}
-        }
-
-        if (scoredCandidates.isNotEmpty) {
-          scoredCandidates.sort((a, b) => b.score.compareTo(a.score));
-
-          for (final scored in scoredCandidates.where((c) => c.score >= 50)) {
-            final candidate = scored.video;
-            try {
-              final manifest = await _yt.videos.streamsClient.getManifest(candidate.id);
-              final audioStreams = manifest.audioOnly;
-
-              if (audioStreams.isNotEmpty) {
-                final aacStreams = audioStreams.where((s) => s.container.name == 'mp4' || s.codec.mimeType.contains('mp4') || s.codec.mimeType.contains('aac'));
-                final bestAudio = aacStreams.isNotEmpty ? aacStreams.withHighestBitrate() : audioStreams.withHighestBitrate();
-                developer.log(
-                  'Resolved full YouTube stream: ${candidate.id.value} [${bestAudio.bitrate.kiloBitsPerSecond.round()} kbps, format: ${bestAudio.container.name}, score: ${scored.score}]',
-                  name: 'AudioStreamResolver',
-                );
-
-                return ResolvedAudioStream(
-                  streamUri: bestAudio.url,
-                  duration: candidate.duration ?? track.expectedDuration ?? Duration.zero,
-                  bitrateKbps: bestAudio.bitrate.kiloBitsPerSecond.round(),
-                  format: bestAudio.container.name,
-                  sourceVideoId: candidate.id.value,
-                );
-              }
-            } catch (e) {
-              developer.log('Candidate ${candidate.id.value} manifest extraction failed: $e', name: 'AudioStreamResolver');
-              continue;
-            }
-          }
-        }
-      } catch (e) {
-        developer.log('YouTube on-device extraction failed: $e', name: 'AudioStreamResolver');
-      }
-    }
-
-    // 4. Direct stream attached to track (if provided and full audio)
-    if (track.streamUri != null && !_isShortPreviewStream(track.streamUri)) {
-      developer.log(
-        'Direct streamUri fallback for: "${track.title}" -> ${track.streamUri}',
-        name: 'AudioStreamResolver',
-      );
-      return ResolvedAudioStream(
-        streamUri: track.streamUri!,
-        duration: track.expectedDuration ?? Duration.zero,
-        bitrateKbps: 320,
-        format: track.streamUri!.path.endsWith('.m4a') ? 'aac' : 'mp3',
-        sourceVideoId: track.id,
-      );
+      developer.log('On-device search failed: $e', name: 'AudioStreamResolver');
     }
 
     throw AudioStreamResolutionException(
@@ -312,14 +287,40 @@ class AudioStreamResolverService {
     );
   }
 
+  Future<ResolvedAudioStream> _extractOnDevice(String videoId, {Duration? fallbackDuration}) async {
+    final audio = await _extractor.extract(videoId);
+    return ResolvedAudioStream(
+      streamUri: audio.url,
+      duration: audio.duration ?? fallbackDuration ?? Duration.zero,
+      bitrateKbps: audio.bitrateKbps ?? 0,
+      format: audio.container,
+      sourceVideoId: videoId,
+      headers: audio.headers,
+    );
+  }
+
+  /// Drops every cached entry for [track] so the next resolve starts fresh
+  /// (stream URLs expire, and a URL that failed to load should not be reused).
+  void forgetTrack(Track track) {
+    final cached = getCachedStream(track);
+    _resolvedCache.remove(track.id);
+    _resolvedCache.remove(_normKey(track));
+    if (cached != null && cached.sourceVideoId.isNotEmpty) {
+      _resolvedCache.remove(cached.sourceVideoId);
+      _resolvedCache.remove('vid_${cached.sourceVideoId}');
+    }
+  }
+
   /// Queries the Symphony server's `/api/resolve` endpoint on Web to extract
   /// full-length YouTube audio stream proxies without 403 or CORS restrictions.
   Future<ResolvedAudioStream?> resolveViaWebServer(Track track, {String? videoId}) async {
+    // Native builds never depend on a Symphony server.
+    if (!_isWeb) return null;
     final cleanTitle = _cleanSongTitle(track.title);
     final cleanArtist = _cleanSongArtist(track.artist);
     final query = '$cleanArtist - $cleanTitle official audio';
 
-    final candidateOrigins = ServerConfig.candidateOrigins(preferLocal: true);
+    final candidateOrigins = ServerConfig.candidateOrigins();
 
     for (final origin in candidateOrigins) {
       try {
@@ -396,8 +397,18 @@ class AudioStreamResolverService {
         .trim();
   }
 
-  /// Fallback method to resolve full master audio stream via Symphony server proxy
-  Future<ResolvedAudioStream?> resolveFallbackCdn(Track track) => resolveViaWebServer(track);
+  /// Second attempt after a stream failed to load: native re-extracts on the
+  /// device with a fresh URL; web asks the server again.
+  Future<ResolvedAudioStream?> resolveFallbackCdn(Track track) async {
+    if (_isWeb) return resolveViaWebServer(track);
+    forgetTrack(track);
+    try {
+      return await resolveBestAudioStream(track);
+    } catch (e) {
+      developer.log('Fresh on-device resolve failed for "${track.title}": $e', name: 'AudioStreamResolver');
+      return null;
+    }
+  }
 
   static int scoreVideoCandidate({
     required String videoTitle,
@@ -586,6 +597,7 @@ class AudioStreamResolverService {
 
   void dispose() {
     clearCache();
+    _extractor.dispose();
     _yt.close();
     _httpClient.close();
   }

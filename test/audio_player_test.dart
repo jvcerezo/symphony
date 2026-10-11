@@ -133,7 +133,8 @@ void main() {
 
       expect(resolved.streamUri, equals(expectedStream.streamUri));
       expect(resolved.sourceVideoId, equals('fast123'));
-      expect(stopwatch.elapsedMilliseconds, lessThan(10)); // < 10ms instantaneous return
+      // Includes the on-device download index lookup; network would take far longer.
+      expect(stopwatch.elapsedMilliseconds, lessThan(100));
     });
   });
 }

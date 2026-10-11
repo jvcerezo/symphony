@@ -5,12 +5,16 @@ class ResolvedAudioStream {
   final String format;
   final String sourceVideoId;
 
+  /// Headers the player must send when fetching [streamUri], if any.
+  final Map<String, String>? headers;
+
   const ResolvedAudioStream({
     required this.streamUri,
     required this.duration,
     required this.bitrateKbps,
     required this.format,
     required this.sourceVideoId,
+    this.headers,
   });
 
   @override

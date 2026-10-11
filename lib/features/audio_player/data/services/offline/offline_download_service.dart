@@ -65,7 +65,7 @@ class OfflineDownloadService {
       if (local != null) return local;
     }
 
-    final request = http.Request('GET', stream.streamUri)..headers.addAll(requestHeadersFor(stream.streamUri));
+    final request = http.Request('GET', stream.streamUri)..headers.addAll(stream.headers ?? requestHeadersFor(stream.streamUri));
     final response = await _client.send(request).timeout(headerTimeout);
     if (response.statusCode != 200) {
       await response.stream.drain<void>().catchError((_) {});

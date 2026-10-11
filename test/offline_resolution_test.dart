@@ -5,14 +5,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:symphony/features/audio_player/data/services/audio_stream_resolver_service.dart';
+import 'package:symphony/features/audio_player/data/services/extraction/audio_extractor.dart';
 import 'package:symphony/features/audio_player/data/services/offline/local_track_store.dart';
 import 'package:symphony/features/audio_player/data/services/offline/local_track_store_io.dart';
 import 'package:symphony/features/audio_player/data/services/offline/offline_download_service.dart';
 import 'package:symphony/features/audio_player/domain/entities/resolved_audio_stream.dart';
 import 'package:symphony/features/audio_player/domain/entities/track.dart';
 
+// A YouTube-imported track, so native resolution goes straight to the
+// extractor without a network search.
 const _track = Track(
-  id: 'spotify:track:abc123',
+  id: 'yt_srv1',
   title: 'Blinding Lights',
   artist: 'The Weeknd',
   expectedDuration: Duration(seconds: 200),
@@ -79,7 +82,32 @@ class FakeLocalTrackStore implements LocalTrackStore {
   Future<int> totalBytes() async => byId.values.fold<int>(0, (s, e) => s + e.bytes);
 }
 
-/// Server `/api/resolve` stub; counts requests.
+/// On-device extractor stub; counts extractions.
+class FakeExtractor implements AudioExtractor {
+  int extractions = 0;
+
+  @override
+  String get name => 'fake';
+
+  @override
+  Future<bool> isAvailable() async => true;
+
+  @override
+  Future<ExtractedAudio> extract(String videoId) async {
+    extractions++;
+    return ExtractedAudio(
+      url: Uri.parse('https://media.example/$videoId.m4a'),
+      container: 'm4a',
+      bitrateKbps: 128,
+      duration: const Duration(seconds: 201),
+    );
+  }
+
+  @override
+  void dispose() {}
+}
+
+/// Server `/api/resolve` stub; counts requests. Native must never call it.
 class ResolveServer {
   int requests = 0;
   late final MockClient client = MockClient((req) async {
@@ -97,10 +125,19 @@ class ResolveServer {
 void main() {
   group('AudioStreamResolverService resolution order', () {
     late ResolveServer server;
-    setUp(() => server = ResolveServer());
+    late FakeExtractor extractor;
+    setUp(() {
+      server = ResolveServer();
+      extractor = FakeExtractor();
+    });
 
     AudioStreamResolverService resolverWith(LocalTrackStore store, {bool isWeb = false}) {
-      final r = AudioStreamResolverService(httpClient: server.client, localTracks: store, isWeb: isWeb);
+      final r = AudioStreamResolverService(
+        httpClient: server.client,
+        extractor: extractor,
+        localTracks: store,
+        isWeb: isWeb,
+      );
       addTearDown(r.dispose);
       return r;
     }
@@ -147,15 +184,30 @@ void main() {
       expect(server.requests, 0);
     });
 
-    test('falls through to the server when there is no local file', () async {
+    test('extracts on-device when there is no local file, never via a server', () async {
       final store = FakeLocalTrackStore();
       final resolver = resolverWith(store);
 
       final resolved = await resolver.resolveBestAudioStream(_track);
 
-      expect(resolved.streamUri, Uri.parse('http://127.0.0.1:8080/api/stream?videoId=srv1'));
+      expect(resolved.streamUri, Uri.parse('https://media.example/srv1.m4a'));
+      expect(resolved.duration, const Duration(seconds: 201));
       expect(store.lookups, 1);
-      expect(server.requests, 1);
+      expect(extractor.extractions, 1);
+      expect(server.requests, 0);
+    });
+
+    test('a fresh resolve after a load failure skips the stale cache', () async {
+      final resolver = resolverWith(FakeLocalTrackStore());
+
+      await resolver.resolveBestAudioStream(_track);
+      await resolver.resolveBestAudioStream(_track); // cached
+      expect(extractor.extractions, 1);
+
+      final fresh = await resolver.resolveFallbackCdn(_track);
+      expect(fresh?.sourceVideoId, 'srv1');
+      expect(extractor.extractions, 2);
+      expect(server.requests, 0);
     });
 
     test('a failing local index falls back to the network', () async {
@@ -192,7 +244,7 @@ void main() {
 
       expect((await resolver.resolveBestAudioStream(_track)).streamUri.scheme, 'file');
       await store.remove(_track);
-      expect((await resolver.resolveBestAudioStream(_track)).streamUri.scheme, 'http');
+      expect((await resolver.resolveBestAudioStream(_track)).streamUri.scheme, 'https');
     });
   });
 

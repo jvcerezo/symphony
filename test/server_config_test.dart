@@ -3,64 +3,36 @@ import 'package:symphony/core/config/server_config.dart';
 
 void main() {
   group('ServerConfig.candidateOrigins', () {
-    test('native release: production then localhost, no LAN host', () {
-      expect(
-        ServerConfig.candidateOrigins(isWeb: false, isDebug: false, override: ''),
-        [
-          ServerConfig.productionOrigin,
-          'http://localhost:8080',
-          'http://127.0.0.1:8080',
-        ],
-      );
+    test('native has no default servers (fully on-device)', () {
+      expect(ServerConfig.candidateOrigins(isWeb: false, override: ''), isEmpty);
     });
 
-    test('native debug: LAN dev host after production', () {
+    test('native uses a server only when SYMPHONY_SERVER is set', () {
       expect(
-        ServerConfig.candidateOrigins(isWeb: false, isDebug: true, override: ''),
-        [
-          ServerConfig.productionOrigin,
-          ServerConfig.lanDevOrigin,
-          'http://localhost:8080',
-          'http://127.0.0.1:8080',
-        ],
-      );
-    });
-
-    test('preferLocal puts local hosts first and LAN last', () {
-      expect(
-        ServerConfig.candidateOrigins(preferLocal: true, isWeb: false, isDebug: true, override: ''),
-        [
-          'http://127.0.0.1:8080',
-          'http://localhost:8080',
-          ServerConfig.productionOrigin,
-          ServerConfig.lanDevOrigin,
-        ],
+        ServerConfig.candidateOrigins(isWeb: false, override: 'http://10.0.0.5:9000/'),
+        ['http://10.0.0.5:9000'],
       );
     });
 
     test('web uses only the page origin', () {
       expect(
-        ServerConfig.candidateOrigins(isWeb: true, isDebug: true, webOrigin: 'https://demo.example', override: ''),
+        ServerConfig.candidateOrigins(isWeb: true, webOrigin: 'https://demo.example', override: ''),
         ['https://demo.example'],
       );
     });
 
-    test('SYMPHONY_SERVER override is tried first and normalized', () {
-      final native = ServerConfig.candidateOrigins(isWeb: false, isDebug: false, override: 'http://10.0.0.5:9000/');
-      expect(native.first, 'http://10.0.0.5:9000');
-      expect(native, contains(ServerConfig.productionOrigin));
-
-      final web = ServerConfig.candidateOrigins(isWeb: true, webOrigin: 'https://demo.example', override: 'http://10.0.0.5:9000');
-      expect(web, ['http://10.0.0.5:9000', 'https://demo.example']);
+    test('override is tried before the web page origin', () {
+      expect(
+        ServerConfig.candidateOrigins(isWeb: true, webOrigin: 'https://demo.example', override: 'http://10.0.0.5:9000'),
+        ['http://10.0.0.5:9000', 'https://demo.example'],
+      );
     });
 
-    test('no duplicates when override equals a default origin', () {
-      final origins = ServerConfig.candidateOrigins(
-        isWeb: false,
-        isDebug: false,
-        override: ServerConfig.productionOrigin,
+    test('no duplicates when override equals the page origin', () {
+      expect(
+        ServerConfig.candidateOrigins(isWeb: true, webOrigin: 'https://demo.example', override: 'https://demo.example'),
+        ['https://demo.example'],
       );
-      expect(origins.where((o) => o == ServerConfig.productionOrigin).length, 1);
     });
   });
 

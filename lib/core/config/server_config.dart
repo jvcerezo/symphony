@@ -7,38 +7,27 @@ import 'package:flutter/foundation.dart';
 ///
 /// 1. `--dart-define=SYMPHONY_SERVER=https://host[:port]` when provided.
 /// 2. Web: the page's own origin (the web build is served by `server.dart`).
-///    Native: production, then (debug builds only) the LAN dev host, then
-///    localhost. With `preferLocal: true`: localhost, production, LAN.
+///
+/// Native builds get no default origins: Windows and Android are fully
+/// self-sufficient and never depend on a Symphony server.
 abstract final class ServerConfig {
   /// Production backend (`server.dart` behind the Cloudflare tunnel). The bare
   /// `symphony.` host is the static landing page on GitHub Pages.
   static const String productionOrigin = 'https://symphony-api.jettimothycerezo.dev';
-
-  /// Developer machine on the local network. Only tried in debug builds.
-  static const String lanDevOrigin = 'http://192.168.1.57:8080';
-
-  /// `dart run server.dart` on the same machine.
-  static const List<String> localOrigins = [
-    'http://localhost:8080',
-    'http://127.0.0.1:8080',
-  ];
 
   /// Value of `--dart-define=SYMPHONY_SERVER=…` (empty when not set).
   static const String overrideOrigin = String.fromEnvironment('SYMPHONY_SERVER');
 
   /// Ordered, de-duplicated list of origins to try.
   ///
-  /// The optional parameters exist for tests; production code should call
-  /// this with at most [preferLocal].
+  /// The optional parameters exist for tests; production code calls this
+  /// with no arguments.
   static List<String> candidateOrigins({
-    bool preferLocal = false,
     bool? isWeb,
-    bool? isDebug,
     String? webOrigin,
     String? override,
   }) {
     final web = isWeb ?? kIsWeb;
-    final debug = isDebug ?? kDebugMode;
     final forced = _normalize(override ?? overrideOrigin);
 
     final origins = <String>[];
@@ -54,18 +43,8 @@ abstract final class ServerConfig {
       return origins;
     }
 
-    final lan = debug ? <String>[lanDevOrigin] : const <String>[];
-    if (preferLocal) {
-      // Local first for low-latency resolves; the LAN host goes last because
-      // an unreachable LAN IP stalls until the request timeout.
-      localOrigins.reversed.forEach(add);
-      add(productionOrigin);
-      lan.forEach(add);
-    } else {
-      add(productionOrigin);
-      lan.forEach(add);
-      localOrigins.forEach(add);
-    }
+    // Native apps resolve, play and store everything on the device. They only
+    // talk to a Symphony server when one is explicitly set at build time.
     return origins;
   }
 

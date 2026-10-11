@@ -335,7 +335,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
       final activeStream = streamInfo;
 
       try {
-        final headers = getHeadersForUri(activeStream.streamUri);
+        final headers = activeStream.headers ?? getHeadersForUri(activeStream.streamUri);
         final audioSource = AudioSource.uri(activeStream.streamUri, headers: headers, tag: item);
         await _player.setAudioSource(
           audioSource,
@@ -363,7 +363,11 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
           developer.log('Activating resilient fallback CDN...', name: 'AudioHandler');
           final fallback = await _streamResolver.resolveFallbackCdn(track);
           if (fallback != null) {
-            final fallbackSource = AudioSource.uri(fallback.streamUri, tag: item);
+            final fallbackSource = AudioSource.uri(
+              fallback.streamUri,
+              headers: fallback.headers ?? getHeadersForUri(fallback.streamUri),
+              tag: item,
+            );
             await _player.setAudioSource(
               fallbackSource,
               preload: true,
