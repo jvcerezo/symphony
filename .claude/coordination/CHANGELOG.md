@@ -31,6 +31,27 @@ Newest first. Note what changed in Shared code and how the other side should ada
   `deno.exe` (~43 MB zipped) or quickjs-ng `qjs.exe` (~2.1 MB, lightest) next
   to the yt-dlp.exe in use; the extractor passes `--js-runtimes` automatically.
 
+## 2026-10-11 — [mobile] yt-dlp on Android (branch `mobile/ytdlp-android`)
+
+- Kotlin side of `com.symphony.symphony/ytdlp` is in
+  `android/app/src/main/kotlin/com/symphony/symphony/YtDlpBridge.kt`, using
+  `io.github.junkfood02.youtubedl-android:library:0.18.1` (yt-dlp 2025.11.12,
+  Python 3.12, QuickJS for YouTube's JS challenges). Contract unchanged.
+  - Library init runs once per process on a worker thread when the engine
+    attaches; `isAvailable` waits for it.
+  - `extract` runs `-f "ba[ext=m4a]/ba[acodec^=mp4a]/ba" --dump-json
+    --no-playlist`, shares one run between concurrent calls for the same id,
+    and kills yt-dlp after 90 s. Error codes: `bad_args`, `extract_failed`.
+  - `update` updates from the stable channel (`update_failed` on error). The
+    Kotlin side also runs it by itself at most once per 24 h after init.
+- Dart: `AndroidYtDlpExtractor.update()` (returns null on failure),
+  `@visibleForTesting AndroidYtDlpExtractor.channel`. `extract` now also maps
+  `MissingPluginException` to `AudioStreamResolutionException`.
+- APK: `jniLibs.useLegacyPackaging = true` (the library runs libpython/libqjs
+  from nativeLibraryDir), x86 libs excluded. The universal release APK goes
+  from 56.0 MB to 69.5 MB. CI is unchanged.
+- Desktop: nothing to adapt.
+
 ## 2026-10-11 — [core] Native apps no longer use any Symphony server
 
 - New `lib/features/audio_player/data/services/extraction/`: `AudioExtractor`,

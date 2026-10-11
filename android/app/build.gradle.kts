@@ -42,6 +42,20 @@ android {
         versionName = flutter.versionName
     }
 
+    packaging {
+        jniLibs {
+            // youtubedl-android executes libpython.so / libqjs.so from
+            // nativeLibraryDir, so native libs must be extracted on install
+            // (equivalent of android:extractNativeLibs="true").
+            useLegacyPackaging = true
+            // A zip archive named .so, not an ELF: don't run llvm-strip on it.
+            keepDebugSymbols += "**/libpython.zip.so"
+            // youtubedl-android also ships 32-bit x86, which Flutter has no
+            // engine for. (An ndk.abiFilters block would break --split-per-abi.)
+            excludes += "lib/x86/**"
+        }
+    }
+
     signingConfigs {
         if (hasReleaseKeystore) {
             create("release") {
@@ -67,4 +81,9 @@ android {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // yt-dlp + Python 3.12 + QuickJS, run on the phone (see YtDlpBridge.kt).
+    implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
 }
