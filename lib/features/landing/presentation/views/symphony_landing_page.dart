@@ -315,6 +315,40 @@ class SymphonyLandingPage extends ConsumerWidget {
             ),
           ],
         ),
+
+        const SizedBox(height: 18),
+
+        // Personal note: the Windows build isn't code-signed, so SmartScreen warns.
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 680),
+          child: const Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: EdgeInsets.only(top: 1),
+                child: Icon(Icons.verified_user_outlined, size: 16, color: Color(0xFFA1A1AA)),
+              ),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: "Ako nag-dev nito — trust me, it's safe.\n",
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                      ),
+                      TextSpan(
+                        text: "Windows may flag it because the app isn't code-signed. "
+                            'Click More info → Run anyway.',
+                      ),
+                    ],
+                  ),
+                  style: TextStyle(color: Color(0xFFA1A1AA), fontSize: 13, height: 1.6),
+                ),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }
