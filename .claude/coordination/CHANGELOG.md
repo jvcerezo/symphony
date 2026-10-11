@@ -2,6 +2,35 @@
 
 Newest first. Note what changed in Shared code and how the other side should adapt.
 
+## 2026-10-11 — [desktop] Windows yt-dlp extractor (branch `desktop/ytdlp-windows`)
+
+- `WindowsYtDlpExtractor` (`extraction/windows_ytdlp_extractor_io.dart`) is
+  implemented. Binary lookup: `<app support>\yt-dlp\yt-dlp.exe` (writable,
+  self-updated) → `<dir of symphony.exe>\yt-dlp.exe` (bundled by CI).
+  Runs `-f "ba[ext=m4a]/ba[acodec^=mp4a]/ba" -j --no-playlist --no-warnings`
+  with a 25 s timeout (process tree killed on timeout), no console window.
+  Concurrent `extract()` calls for one id share one process. Constructor
+  takes an injectable `YtDlpProcessRunner`, `supportDir`, `exeDir`,
+  `isWindows`, `timeout` for tests.
+- New public `update()` on `WindowsYtDlpExtractor` (and the web stub, which
+  returns null): copies the bundled exe to app support if needed, runs
+  `yt-dlp -U`, returns the new version or null. Never throws. While it runs,
+  extraction uses the bundled exe. Not part of the `AudioExtractor` contract.
+- New `extraction/ytdlp_update_scheduler.dart` (`YtDlpUpdateScheduler`):
+  platform-neutral "at most once per calendar day" gate in
+  shared_preferences key `ytdlp_last_update_check`. `main.dart` schedules it
+  30 s after start on Windows only. Mobile can reuse it with
+  `AndroidYtDlpExtractor`'s `update` once the channel exists.
+- CI (`deploy.yml`, Windows job): downloads the latest official
+  `yt-dlp.exe` into `build\windows\x64\runner\Release\` before zipping and
+  fails the job if it doesn't run. `yt-dlp.exe` is git-ignored.
+- JS runtime: yt-dlp 2026.08.19 only enables `deno` by default. Without any
+  runtime, YouTube audio (itag 140 m4a) still extracts and serves 206 for
+  start/middle/end Range requests (verified 2026-10-11), with a deprecation
+  warning. Nothing is bundled. If YouTube starts requiring one, drop
+  `deno.exe` (~43 MB zipped) or quickjs-ng `qjs.exe` (~2.1 MB, lightest) next
+  to the yt-dlp.exe in use; the extractor passes `--js-runtimes` automatically.
+
 ## 2026-10-11 — [core] Native apps no longer use any Symphony server
 
 - New `lib/features/audio_player/data/services/extraction/`: `AudioExtractor`,
