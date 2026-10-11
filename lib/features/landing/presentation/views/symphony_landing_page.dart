@@ -222,14 +222,18 @@ class SymphonyLandingPage extends ConsumerWidget {
             children: [
               AnimatedEqualizer(isPlaying: true, height: 11, color: Colors.white),
               SizedBox(width: 8),
-              Text(
+              Flexible(
+                child: Text(
                 'OFFLINE-FIRST • CLIENT-SIDE RESOLUTION • ZERO ADS',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: Color(0xFFA1A1AA),
                   fontSize: 10.5,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 1.0,
                 ),
+              ),
               ),
             ],
           ),
@@ -618,10 +622,15 @@ class SymphonyLandingPage extends ConsumerWidget {
       decoration: const BoxDecoration(
         border: Border(top: BorderSide(color: Color(0xFF1E1E22), width: 1)),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        runSpacing: 8,
         children: [
-          Row(
+          Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 0,
+            runSpacing: 4,
             children: [
               const SymphonyBrandLogo(size: 20),
               const SizedBox(width: 8),
@@ -649,6 +658,7 @@ class SymphonyLandingPage extends ConsumerWidget {
             ],
           ),
           Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
               IconButton(
                 onPressed: () => _openExternal(repoUrl),
