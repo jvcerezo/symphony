@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 import 'core/config/feature_flags.dart';
+import 'core/services/legacy_data_migration.dart';
 import 'core/theme/symphony_theme.dart';
 import 'features/audio_player/data/services/extraction/windows_ytdlp_extractor.dart';
 import 'features/audio_player/data/services/extraction/ytdlp_update_scheduler.dart';
@@ -14,6 +15,10 @@ import 'features/landing/presentation/views/symphony_landing_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Older Windows builds stored data under com.symphony\symphony; bring it
+  // across before anything reads settings or downloads.
+  await migrateLegacyAppData();
 
   // Windows audio goes through libmpv (media_kit). Must run before the
   // first AudioPlayer is created, i.e. before AudioService.init below.
