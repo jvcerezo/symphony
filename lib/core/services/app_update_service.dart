@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:developer' as developer;
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import '../utils/platform_url_launcher.dart';
@@ -106,7 +105,9 @@ class AppUpdateState {
 }
 
 class AppUpdateNotifier extends StateNotifier<AppUpdateState> {
-  static const String currentVersion = '1.0.0';
+  /// Set by CI (`--dart-define=SYMPHONY_VERSION=1.0.<run number>`) and
+  /// matched against the release title. Local builds report 1.0.0.
+  static const String currentVersion = String.fromEnvironment('SYMPHONY_VERSION', defaultValue: '1.0.0');
   static const String repoOwner = 'jvcerezo';
   static const String repoName = 'symphony';
   static const String apiUrl = 'https://api.github.com/repos/$repoOwner/$repoName/releases/latest';

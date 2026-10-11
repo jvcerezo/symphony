@@ -38,7 +38,9 @@ class SymphonyLandingPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final updateState = ref.watch(appUpdateProvider);
     final latestRelease = updateState.latestRelease;
-    final versionTag = latestRelease?.tagName ?? 'v1.0.0';
+    // Releases are tagged "latest"; the version lives in the title ("Symphony v1.0.42").
+    final titleVersion = RegExp(r'v\d+\.\d+(?:\.\d+)?').firstMatch(latestRelease?.title ?? '')?.group(0);
+    final versionTag = titleVersion ?? latestRelease?.tagName ?? 'latest';
     final hasDirectWindowsAsset =
         latestRelease?.windowsDownloadUrl != null || fallbackWindowsUrl.endsWith('.zip');
     final winDownloadUrl = latestRelease?.windowsDownloadUrl ?? fallbackWindowsUrl;

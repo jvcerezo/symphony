@@ -48,58 +48,14 @@ Future<void> runWindowsAutoUpdate(
     final extractDir = '${tempDir.path}\\extracted';
     final scriptPath = '${tempDir.path}\\apply_update.ps1';
 
-    final escapedZip = zipFile.path.replaceAll("'", "''");
-    final escapedExtract = extractDir.replaceAll("'", "''");
-    final escapedAppDir = currentAppDir.replaceAll("'", "''");
-    final escapedExe = currentExe.replaceAll("'", "''");
-    final escapedTemp = tempDir.path.replaceAll("'", "''");
-
-    // Resilient hot-swap script
-    final psScript = '''
-Start-Sleep -Milliseconds 600
-
-# 1. Wait for running Symphony process to completely exit
-try {
-    Wait-Process -Id $currentPid -Timeout 15 -ErrorAction SilentlyContinue
-} catch {}
-Start-Sleep -Milliseconds 600
-
-# 2. Extract downloaded release zip
-try {
-    New-Item -ItemType Directory -Force -Path '$escapedExtract' | Out-Null
-    Expand-Archive -Path '$escapedZip' -DestinationPath '$escapedExtract' -Force
-} catch {
-    exit 1
-}
-
-# 3. Locate release payload and copy over app directory
-try {
-    if (Test-Path '$escapedExtract\\symphony.exe') {
-        Copy-Item -Path '$escapedExtract\\*' -Destination '$escapedAppDir' -Recurse -Force
-    } else {
-        \$subDirs = Get-ChildItem -Path '$escapedExtract' -Directory
-        if (\$subDirs.Count -eq 1) {
-            Copy-Item -Path "\$(\$subDirs[0].FullName)\\*" -Destination '$escapedAppDir' -Recurse -Force
-        } else {
-            Copy-Item -Path '$escapedExtract\\*' -Destination '$escapedAppDir' -Recurse -Force
-        }
-    }
-} catch {
-    exit 2
-}
-
-# 4. Relaunch fresh Symphony version
-Start-Sleep -Milliseconds 400
-try {
-    Start-Process -FilePath '$escapedExe'
-} catch {}
-
-# 5. Clean up temporary update files
-Start-Sleep -Seconds 3
-try {
-    Remove-Item -Path '$escapedTemp' -Recurse -Force -ErrorAction SilentlyContinue
-} catch {}
-''';
+    final psScript = buildUpdateScript(
+      zipPath: zipFile.path,
+      extractDir: extractDir,
+      appDir: currentAppDir,
+      exePath: currentExe,
+      appPid: currentPid,
+      logPath: '${Directory.systemTemp.path}\symphony_update.log',
+    );
 
     await File(scriptPath).writeAsString(psScript);
 
@@ -132,4 +88,66 @@ try {
   } finally {
     client.close();
   }
+}
+
+/// PowerShell that swaps in the extracted update after Symphony exits.
+/// Always relaunches the app and logs each step to [logPath].
+@visibleForTesting
+String buildUpdateScript({
+  required String zipPath,
+  required String extractDir,
+  required String appDir,
+  required String exePath,
+  required int appPid,
+  required String logPath,
+}) {
+  final escapedZip = zipPath.replaceAll("'", "''");
+  final escapedExtract = extractDir.replaceAll("'", "''");
+  final escapedAppDir = appDir.replaceAll("'", "''");
+  final escapedExe = exePath.replaceAll("'", "''");
+  final escapedLog = logPath.replaceAll("'", "''");
+  // The zip and extracted files live together in one temp folder.
+  final escapedTemp = File(zipPath).parent.path.replaceAll("'", "''");
+
+  final psScript = '''
+\$log = '$escapedLog'
+function Log(\$m) { "\$(Get-Date -Format o) \$m" | Out-File -FilePath \$log -Append -Encoding utf8 }
+Log 'update started'
+
+# 1. Wait for Symphony to exit, then stop any yt-dlp it left running from
+#    the app folder (a running exe would be locked and block the copy).
+try { Wait-Process -Id $appPid -Timeout 15 -ErrorAction SilentlyContinue } catch {}
+try {
+    Get-Process -Name 'yt-dlp' -ErrorAction SilentlyContinue |
+        Where-Object { \$_.Path -and \$_.Path.StartsWith('$escapedAppDir', [System.StringComparison]::OrdinalIgnoreCase) } |
+        Stop-Process -Force -ErrorAction SilentlyContinue
+} catch {}
+Start-Sleep -Milliseconds 800
+
+# 2. Extract and copy over the app folder.
+try {
+    New-Item -ItemType Directory -Force -Path '$escapedExtract' | Out-Null
+    Expand-Archive -Path '$escapedZip' -DestinationPath '$escapedExtract' -Force -ErrorAction Stop
+    \$source = '$escapedExtract'
+    if (-not (Test-Path (Join-Path \$source 'symphony.exe'))) {
+        \$subDirs = @(Get-ChildItem -Path \$source -Directory)
+        if (\$subDirs.Count -eq 1) { \$source = \$subDirs[0].FullName }
+    }
+    Copy-Item -Path (Join-Path \$source '*') -Destination '$escapedAppDir' -Recurse -Force -ErrorAction Stop
+    Log 'files replaced'
+} catch {
+    Log "update failed: \$_"
+}
+
+# 3. Relaunch Symphony (new version, or the old one if the copy failed).
+Start-Sleep -Milliseconds 400
+try { Start-Process -FilePath '$escapedExe'; Log 'relaunched' } catch { Log "relaunch failed: \$_" }
+
+# 4. Clean up temporary update files
+Start-Sleep -Seconds 3
+try {
+    Remove-Item -Path '$escapedTemp' -Recurse -Force -ErrorAction SilentlyContinue
+} catch {}
+''';
+  return psScript;
 }
