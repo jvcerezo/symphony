@@ -69,10 +69,17 @@ YouTube video id into a playable URL. `createPlatformAudioExtractor()` chains
 `AndroidYtDlpExtractor` (`youtubedl-android` over method channel
 `com.symphony.symphony/ytdlp`, Mobile owns) → `YoutubeExplodeExtractor`
 (pure-Dart last resort; YouTube 403s its mid-file ranges, so songs can stall).
-Search + candidate scoring still use `youtube_explode` (search works fine).
-Native resolve order: downloaded file → memory cache → `track.streamUri` →
-known `yt_` id → on-device search. After a load failure the handler calls
-`resolveFallbackCdn`, which on native forgets the cached URL and re-extracts.
+Native resolve order: downloaded file → playback cache → memory cache →
+`track.streamUri` → known `yt_` id → remembered match (`MatchIndex`,
+`match_index.json`) → **YouTube Music song search** (`AudioExtractor.searchSong`:
+one yt-dlp run on `music.youtube.com/search?q=…#songs`, accepted only via
+`isAcceptableSongMatch`: length within max(6 s, 3 %), title words present, no
+live/acoustic/remix/etc.) → youtube_explode search + `scoreVideoCandidate`
+(length closeness dominates; music videos get little credit). Successful
+matches are remembered. Playback streams the URL immediately (no headers, so
+no just_audio proxy) while `PlaybackCache` saves a copy; if streaming fails the
+handler plays that copy. Windows ships the yt-dlp *folder* build in
+`yt-dlp\` (≈0.5 s faster per run than the one-file exe).
 
 ## Ownership map — who may edit what
 

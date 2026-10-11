@@ -2,6 +2,23 @@
 
 Newest first. Note what changed in Shared code and how the other side should adapt.
 
+## 2026-10-12 — [core] Accurate matching + faster starts
+
+- `AudioExtractor.searchSong(query)` (all implementations; Android channel
+  method `searchSong {query}` added to `YtDlpBridge.kt`; replies now include
+  `id`, `title`, `channel`). `ExtractedAudio` gained `videoId/title/channel`.
+- Resolver: remembered match → YouTube Music song search (verified) →
+  fallback search. New `MatchIndex` (`matching/`), injectable via
+  `matchIndex:`. `scoreVideoCandidate`: ±45 s hard limit (was 80), length
+  dominates, version words (live/acoustic/remix/radio edit…) −120.
+- Benchmark on a real 45-song playlist: see the commit message.
+- Handler streams first (no headers) and saves the cache copy in the
+  background; falls back to the copy if streaming fails.
+- Windows: CI bundles the yt-dlp folder build in `Release\yt-dlp\`; the
+  extractor prefers it and runs `-U` on it in place.
+- Windows: one-time migration of `%APPDATA%\com.symphony\symphony` data to
+  the new `Symphony\Symphony` folder (exe metadata rename in v1.0.27).
+
 ## 2026-10-11 — [core] Native playback from a local cache (fixes Windows hang after a song)
 
 - Native (Windows + Android) now downloads each resolved stream into
