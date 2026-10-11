@@ -1,4 +1,5 @@
 import 'package:audio_service/audio_service.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/curated_playlists.dart';
@@ -41,7 +42,8 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
 
     // Proactively pre-warm top starter tracks so pressing Play starts in < 300ms
     final isTest = WidgetsBinding.instance.runtimeType.toString().contains('Test');
-    if (!isTest) {
+    // Web only: on native each lookup launches yt-dlp, so don't pre-warm at launch.
+    if (!isTest && kIsWeb) {
       try {
         final handler = ref.read(audioHandlerProvider);
         final topTracks = CuratedPlaylists.todaysTopHits.tracks.take(4).toList();
@@ -69,7 +71,7 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
         if (!isTest && next != null && next.tracks.isNotEmpty) {
           try {
             final handler = ref.read(audioHandlerProvider);
-            handler.preloadTracks(next.tracks, count: 2);
+            handler.preloadTracks(next.tracks, count: kIsWeb ? 2 : 1);
           } catch (_) {}
         }
       }

@@ -10,6 +10,13 @@ import 'local_track_store.dart';
 
 LocalTrackStore createPlatformLocalTrackStore() => IoLocalTrackStore();
 
+LocalTrackStore createPlatformPlaybackCacheStore() => IoLocalTrackStore(
+      baseDirectory: () async {
+        final support = await getApplicationSupportDirectory();
+        return Directory('${support.path}${Platform.pathSeparator}playback_cache');
+      },
+    );
+
 /// File-backed [LocalTrackStore]: audio files plus `index.json` in
 /// `<application support>/offline_tracks/` (private app storage, not purged
 /// like the cache dir).

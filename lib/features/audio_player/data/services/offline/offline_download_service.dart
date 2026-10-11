@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import '../../../domain/entities/resolved_audio_stream.dart';
 import '../../../domain/entities/track.dart';
+import 'chunked_download.dart';
 import 'local_track_store.dart';
 
 /// Resolves a track to a remote stream. Normally
@@ -65,20 +66,14 @@ class OfflineDownloadService {
       if (local != null) return local;
     }
 
-    final request = http.Request('GET', stream.streamUri)..headers.addAll(stream.headers ?? requestHeadersFor(stream.streamUri));
-    final response = await _client.send(request).timeout(headerTimeout);
-    if (response.statusCode != 200) {
-      await response.stream.drain<void>().catchError((_) {});
-      throw http.ClientException('HTTP ${response.statusCode} downloading "${track.title}"', stream.streamUri);
-    }
-
-    final total = response.contentLength;
-    var received = 0;
-    final body = response.stream.timeout(stallTimeout).map((chunk) {
-      received += chunk.length;
-      onProgress?.call(received, total);
-      return chunk;
-    });
+    // Ranged chunks: YouTube throttles one long GET to roughly playback speed.
+    final body = chunkedDownload(
+      _client,
+      stream.streamUri,
+      headers: stream.headers ?? requestHeadersFor(stream.streamUri),
+      chunkTimeout: stallTimeout,
+      onProgress: onProgress,
+    );
 
     final entry = await _store.save(
       track,
@@ -86,7 +81,6 @@ class OfflineDownloadService {
       format: stream.format,
       duration: stream.duration,
       sourceVideoId: stream.sourceVideoId,
-      expectedBytes: total,
     );
     developer.log(
       'Saved "${track.title}" for offline playback (${entry.bytes} bytes, ${entry.format})',

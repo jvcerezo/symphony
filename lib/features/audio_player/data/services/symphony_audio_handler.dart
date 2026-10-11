@@ -7,14 +7,17 @@ import 'package:just_audio/just_audio.dart';
 import 'package:rxdart/rxdart.dart';
 import '../../../../core/errors/exceptions.dart';
 import '../../../../core/services/notification_permission_service.dart';
+import '../../domain/entities/resolved_audio_stream.dart';
 import '../../domain/entities/track.dart';
 import '../../../metadata_search/data/services/artwork_resolver_service.dart';
 import 'audio_stream_resolver_service.dart';
+import 'offline/playback_cache.dart';
 import '../../../../core/config/server_config.dart';
 
 class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   final AudioPlayer _player;
   final AudioStreamResolverService _streamResolver;
+  final PlaybackCache _playbackCache;
   final ArtworkResolverService _artworkResolver;
   final NotificationPermissionService _notificationPermission;
 
@@ -38,7 +41,9 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
     AudioStreamResolverService? streamResolver,
     ArtworkResolverService? artworkResolver,
     NotificationPermissionService? notificationPermission,
+    PlaybackCache? playbackCache,
   })  : _player = player ?? AudioPlayer(),
+        _playbackCache = playbackCache ?? PlaybackCache(),
         _streamResolver = streamResolver ?? AudioStreamResolverService(),
         _artworkResolver = artworkResolver ?? ArtworkResolverService(),
         _notificationPermission = notificationPermission ?? NotificationPermissionService() {
@@ -66,18 +71,41 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   /// Preloads a single track.
   Future<void> preloadTrack(Track track) => _streamResolver.preloadTrack(track);
 
+  /// Native plays from local files: one track ahead is enough and each
+  /// lookup launches yt-dlp, so stay light there.
+  bool get _usesPlaybackCache => !kIsWeb && _playbackCache.isSupported;
+
+  /// Resolves and caches [track] in the background so the next skip is instant.
+  Future<void> _warmTrack(Track track) async {
+    try {
+      final stream = await _streamResolver.preloadTrack(track);
+      if (stream != null && PlaybackCache.shouldCache(stream)) {
+        await _playbackCache.fileFor(track, stream);
+      }
+    } catch (e) {
+      developer.log('Warm-up failed for "${track.title}": $e', name: 'AudioHandler');
+    }
+  }
+
   /// Helper to pre-resolve upcoming tracks in the playlist queue.
   void _preloadUpcomingTracks(int fromIndex) {
     if (_playlistQueue.isEmpty) return;
+    final ahead = _usesPlaybackCache ? 1 : 2;
     final upcoming = <Track>[];
-    for (int offset = 1; offset <= 2; offset++) {
+    for (int offset = 1; offset <= ahead; offset++) {
       final nextIdx = (fromIndex + offset) % _playlistQueue.length;
       if (nextIdx != fromIndex && nextIdx < _playlistQueue.length) {
         upcoming.add(_playlistQueue[nextIdx]);
       }
     }
     if (upcoming.isNotEmpty) {
-      _streamResolver.preloadTracks(upcoming, count: 2);
+      if (_usesPlaybackCache) {
+        for (final t in upcoming) {
+          unawaited(_warmTrack(t));
+        }
+      } else {
+        _streamResolver.preloadTracks(upcoming, count: 2);
+      }
       for (final t in upcoming) {
         if (t.artworkUri == null) {
           _artworkResolver.resolveArtwork(t).catchError((_) => null);
@@ -334,9 +362,27 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
 
       final activeStream = streamInfo;
 
+      // Native: play a local copy. Keeps network streaming (and just_audio's
+      // header proxy, which runs on the UI isolate) out of the player.
+      Future<AudioSource> sourceFor(ResolvedAudioStream stream) async {
+        if (_usesPlaybackCache && PlaybackCache.shouldCache(stream)) {
+          try {
+            final file = await _playbackCache.fileFor(track, stream).timeout(const Duration(seconds: 45));
+            return AudioSource.uri(file, tag: item);
+          } catch (e) {
+            developer.log('Playback cache failed for "${track.title}", streaming instead: $e', name: 'AudioHandler');
+          }
+        }
+        return AudioSource.uri(
+          stream.streamUri,
+          headers: stream.headers ?? getHeadersForUri(stream.streamUri),
+          tag: item,
+        );
+      }
+
       try {
-        final headers = activeStream.headers ?? getHeadersForUri(activeStream.streamUri);
-        final audioSource = AudioSource.uri(activeStream.streamUri, headers: headers, tag: item);
+        final audioSource = await sourceFor(activeStream);
+        if (requestId != _playRequestId) return;
         await _player.setAudioSource(
           audioSource,
           preload: true,
@@ -345,6 +391,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
         developer.log('Primary stream load failed with $loadErr, attempting fallback...', name: 'AudioHandler');
         if (requestId != _playRequestId) return;
 
+        await _playbackCache.forget(track);
         bool recovered = false;
         try {
           final serverResolved = await _streamResolver.resolveViaWebServer(track);
@@ -363,11 +410,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
           developer.log('Activating resilient fallback CDN...', name: 'AudioHandler');
           final fallback = await _streamResolver.resolveFallbackCdn(track);
           if (fallback != null) {
-            final fallbackSource = AudioSource.uri(
-              fallback.streamUri,
-              headers: fallback.headers ?? getHeadersForUri(fallback.streamUri),
-              tag: item,
-            );
+            final fallbackSource = await sourceFor(fallback);
             await _player.setAudioSource(
               fallbackSource,
               preload: true,
@@ -464,6 +507,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
     await _currentIndexSubject.close();
     await _queueSubject.close();
     _streamResolver.dispose();
+    _playbackCache.dispose();
     await _player.dispose();
   }
 }

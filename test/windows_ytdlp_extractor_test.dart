@@ -264,4 +264,23 @@ void main() {
       expect(await failing.runIfDue(), isFalse);
     });
   });
+
+  test('never runs more than two yt-dlp processes at once', () async {
+    await createBundled();
+    var running = 0;
+    var peak = 0;
+    final runner = _FakeRunner((call) async {
+      running++;
+      peak = running > peak ? running : peak;
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      running--;
+      return YtDlpRunResult(0, jsonEncode(_sampleJson), '');
+    });
+    final extractor = build(runner);
+
+    await Future.wait([for (final id in ['a', 'b', 'c', 'd', 'e']) extractor.extract('${id}aaaaaaaaaa')]);
+
+    expect(runner.calls, hasLength(5));
+    expect(peak, WindowsYtDlpExtractor.maxConcurrentRuns);
+  });
 }

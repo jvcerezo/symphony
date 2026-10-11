@@ -87,6 +87,27 @@ class WindowsYtDlpExtractor implements AudioExtractor {
   bool? _available;
   final Map<String, Future<ExtractedAudio>> _inFlight = {};
 
+  /// Each yt-dlp.exe launch unpacks itself and starts Python, so cap how many
+  /// run at once; extra lookups wait their turn.
+  static const maxConcurrentRuns = 2;
+  int _running = 0;
+  final _waiting = <Completer<void>>[];
+
+  Future<T> _withSlot<T>(Future<T> Function() body) async {
+    if (_running >= maxConcurrentRuns) {
+      final turn = Completer<void>();
+      _waiting.add(turn);
+      await turn.future;
+    }
+    _running++;
+    try {
+      return await body();
+    } finally {
+      _running--;
+      if (_waiting.isNotEmpty) _waiting.removeAt(0).complete();
+    }
+  }
+
   WindowsYtDlpExtractor({
     YtDlpProcessRunner runner = const IoYtDlpProcessRunner(),
     Future<Directory> Function()? supportDir,
@@ -137,7 +158,7 @@ class WindowsYtDlpExtractor implements AudioExtractor {
     final YtDlpRunResult result;
     final watch = Stopwatch()..start();
     try {
-      result = await _runner.run(binary, args, timeout: _timeout);
+      result = await _withSlot(() => _runner.run(binary, args, timeout: _timeout));
     } on TimeoutException {
       throw AudioStreamResolutionException('yt-dlp timed out after ${_timeout.inSeconds}s for $videoId');
     } on ProcessException catch (e) {

@@ -2,6 +2,19 @@
 
 Newest first. Note what changed in Shared code and how the other side should adapt.
 
+## 2026-10-11 — [core] Native playback from a local cache (fixes Windows hang after a song)
+
+- Native (Windows + Android) now downloads each resolved stream into
+  `PlaybackCache` (`<app support>/playback_cache`, 400 MB, oldest evicted)
+  with `chunkedDownload` (1 MiB Range requests), then plays the `file://`
+  copy. Remote streaming with headers went through just_audio's proxy on the
+  UI isolate; that is gone on native. Web unchanged.
+- `chunkedDownload` is also used by `OfflineDownloadService` (YouTube
+  throttles a single full GET to ~real time: 60 s vs ~1 s ranged).
+- Preloading on native: only the next track (resolve + cache); no launch-time
+  warm-up; playlist open pre-resolves 1 track.
+- `WindowsYtDlpExtractor.maxConcurrentRuns = 2`.
+
 ## 2026-10-11 — [desktop] Windows yt-dlp extractor (branch `desktop/ytdlp-windows`)
 
 - `WindowsYtDlpExtractor` (`extraction/windows_ytdlp_extractor_io.dart`) is

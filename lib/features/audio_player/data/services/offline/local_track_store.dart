@@ -83,6 +83,10 @@ abstract interface class LocalTrackStore {
   static LocalTrackStore platform() => _platform ??= impl.createPlatformLocalTrackStore();
   static LocalTrackStore? _platform;
 
+  /// Shared playback cache store (separate folder from user downloads).
+  static LocalTrackStore playbackCache() => _cache ??= impl.createPlatformPlaybackCacheStore();
+  static LocalTrackStore? _cache;
+
   /// Whether this platform can store files (false on web).
   bool get isSupported;
 
