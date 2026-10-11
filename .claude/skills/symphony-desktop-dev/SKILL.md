@@ -34,9 +34,11 @@ flutter build windows --release            # what CI ships (zip of build\windows
 flutter run -d chrome --web-port 5000      # web; append #player for the demo player
 dart run server.dart                       # local backend on :8080 (resolve/stream/playlists)
 ```
-- Playback on Windows uses `just_audio_windows`; `AudioSession` is skipped on
-  Windows/Linux (see `_initAudioSession`). Native AAC (m4a) is preferred —
-  commit `0225267` fixed infinite loading by enforcing it; don't regress.
+- Playback on Windows uses `just_audio_media_kit` (libmpv), initialized in
+  `main.dart` before `AudioService.init`. Do NOT bring back
+  `just_audio_windows`: crash dumps showed access violations in
+  `Windows.Media.dll` inside its callbacks on track changes. Tracks play from
+  the local `PlaybackCache` file; `AudioSession` is skipped on Windows/Linux.
 - Test at 850px (breakpoint edge), 1280×720, and 1920×1080. Resize live —
   layouts must not overflow (watch the debug console for RenderFlex errors).
 - The owner may be using the app while you work. **Ask before launching

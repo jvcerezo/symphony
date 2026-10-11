@@ -2,6 +2,7 @@ import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 import 'core/config/feature_flags.dart';
 import 'core/theme/symphony_theme.dart';
 import 'features/audio_player/data/services/extraction/windows_ytdlp_extractor.dart';
@@ -13,6 +14,13 @@ import 'features/landing/presentation/views/symphony_landing_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Windows audio goes through libmpv (media_kit). Must run before the
+  // first AudioPlayer is created, i.e. before AudioService.init below.
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
+    JustAudioMediaKit.title = 'Symphony';
+    JustAudioMediaKit.ensureInitialized(linux: false, windows: true);
+  }
 
   // Initialize background AudioService singleton
   final audioHandler = await AudioService.init(

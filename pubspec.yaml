@@ -41,7 +41,10 @@ dependencies:
   path_provider: ^2.1.6
   http: ^1.6.0
   html: ^0.15.7
-  just_audio_windows: ^0.2.3
+  # Windows playback via libmpv. just_audio_windows crashed inside its
+  # Windows.Media callbacks on track changes (access violation / hangs).
+  just_audio_media_kit: ^2.1.0
+  media_kit_libs_windows_audio: ^1.0.9
   audio_session: ^0.2.4
   rxdart: ^0.28.0
   shared_preferences: ^2.5.5
