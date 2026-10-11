@@ -140,6 +140,21 @@ void main() {
       expect(await cache.cachedFileFor(_track('d')), isNotNull);
     });
 
+    test('cachedStreamFor returns a playable local stream without network', () async {
+      final server = RangeServer(_bytes(500));
+      final cache = cacheWith(server);
+      expect(await cache.cachedStreamFor(_track('a')), isNull);
+
+      await cache.fileFor(_track('a'), _stream('a'));
+      final requests = server.requests;
+      final cached = await cache.cachedStreamFor(_track('a'));
+
+      expect(cached?.streamUri.scheme, 'file');
+      expect(cached?.duration, const Duration(seconds: 200));
+      expect(PlaybackCache.shouldCache(cached!), isFalse);
+      expect(server.requests, requests);
+    });
+
     test('forget drops the cached copy', () async {
       final cache = cacheWith(RangeServer(_bytes(100)));
       await cache.fileFor(_track('a'), _stream('a'));

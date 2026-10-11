@@ -31,6 +31,10 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   StreamSubscription<void>? _noisySub;
 
   int _playRequestId = 0;
+
+  /// True while a track is being resolved/loaded. Raw player events during
+  /// that time (idle, paused) must not flip the UI back to "paused".
+  bool _loading = false;
   bool _isAutoSkipping = false;
   Timer? _completionWatchdogTimer;
   Duration _lastObservedPosition = Duration.zero;
@@ -156,8 +160,9 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   }
 
   void _updatePlaybackState() {
-    final isPlaying = _player.playing;
-    final processingState = _transformProcessingState(_player.processingState);
+    final isPlaying = _loading || _player.playing;
+    final processingState =
+        _loading ? AudioProcessingState.buffering : _transformProcessingState(_player.processingState);
 
     playbackState.add(
       PlaybackState(
@@ -302,6 +307,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
 
   Future<void> _loadAndPlayTrack(Track track) async {
     final requestId = ++_playRequestId;
+    _loading = true;
 
     // Android 13+: ask for POST_NOTIFICATIONS on first playback so the media
     // notification is visible. Memoized and non-blocking; no-op elsewhere.
@@ -327,7 +333,9 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
     try {
       if (requestId != _playRequestId) return; // Superceded by another user tap
 
-      final streamInfo = await _streamResolver.resolveBestAudioStream(track);
+      // A track played recently is already on disk: start it without a lookup.
+      final cached = _usesPlaybackCache ? await _playbackCache.cachedStreamFor(track) : null;
+      final streamInfo = cached ?? await _streamResolver.resolveBestAudioStream(track);
       if (requestId != _playRequestId) return;
 
       // Resolve artwork if track doesn't have one yet, ensuring rich lock-screen and bottom bar
@@ -386,7 +394,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
         await _player.setAudioSource(
           audioSource,
           preload: true,
-        ).timeout(const Duration(seconds: 4));
+        ).timeout(const Duration(seconds: 10));
       } catch (loadErr) {
         developer.log('Primary stream load failed with $loadErr, attempting fallback...', name: 'AudioHandler');
         if (requestId != _playRequestId) return;
@@ -400,7 +408,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
             await _player.setAudioSource(
               serverSource,
               preload: true,
-            ).timeout(const Duration(seconds: 4));
+            ).timeout(const Duration(seconds: 10));
             recovered = true;
             developer.log('Recovered playback via Symphony server stream proxy for: "${track.title}"', name: 'AudioHandler');
           }
@@ -414,7 +422,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
             await _player.setAudioSource(
               fallbackSource,
               preload: true,
-            ).timeout(const Duration(seconds: 4));
+            ).timeout(const Duration(seconds: 10));
             recovered = true;
           } else {
             rethrow;
@@ -423,7 +431,12 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
       }
       if (requestId != _playRequestId) return;
 
-      await _player.play();
+      _loading = false;
+      // Not awaited: just_audio's play() completes only when playback stops,
+      // which would hold up the watchdog, the next-track preload and auto-skip.
+      unawaited(_player.play().catchError((Object e) {
+        developer.log('play() failed: $e', name: 'AudioHandler');
+      }));
       _updatePlaybackState();
       _startCompletionWatchdog();
       _preloadUpcomingTracks(currentIndex);
@@ -434,6 +447,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
       );
     } catch (e, st) {
       if (requestId != _playRequestId) return; // Ignore errors from superseded requests
+      _loading = false;
       developer.log('Playback start failure', error: e, stackTrace: st, name: 'AudioHandler');
       playbackState.add(
         playbackState.value.copyWith(
@@ -451,12 +465,20 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
     if (_player.processingState == ProcessingState.completed) {
       await seek(Duration.zero);
     }
-    await _player.play();
+    // Not awaited: the future only completes when playback stops.
+    unawaited(_player.play().catchError((Object e) {
+      developer.log('play() failed: $e', name: 'AudioHandler');
+    }));
     _updatePlaybackState();
   }
 
   @override
   Future<void> pause() async {
+    if (_loading) {
+      // Pausing while a track loads cancels that load.
+      _playRequestId++;
+      _loading = false;
+    }
     await _player.pause();
     _updatePlaybackState();
   }

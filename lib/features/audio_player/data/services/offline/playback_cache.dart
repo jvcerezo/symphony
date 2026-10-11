@@ -51,6 +51,23 @@ class PlaybackCache {
     } catch (_) {}
   }
 
+  /// [track]'s cached copy as a playable stream, or null. No network.
+  Future<ResolvedAudioStream?> cachedStreamFor(Track track) async {
+    try {
+      final entry = await _store.lookup(track);
+      if (entry == null) return null;
+      return ResolvedAudioStream(
+        streamUri: entry.fileUri,
+        duration: entry.duration > Duration.zero ? entry.duration : (track.expectedDuration ?? Duration.zero),
+        bitrateKbps: 0,
+        format: entry.format,
+        sourceVideoId: entry.sourceVideoId,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// The cached file for [track] if present, without any network.
   Future<Uri?> cachedFileFor(Track track) async => (await _store.lookup(track))?.fileUri;
 
