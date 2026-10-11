@@ -2,102 +2,26 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 /// Landing page backdrop: stacked sound-wave ridgelines (in the spirit of a
-/// pulsar plot) that drift slowly.
+/// pulsar plot).
 ///
-/// The ridges sit beside the hero copy on wide screens and below it on
-/// narrow ones, fading out toward the text so nothing crosses it. Every time
-/// term uses an integer multiple of the loop angle, so the animation loops
-/// seamlessly. Motion stops when the OS asks for reduced motion.
-class WaveBackground extends StatefulWidget {
-  final bool interactive;
-  final double speedMultiplier;
-
-  const WaveBackground({
-    super.key,
-    this.interactive = true,
-    this.speedMultiplier = 1.0,
-  });
-
-  @override
-  State<WaveBackground> createState() => _WaveBackgroundState();
-}
-
-class _WaveBackgroundState extends State<WaveBackground> with SingleTickerProviderStateMixin {
-  static const _loop = Duration(seconds: 32);
-
-  late final AnimationController _controller;
-  Offset? _pointerPos;
-  Offset _smoothedPointer = const Offset(0.5, 0.5);
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: Duration(milliseconds: (_loop.inMilliseconds / widget.speedMultiplier).round()),
-    );
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final reduceMotion = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
-    if (reduceMotion) {
-      _controller.stop();
-    } else if (!_controller.isAnimating) {
-      _controller.repeat();
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _onPointerHover(PointerEvent event, Size size) {
-    if (!widget.interactive || size.width == 0 || size.height == 0) return;
-    _pointerPos = Offset(
-      (event.position.dx / size.width).clamp(0.0, 1.0),
-      (event.position.dy / size.height).clamp(0.0, 1.0),
-    );
-  }
-
-  void _onPointerExit(PointerEvent event) => _pointerPos = null;
+/// Painted once and only repainted when the viewport size changes: animating
+/// dozens of gradient-stroked paths every frame made the page lag in the
+/// browser. The ridges sit beside the hero copy on wide screens and below it
+/// on narrow ones, fading out toward the text so nothing crosses it.
+class WaveBackground extends StatelessWidget {
+  const WaveBackground({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final size = Size(constraints.maxWidth, constraints.maxHeight);
-
-        return MouseRegion(
-          onHover: (e) => _onPointerHover(e, size),
-          onExit: _onPointerExit,
-          child: RepaintBoundary(
-            child: AnimatedBuilder(
-              animation: _controller,
-              builder: (context, child) {
-                // Ease toward the pointer so ridges lean gently, never jump.
-                final target = _pointerPos ?? const Offset(0.5, 0.5);
-                _smoothedPointer = Offset(
-                  _smoothedPointer.dx + (target.dx - _smoothedPointer.dx) * 0.04,
-                  _smoothedPointer.dy + (target.dy - _smoothedPointer.dy) * 0.04,
-                );
-
-                return CustomPaint(
-                  size: Size.infinite,
-                  painter: SoundwaveBackgroundPainter(
-                    progress: _controller.value,
-                    mouseFactor: _smoothedPointer,
-                    isInteractiveActive: _pointerPos != null,
-                  ),
-                );
-              },
-            ),
-          ),
-        );
-      },
+    return RepaintBoundary(
+      child: CustomPaint(
+        size: Size.infinite,
+        painter: SoundwaveBackgroundPainter(
+          progress: 0,
+          mouseFactor: const Offset(0.5, 0.5),
+          isInteractiveActive: false,
+        ),
+      ),
     );
   }
 }

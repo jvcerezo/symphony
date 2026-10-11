@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:symphony/features/landing/presentation/widgets/wave_background.dart';
@@ -34,31 +33,18 @@ void main() {
       expect(customPaintWidget.painter, isA<SoundwaveBackgroundPainter>());
     });
 
-    testWidgets('WaveBackground handles mouse hover interactions cleanly',
-        (WidgetTester tester) async {
+    testWidgets('WaveBackground paints once and does not animate', (WidgetTester tester) async {
       await tester.pumpWidget(
         const MaterialApp(
           home: Scaffold(
-            body: SizedBox(
-              width: 800,
-              height: 600,
-              child: WaveBackground(interactive: true),
-            ),
+            body: SizedBox(width: 800, height: 600, child: WaveBackground()),
           ),
         ),
       );
 
-      final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
-      await gesture.addPointer(location: Offset.zero);
-      addTearDown(gesture.removePointer);
-
-      // Move mouse across canvas to trigger wave modulation
-      await gesture.moveTo(const Offset(400, 300));
-      await tester.pump(const Duration(milliseconds: 100));
-
-      await gesture.moveTo(const Offset(200, 150));
-      await tester.pump(const Duration(milliseconds: 100));
-
+      // A running animation never settles; pumpAndSettle would time out.
+      await tester.pumpAndSettle();
+      expect(tester.binding.hasScheduledFrame, isFalse);
       expect(find.byType(WaveBackground), findsOneWidget);
     });
 

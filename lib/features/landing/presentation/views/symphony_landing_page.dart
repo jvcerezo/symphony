@@ -130,7 +130,7 @@ class SymphonyLandingPage extends ConsumerWidget {
         // Brand Mark & Title
         Row(
           children: [
-            const SymphonyBrandLogo(size: 32),
+            const SymphonyBrandLogo(size: 32, animated: false),
             const SizedBox(width: 12),
             const Text(
               'SYMPHONY',
@@ -222,7 +222,7 @@ class SymphonyLandingPage extends ConsumerWidget {
           child: const Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              AnimatedEqualizer(isPlaying: true, height: 11, color: Colors.white),
+              AnimatedEqualizer(isPlaying: false, height: 11, color: Colors.white),
               SizedBox(width: 8),
               Flexible(
                 child: Text(
@@ -668,7 +668,7 @@ class SymphonyLandingPage extends ConsumerWidget {
             spacing: 0,
             runSpacing: 4,
             children: [
-              const SymphonyBrandLogo(size: 20),
+              const SymphonyBrandLogo(size: 20, animated: false),
               const SizedBox(width: 8),
               const Text(
                 'SYMPHONY',
