@@ -372,14 +372,18 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
 
       // Native: play a local copy. Keeps network streaming (and just_audio's
       // header proxy, which runs on the UI isolate) out of the player.
+      // The local copy being saved in the background for the current stream.
+      Future<Uri>? backgroundCopy;
+
+      // Native, first play: start streaming at once (no wait for a download)
+      // and save a local copy in the background for replays and instant seeks.
+      // No request headers, so just_audio talks to the CDN directly instead of
+      // through its proxy. Recently played tracks already resolved to a file.
       Future<AudioSource> sourceFor(ResolvedAudioStream stream) async {
         if (_usesPlaybackCache && PlaybackCache.shouldCache(stream)) {
-          try {
-            final file = await _playbackCache.fileFor(track, stream).timeout(const Duration(seconds: 45));
-            return AudioSource.uri(file, tag: item);
-          } catch (e) {
-            developer.log('Playback cache failed for "${track.title}", streaming instead: $e', name: 'AudioHandler');
-          }
+          backgroundCopy = _playbackCache.fileFor(track, stream);
+          backgroundCopy!.ignore();
+          return AudioSource.uri(stream.streamUri, tag: item);
         }
         return AudioSource.uri(
           stream.streamUri,
@@ -399,9 +403,25 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
         developer.log('Primary stream load failed with $loadErr, attempting fallback...', name: 'AudioHandler');
         if (requestId != _playRequestId) return;
 
-        await _playbackCache.forget(track);
         bool recovered = false;
-        try {
+
+        // Streaming failed (e.g. the CDN wanted headers): play the local copy,
+        // which downloads with the extractor's headers in ranged chunks.
+        final copy = backgroundCopy;
+        if (copy != null) {
+          try {
+            final file = await copy.timeout(const Duration(seconds: 45));
+            if (requestId != _playRequestId) return;
+            await _player.setAudioSource(AudioSource.uri(file, tag: item), preload: true).timeout(const Duration(seconds: 10));
+            recovered = true;
+            developer.log('Recovered "${track.title}" from its local copy', name: 'AudioHandler');
+          } catch (e) {
+            developer.log('Local copy unavailable for "${track.title}": $e', name: 'AudioHandler');
+          }
+        }
+
+        if (!recovered) await _playbackCache.forget(track);
+        if (!recovered) try {
           final serverResolved = await _streamResolver.resolveViaWebServer(track);
           if (serverResolved != null) {
             final serverSource = AudioSource.uri(serverResolved.streamUri, tag: item);
