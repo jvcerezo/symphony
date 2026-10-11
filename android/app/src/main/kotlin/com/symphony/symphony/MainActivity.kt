@@ -18,6 +18,7 @@ class MainActivity : AudioServiceActivity() {
                     else -> result.notImplemented()
                 }
             }
+        YtDlpBridge.attach(this, flutterEngine.dartExecutor.binaryMessenger)
     }
 
     /**
