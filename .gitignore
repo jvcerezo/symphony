@@ -51,3 +51,6 @@ app.*.map.json
 android/key.properties
 *.jks
 *.keystore
+
+# yt-dlp is downloaded by CI into the Windows release, never committed
+yt-dlp.exe
