@@ -22,6 +22,13 @@ class _Stub implements AudioExtractor {
   }
 
   @override
+  Future<ExtractedAudio> searchSong(String query) async {
+    calls++;
+    if (fails) throw AudioStreamResolutionException('$name failed');
+    return ExtractedAudio(url: Uri.parse('https://$name.example/song'), container: 'm4a', videoId: 'song01aaaaa');
+  }
+
+  @override
   void dispose() {}
 }
 

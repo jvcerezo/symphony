@@ -60,10 +60,12 @@ class IoYtDlpProcessRunner implements YtDlpProcessRunner {
 /// Windows: runs `yt-dlp.exe` on the user's PC — no Symphony server.
 ///
 /// Binary lookup, in order:
-/// 1. `<app support>\yt-dlp\yt-dlp.exe` — writable copy kept current by
-///    [update] (`yt-dlp -U` rewrites itself, which a Program Files install
-///    could not do);
-/// 2. `<dir of Symphony.exe>\yt-dlp.exe` — shipped in the release zip by CI.
+/// 1. `<dir of Symphony.exe>\yt-dlp\yt-dlp.exe` — the official *folder*
+///    build shipped by CI. It starts ~0.5 s faster per run than the one-file
+///    build (no self-extraction to %TEMP%); [update] runs `-U` on it in place.
+/// 2. `<app support>\yt-dlp\yt-dlp.exe` — writable one-file copy kept current
+///    by [update] for installs from before the folder build;
+/// 3. `<dir of Symphony.exe>\yt-dlp.exe` — one-file build from older zips.
 ///
 /// If `deno.exe` or `qjs.exe` sits next to the binary in use, it is passed via
 /// `--js-runtimes`. None is bundled today: YouTube audio currently extracts
@@ -130,50 +132,64 @@ class WindowsYtDlpExtractor implements AudioExtractor {
   }
 
   @override
-  Future<ExtractedAudio> extract(String videoId) {
-    final pending = _inFlight[videoId];
+  Future<ExtractedAudio> extract(String videoId) => _coalesced(
+        videoId,
+        () => _extract(videoId, 'https://www.youtube.com/watch?v=$videoId', const ['--no-playlist'], videoId),
+      );
+
+  /// YouTube Music "songs" search + extraction of the top result, in one run.
+  @override
+  Future<ExtractedAudio> searchSong(String query) {
+    final q = query.trim();
+    if (q.isEmpty) return Future.error(const AudioStreamResolutionException('Empty song search'));
+    final url = 'https://music.youtube.com/search?q=${Uri.encodeQueryComponent(q)}#songs';
+    return _coalesced('song:$q', () => _extract('song:$q', url, const ['--playlist-items', '1'], null));
+  }
+
+  Future<ExtractedAudio> _coalesced(String key, Future<ExtractedAudio> Function() run) {
+    final pending = _inFlight[key];
     if (pending != null) return pending;
     // Block body: returning the removed future would make whenComplete wait on itself.
-    final future = _extract(videoId).whenComplete(() {
-      _inFlight.remove(videoId);
+    final future = run().whenComplete(() {
+      _inFlight.remove(key);
     });
-    _inFlight[videoId] = future;
+    _inFlight[key] = future;
     return future;
   }
 
-  Future<ExtractedAudio> _extract(String videoId) async {
+  Future<ExtractedAudio> _extract(String what, String url, List<String> extraArgs, String? videoId) async {
     final binary = await _findBinary(preferBundled: _updateInFlight != null);
     if (binary == null) {
       _available = false;
-      throw AudioStreamResolutionException('yt-dlp.exe not found for $videoId');
+      throw AudioStreamResolutionException('yt-dlp.exe not found for $what');
     }
     final args = [
       ..._jsRuntimeArgs(binary),
       '-f', formatSelector,
       '-j',
-      '--no-playlist',
+      ...extraArgs,
       '--no-warnings',
-      'https://www.youtube.com/watch?v=$videoId',
+      url,
     ];
     final YtDlpRunResult result;
     final watch = Stopwatch()..start();
     try {
       result = await _withSlot(() => _runner.run(binary, args, timeout: _timeout));
     } on TimeoutException {
-      throw AudioStreamResolutionException('yt-dlp timed out after ${_timeout.inSeconds}s for $videoId');
+      throw AudioStreamResolutionException('yt-dlp timed out after ${_timeout.inSeconds}s for $what');
     } on ProcessException catch (e) {
       _available = null;
-      throw AudioStreamResolutionException('Could not start yt-dlp for $videoId', e.message);
+      throw AudioStreamResolutionException('Could not start yt-dlp for $what', e.message);
     }
     if (result.exitCode != 0) {
       throw AudioStreamResolutionException(
-        'yt-dlp exited with ${result.exitCode} for $videoId',
+        'yt-dlp exited with ${result.exitCode} for $what',
         _tail(result.stderr),
       );
     }
-    final audio = parseYtDlpJson(result.stdout, videoId, stderr: result.stderr);
+    final audio = parseYtDlpJson(result.stdout, videoId ?? what, stderr: result.stderr);
     developer.log(
-      'yt-dlp resolved $videoId (${audio.container}, ${audio.bitrateKbps ?? '?'} kbps) in ${watch.elapsedMilliseconds} ms',
+      'yt-dlp resolved $what -> ${audio.videoId} (${audio.container}, ${audio.bitrateKbps ?? '?'} kbps) in ${watch.elapsedMilliseconds} ms',
       name: 'YtDlp',
     );
     return audio;
@@ -191,8 +207,9 @@ class WindowsYtDlpExtractor implements AudioExtractor {
 
   Future<String?> _update() async {
     try {
-      final target = File(await _supportBinaryPath());
-      if (!await target.exists()) {
+      final folderBuild = File(_bundledFolderBinaryPath());
+      final target = await folderBuild.exists() ? folderBuild : File(await _supportBinaryPath());
+      if (target != folderBuild && !await target.exists()) {
         final bundled = File(_bundledBinaryPath());
         if (!await bundled.exists()) return null;
         await target.parent.create(recursive: true);
@@ -218,7 +235,12 @@ class WindowsYtDlpExtractor implements AudioExtractor {
 
   String _bundledBinaryPath() => '${_exeDir()}${Platform.pathSeparator}$binaryName';
 
+  String _bundledFolderBinaryPath() =>
+      '${_exeDir()}${Platform.pathSeparator}yt-dlp${Platform.pathSeparator}$binaryName';
+
   Future<String?> _findBinary({bool preferBundled = false}) async {
+    final folderBuild = _bundledFolderBinaryPath();
+    if (await File(folderBuild).exists()) return folderBuild;
     final candidates = <String>[];
     try {
       candidates.add(await _supportBinaryPath());
@@ -275,6 +297,9 @@ ExtractedAudio parseYtDlpJson(String stdout, String videoId, {String stderr = ''
     headers: rawHeaders is Map && rawHeaders.isNotEmpty
         ? rawHeaders.map((k, v) => MapEntry('$k', '$v'))
         : null,
+    videoId: (decoded['id'] as String?) ?? videoId,
+    title: decoded['title'] as String?,
+    channel: (decoded['channel'] as String?) ?? (decoded['uploader'] as String?),
   );
 }
 

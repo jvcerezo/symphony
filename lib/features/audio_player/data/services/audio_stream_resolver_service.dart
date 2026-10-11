@@ -9,6 +9,7 @@ import '../../domain/entities/track.dart';
 import '../../../../core/config/server_config.dart';
 import 'extraction/audio_extractor.dart';
 import 'extraction/platform_audio_extractor.dart';
+import 'matching/match_index.dart';
 import 'offline/local_track_store.dart';
 
 class AudioStreamResolverService {
@@ -16,6 +17,7 @@ class AudioStreamResolverService {
   final AudioExtractor _extractor;
   final http.Client _httpClient;
   final LocalTrackStore _localTracks;
+  final MatchIndex _matchIndex;
   final bool _isWeb;
 
   /// In-memory resolution cache keyed by track ID and normalized artist/title.
@@ -29,6 +31,7 @@ class AudioStreamResolverService {
     AudioExtractor? extractor,
     http.Client? httpClient,
     LocalTrackStore? localTracks,
+    MatchIndex? matchIndex,
     @visibleForTesting bool? isWeb,
   }) {
     final yt = ytClient ?? YoutubeExplode();
@@ -37,6 +40,7 @@ class AudioStreamResolverService {
       extractor ?? createPlatformAudioExtractor(yt),
       httpClient: httpClient,
       localTracks: localTracks,
+      matchIndex: matchIndex,
       isWeb: isWeb,
     );
   }
@@ -46,8 +50,10 @@ class AudioStreamResolverService {
     this._extractor, {
     http.Client? httpClient,
     LocalTrackStore? localTracks,
+    MatchIndex? matchIndex,
     bool? isWeb,
-  })  : _httpClient = httpClient ?? http.Client(),
+  })  : _matchIndex = matchIndex ?? MatchIndex.platform(),
+        _httpClient = httpClient ?? http.Client(),
         _localTracks = localTracks ?? LocalTrackStore.platform(),
         _isWeb = isWeb ?? kIsWeb;
 
@@ -217,9 +223,48 @@ class AudioStreamResolverService {
       }
     }
 
-    // 2. Search YouTube on-device, score candidates, extract the best match
+    final matchKey = _normKey(track);
+
+    // 2. A video this track matched before (survives app restarts and cache eviction)
+    final remembered = await _matchIndex.lookup(matchKey);
+    if (remembered != null) {
+      try {
+        return await _extractOnDevice(remembered, fallbackDuration: track.expectedDuration);
+      } catch (e) {
+        developer.log('Remembered match $remembered failed, searching again: $e', name: 'AudioStreamResolver');
+        await _matchIndex.forget(matchKey);
+      }
+    }
+
     final cleanTitle = _cleanSongTitle(track.title);
     final cleanArtist = _cleanSongArtist(track.artist);
+
+    // 3. YouTube Music song search: canonical album audio (lengths match the
+    //    streaming services) found and extracted in a single yt-dlp run.
+    try {
+      final song = await _extractor.searchSong('$cleanArtist $cleanTitle');
+      final expectedSec = track.expectedDuration?.inSeconds;
+      if (song.videoId != null &&
+          isAcceptableSongMatch(
+            resultTitle: song.title ?? '',
+            resultDurationSec: song.duration?.inSeconds,
+            targetTitle: cleanTitle,
+            expectedSec: expectedSec != null && expectedSec > 0 ? expectedSec : null,
+          )) {
+        await _matchIndex.remember(matchKey, song.videoId!);
+        return _toResolved(song, song.videoId!, fallbackDuration: track.expectedDuration);
+      }
+      developer.log(
+        'Song search result rejected for "$cleanArtist - $cleanTitle": "${song.title}" (${song.duration?.inSeconds}s vs $expectedSec s)',
+        name: 'AudioStreamResolver',
+      );
+    } on UnsupportedError {
+      // No song search on this extractor chain; fall through.
+    } catch (e) {
+      developer.log('Song search failed for "$cleanArtist - $cleanTitle": $e', name: 'AudioStreamResolver');
+    }
+
+    // 4. Search YouTube on-device, score candidates, extract the best match
     final queries = [
       '$cleanArtist $cleanTitle topic',
       '$cleanArtist - $cleanTitle official audio',
@@ -251,7 +296,11 @@ class AudioStreamResolverService {
               }
             }
           }
-          if (scoredCandidates.isNotEmpty && scoredCandidates.any((c) => c.score >= 120)) {
+          final expectedSecForExit = track.expectedDuration?.inSeconds;
+          if (scoredCandidates.any((c) =>
+              c.score >= 150 &&
+              (expectedSecForExit == null ||
+                  ((c.video.duration?.inSeconds ?? 0) - expectedSecForExit).abs() <= 5))) {
             break;
           }
         } catch (_) {}
@@ -267,6 +316,7 @@ class AudioStreamResolverService {
               candidate.id.value,
               fallbackDuration: candidate.duration ?? track.expectedDuration,
             );
+            await _matchIndex.remember(matchKey, candidate.id.value);
             developer.log(
               'Resolved on-device via ${_extractor.name}: ${candidate.id.value} [${resolved.bitrateKbps} kbps, ${resolved.format}, score: ${scored.score}]',
               name: 'AudioStreamResolver',
@@ -287,8 +337,10 @@ class AudioStreamResolverService {
     );
   }
 
-  Future<ResolvedAudioStream> _extractOnDevice(String videoId, {Duration? fallbackDuration}) async {
-    final audio = await _extractor.extract(videoId);
+  Future<ResolvedAudioStream> _extractOnDevice(String videoId, {Duration? fallbackDuration}) async =>
+      _toResolved(await _extractor.extract(videoId), videoId, fallbackDuration: fallbackDuration);
+
+  ResolvedAudioStream _toResolved(ExtractedAudio audio, String videoId, {Duration? fallbackDuration}) {
     return ResolvedAudioStream(
       streamUri: audio.url,
       duration: audio.duration ?? fallbackDuration ?? Duration.zero,
@@ -410,6 +462,46 @@ class AudioStreamResolverService {
     }
   }
 
+  /// Words that mark a different recording than the one asked for.
+  static const _versionWords = [
+    'live', 'acoustic', 'remix', 'instrumental', 'karaoke', 'cover', 'radio edit',
+    'extended', 'sped up', 'slowed', 'demo', 'reverb', 'nightcore', '8d',
+  ];
+
+  static bool _hasUnwantedVersion(String candidateTitle, String targetTitle) {
+    final c = candidateTitle.toLowerCase();
+    final t = targetTitle.toLowerCase();
+    return _versionWords.any((w) =>
+        RegExp('(^|[^a-z])${RegExp.escape(w)}([^a-z]|\$)').hasMatch(c) &&
+        !RegExp('(^|[^a-z])${RegExp.escape(w)}([^a-z]|\$)').hasMatch(t));
+  }
+
+  /// Whether a YouTube Music song result is the track we want: the right
+  /// length (within max(6 s, 3 %)), the title's words present, and not a
+  /// live/acoustic/remix/etc. version the track isn't.
+  @visibleForTesting
+  static bool isAcceptableSongMatch({
+    required String resultTitle,
+    required int? resultDurationSec,
+    required String targetTitle,
+    required int? expectedSec,
+  }) {
+    if (_hasUnwantedVersion(resultTitle, targetTitle)) return false;
+    if (expectedSec != null) {
+      if (resultDurationSec == null) return false;
+      final tolerance = (expectedSec * 0.03).round().clamp(6, 20);
+      if ((resultDurationSec - expectedSec).abs() > tolerance) return false;
+    }
+    String norm(String x) => x.toLowerCase().replaceAll(RegExp(r'[^a-z0-9 ]'), ' ');
+    final words = norm(targetTitle).split(RegExp(r'\s+')).where((w) => w.length >= 2).toSet();
+    // Non-Latin titles (no ASCII words): rely on the length check.
+    if (words.isEmpty) return expectedSec != null;
+    final result = norm(resultTitle);
+    final present = words.where(result.contains).length;
+    final needed = expectedSec != null ? 0.6 : 0.85;
+    return present / words.length >= needed;
+  }
+
   static int scoreVideoCandidate({
     required String videoTitle,
     required String videoAuthor,
@@ -428,8 +520,8 @@ class AudioStreamResolverService {
     if (durationSec > 660 && expectedSec < 540) {
       return -9999;
     }
-    // If expected duration is known, any video differing by > 80 seconds is rejected
-    if (expectedDurationMs != null && expectedSec > 30 && (durationSec - expectedSec).abs() > 80 && expectedSec < 600) {
+    // If expected duration is known, any video differing by > 45 seconds is rejected
+    if (expectedDurationMs != null && expectedSec > 30 && (durationSec - expectedSec).abs() > 45 && expectedSec < 600) {
       return -9999;
     }
     // Videos < 45 seconds when expected track is > 60s
@@ -567,29 +659,37 @@ class AudioStreamResolverService {
       score += 85;
     }
 
-    // 5. Official audio indicators
+    // 5. Official audio indicators. Music videos get little credit: they often
+    //    add intros/outros, so their length rarely matches the track.
     if (vTitle.contains('official audio')) {
       score += 45;
     } else if (vTitle.contains('official lyric video') || vTitle.contains('official visualizer')) {
-      score += 40;
+      score += 30;
     } else if (vTitle.contains('official music video') || vTitle.contains('official video')) {
-      score += 35;
+      score += 5;
     } else if (vTitle.contains('audio')) {
       score += 15;
     }
 
-    // 6. Duration proximity
+    // A different recording (live, acoustic, remix, radio edit...) than asked for.
+    if (_hasUnwantedVersion(vTitle, tTitle)) {
+      score -= 120;
+    }
+
+    // 6. Duration proximity: the strongest signal when the real length is known.
     final diffSec = (durationSec - expectedSec).abs();
-    if (diffSec <= 5) {
-      score += 50;
-    } else if (diffSec <= 15) {
-      score += 35;
-    } else if (diffSec <= 35) {
-      score += 15;
-    } else if (diffSec > 50) {
-      score -= 30;
-    } else if (diffSec > 70) {
-      score -= 100;
+    if (expectedDurationMs == null) {
+      if (diffSec <= 60) score += 10;
+    } else if (diffSec <= 2) {
+      score += 90;
+    } else if (diffSec <= 5) {
+      score += 65;
+    } else if (diffSec <= 10) {
+      score += 25;
+    } else if (diffSec <= 20) {
+      score -= 25;
+    } else {
+      score -= 70;
     }
 
     return score;

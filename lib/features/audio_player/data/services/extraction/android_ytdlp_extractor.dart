@@ -44,24 +44,31 @@ class AndroidYtDlpExtractor implements AudioExtractor {
   Future<ExtractedAudio> extract(String videoId) async {
     try {
       final raw = await channel.invokeMapMethod<String, dynamic>('extract', {'videoId': videoId});
-      final url = raw?['url'] as String?;
-      if (url == null || url.isEmpty) {
-        throw AudioStreamResolutionException('yt-dlp returned no URL for $videoId');
-      }
-      final durationMs = (raw?['durationMs'] as num?)?.toInt();
-      final headers = (raw?['headers'] as Map?)?.map((k, v) => MapEntry('$k', '$v'));
-      return ExtractedAudio(
-        url: Uri.parse(url),
-        container: (raw?['ext'] as String?) ?? 'm4a',
-        bitrateKbps: (raw?['abr'] as num?)?.round(),
-        duration: durationMs != null && durationMs > 0 ? Duration(milliseconds: durationMs) : null,
-        headers: headers,
-      );
+      return _toExtracted(raw, videoId, fallbackId: videoId);
     } on PlatformException catch (e) {
       throw AudioStreamResolutionException('yt-dlp (android) failed for $videoId', e.message);
     } on MissingPluginException catch (e) {
       throw AudioStreamResolutionException('yt-dlp (android) is not available', e.message);
     }
+  }
+
+  static ExtractedAudio _toExtracted(Map<String, dynamic>? raw, String what, {String? fallbackId}) {
+    final url = raw?['url'] as String?;
+    if (url == null || url.isEmpty) {
+      throw AudioStreamResolutionException('yt-dlp returned no URL for $what');
+    }
+    final durationMs = (raw?['durationMs'] as num?)?.toInt();
+    final headers = (raw?['headers'] as Map?)?.map((k, v) => MapEntry('$k', '$v'));
+    return ExtractedAudio(
+      url: Uri.parse(url),
+      container: (raw?['ext'] as String?) ?? 'm4a',
+      bitrateKbps: (raw?['abr'] as num?)?.round(),
+      duration: durationMs != null && durationMs > 0 ? Duration(milliseconds: durationMs) : null,
+      headers: headers,
+      videoId: (raw?['id'] as String?) ?? fallbackId,
+      title: raw?['title'] as String?,
+      channel: raw?['channel'] as String?,
+    );
   }
 
   /// Updates yt-dlp on the device now (the native side already does this
@@ -75,6 +82,18 @@ class AndroidYtDlpExtractor implements AudioExtractor {
       return null;
     } on MissingPluginException {
       return null;
+    }
+  }
+
+  @override
+  Future<ExtractedAudio> searchSong(String query) async {
+    try {
+      final raw = await channel.invokeMapMethod<String, dynamic>('searchSong', {'query': query});
+      return _toExtracted(raw, query);
+    } on PlatformException catch (e) {
+      throw AudioStreamResolutionException('yt-dlp (android) song search failed for "$query"', e.message);
+    } on MissingPluginException catch (e) {
+      throw AudioStreamResolutionException('yt-dlp (android) song search unavailable', e.message);
     }
   }
 

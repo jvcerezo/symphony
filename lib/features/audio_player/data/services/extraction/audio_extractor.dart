@@ -13,12 +13,21 @@ class ExtractedAudio {
   /// Headers the player must send when fetching [url], if any.
   final Map<String, String>? headers;
 
+  /// The YouTube video this came from, with its title and channel (set by
+  /// [AudioExtractor.searchSong]; may be null for plain [AudioExtractor.extract]).
+  final String? videoId;
+  final String? title;
+  final String? channel;
+
   const ExtractedAudio({
     required this.url,
     required this.container,
     this.bitrateKbps,
     this.duration,
     this.headers,
+    this.videoId,
+    this.title,
+    this.channel,
   });
 }
 
@@ -37,6 +46,11 @@ abstract class AudioExtractor {
   Future<bool> isAvailable();
 
   Future<ExtractedAudio> extract(String videoId);
+
+  /// Searches YouTube Music's *songs* (canonical album audio, so lengths match
+  /// streaming services) and extracts the top result in one step. Throws
+  /// [UnsupportedError] if this extractor cannot search.
+  Future<ExtractedAudio> searchSong(String query);
 
   void dispose() {}
 }
@@ -72,6 +86,25 @@ class ChainedAudioExtractor implements AudioExtractor {
     throw AudioStreamResolutionException(
       'No extractor could produce audio for $videoId',
       errors.isEmpty ? 'no extractor available' : errors.join('; '),
+    );
+  }
+
+  @override
+  Future<ExtractedAudio> searchSong(String query) async {
+    final errors = <String>[];
+    for (final e in _extractors) {
+      try {
+        if (!await e.isAvailable()) continue;
+        return await e.searchSong(query);
+      } on UnsupportedError {
+        continue;
+      } catch (err) {
+        errors.add('${e.name}: $err');
+      }
+    }
+    throw AudioStreamResolutionException(
+      'No extractor could search songs for "$query"',
+      errors.isEmpty ? 'no song search available' : errors.join('; '),
     );
   }
 

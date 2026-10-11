@@ -103,6 +103,10 @@ class FakeExtractor implements AudioExtractor {
     );
   }
 
+  /// No song search in these tests: resolution goes through extract().
+  @override
+  Future<ExtractedAudio> searchSong(String query) => Future.error(UnsupportedError('no song search'));
+
   @override
   void dispose() {}
 }

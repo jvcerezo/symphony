@@ -10,6 +10,7 @@ import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import org.json.JSONObject
+import java.net.URLEncoder
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
@@ -88,16 +89,20 @@ object YtDlpBridge {
                     result.error("bad_args", "extract needs an 11-character videoId, got $videoId", null)
                     return
                 }
-                extract(videoId).whenComplete { info, err ->
-                    reply {
-                        if (err != null) {
-                            val cause = unwrap(err)
-                            result.error("extract_failed", cause.message ?: cause.toString(), null)
-                        } else {
-                            result.success(info)
-                        }
-                    }
+                extract(videoId, "https://www.youtube.com/watch?v=$videoId", listOf("--no-playlist"))
+                    .whenComplete { info, err -> replyExtract(result, info, err) }
+            }
+            "searchSong" -> {
+                // YouTube Music "songs" search: canonical album audio whose length
+                // matches streaming services; extracts the top result in one run.
+                val query = call.argument<String>("query")?.trim()
+                if (query.isNullOrEmpty() || query.length > 200) {
+                    result.error("bad_args", "searchSong needs a 1-200 character query", null)
+                    return
                 }
+                val url = "https://music.youtube.com/search?q=${URLEncoder.encode(query, "UTF-8")}#songs"
+                extract("song:$query", url, listOf("--playlist-items", "1"))
+                    .whenComplete { info, err -> replyExtract(result, info, err) }
             }
             "update" -> update().whenComplete { version, err ->
                 reply {
@@ -113,37 +118,59 @@ object YtDlpBridge {
         }
     }
 
-    /** One yt-dlp run per video id; concurrent callers share it. */
-    private fun extract(videoId: String): CompletableFuture<Map<String, Any?>> {
-        inFlight[videoId]?.let { return it }
+    private fun replyExtract(result: MethodChannel.Result, info: Map<String, Any?>?, err: Throwable?) {
+        reply {
+            if (err != null) {
+                val cause = unwrap(err)
+                result.error("extract_failed", cause.message ?: cause.toString(), null)
+            } else {
+                result.success(info)
+            }
+        }
+    }
+
+    /** One yt-dlp run per key (video id or song search); concurrent callers share it. */
+    private fun extract(key: String, url: String, extraOptions: List<String>): CompletableFuture<Map<String, Any?>> {
+        inFlight[key]?.let { return it }
         val created = CompletableFuture<Map<String, Any?>>()
-        val existing = inFlight.putIfAbsent(videoId, created)
+        val existing = inFlight.putIfAbsent(key, created)
         if (existing != null) return existing
 
         initFuture!!.thenAcceptAsync({ ok ->
             try {
                 if (ok != true) throw IllegalStateException("youtubedl-android failed to initialise")
-                created.complete(runExtract(videoId))
+                created.complete(runExtract(key, url, extraOptions))
             } catch (e: Throwable) {
-                Log.w(TAG, "extract $videoId failed: ${e.message}")
+                Log.w(TAG, "extract $key failed: ${e.message}")
                 created.completeExceptionally(e)
             } finally {
-                inFlight.remove(videoId, created)
+                inFlight.remove(key, created)
             }
         }, workers)
         return created
     }
 
-    private fun runExtract(videoId: String): Map<String, Any?> = binaryLock.read {
-        val processId = "extract-$videoId-${System.nanoTime()}"
-        val request = YoutubeDLRequest("https://www.youtube.com/watch?v=$videoId").apply {
+    private fun runExtract(key: String, url: String, extraOptions: List<String>): Map<String, Any?> = binaryLock.read {
+        val processId = "extract-${key.hashCode()}-${System.nanoTime()}"
+        val request = YoutubeDLRequest(url).apply {
             addOption("-f", FORMAT)
             addOption("--dump-json")
-            addOption("--no-playlist")
             addOption("--no-warnings")
+            var i = 0
+            while (i < extraOptions.size) {
+                val name = extraOptions[i]
+                val value = extraOptions.getOrNull(i + 1)
+                if (value != null && !value.startsWith("--")) {
+                    addOption(name, value)
+                    i += 2
+                } else {
+                    addOption(name)
+                    i += 1
+                }
+            }
         }
         val kill = watchdog.schedule({
-            Log.w(TAG, "extract $videoId exceeded ${EXTRACT_TIMEOUT_S}s; killing yt-dlp")
+            Log.w(TAG, "extract $key exceeded ${EXTRACT_TIMEOUT_S}s; killing yt-dlp")
             YoutubeDL.getInstance().destroyProcessById(processId)
         }, EXTRACT_TIMEOUT_S, TimeUnit.SECONDS)
         val started = System.currentTimeMillis()
@@ -152,7 +179,7 @@ object YtDlpBridge {
         } finally {
             kill.cancel(false)
         }
-        Log.i(TAG, "extract $videoId took ${System.currentTimeMillis() - started} ms")
+        Log.i(TAG, "extract $key took ${System.currentTimeMillis() - started} ms")
         parseDumpJson(response.out)
     }
 
@@ -172,6 +199,9 @@ object YtDlpBridge {
         val abr = json.optDouble("abr").takeUnless { it.isNaN() } ?: json.optDouble("tbr")
         return mapOf(
             "url" to url,
+            "id" to json.optString("id").ifEmpty { null },
+            "title" to json.optString("title").ifEmpty { null },
+            "channel" to (json.optString("channel").ifEmpty { json.optString("uploader") }).ifEmpty { null },
             "ext" to json.optString("ext").ifEmpty { "m4a" },
             "abr" to abr.takeUnless { it.isNaN() },
             "durationMs" to duration.takeUnless { it.isNaN() }?.let { (it * 1000).toLong() },

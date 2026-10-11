@@ -39,6 +39,10 @@ class YoutubeExplodeExtractor implements AudioExtractor {
     }
   }
 
+  @override
+  Future<ExtractedAudio> searchSong(String query) =>
+      Future.error(UnsupportedError('youtube_explode cannot search YouTube Music'));
+
   // The YoutubeExplode client is owned by the resolver.
   @override
   void dispose() {}

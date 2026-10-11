@@ -59,6 +59,11 @@ void main() {
   String supportPath() => sep(sep(supportDir.path, 'yt-dlp'), 'yt-dlp.exe');
 
   Future<void> createBundled() => File(bundledPath()).writeAsString('bundled');
+  String folderPath() => sep(sep(exeDir.path, 'yt-dlp'), 'yt-dlp.exe');
+  Future<void> createFolderBuild() async {
+    await Directory(sep(exeDir.path, 'yt-dlp')).create(recursive: true);
+    await File(folderPath()).writeAsString('folder');
+  }
   Future<void> createSupportCopy() async {
     await Directory(sep(supportDir.path, 'yt-dlp')).create(recursive: true);
     await File(supportPath()).writeAsString('support');
@@ -90,6 +95,15 @@ void main() {
     test('true with the bundled binary', () async {
       await createBundled();
       expect(await build(_FakeRunner((_) async => ok())).isAvailable(), isTrue);
+    });
+
+    test('prefers the bundled folder build over every one-file copy', () async {
+      await createBundled();
+      await createSupportCopy();
+      await createFolderBuild();
+      final runner = _FakeRunner((_) async => ok());
+      await build(runner).extract('abc123');
+      expect(runner.calls.single.executable, folderPath());
     });
 
     test('prefers the app-support copy over the bundled one', () async {
@@ -199,6 +213,17 @@ void main() {
       expect(await File(supportPath()).readAsString(), 'bundled');
       expect(runner.calls.single.executable, supportPath());
       expect(runner.calls.single.arguments, ['-U']);
+    });
+
+    test('updates the folder build in place without copying', () async {
+      await createFolderBuild();
+      final runner = _FakeRunner(
+        (_) async => const YtDlpRunResult(0, 'yt-dlp is up to date (stable@2026.08.19 from yt-dlp/yt-dlp)\n', ''),
+      );
+      await build(runner).update();
+      expect(runner.calls.single.executable, folderPath());
+      expect(runner.calls.single.arguments, ['-U']);
+      expect(File(supportPath()).existsSync(), isFalse);
     });
 
     test('returns null when already up to date', () async {

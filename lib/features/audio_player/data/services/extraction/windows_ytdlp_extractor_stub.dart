@@ -17,5 +17,9 @@ class WindowsYtDlpExtractor implements AudioExtractor {
   Future<String?> update() async => null;
 
   @override
+  Future<ExtractedAudio> searchSong(String query) =>
+      throw const AudioStreamResolutionException('yt-dlp is not available on this platform');
+
+  @override
   void dispose() {}
 }
