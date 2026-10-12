@@ -2,7 +2,6 @@ import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/constants/curated_playlists.dart';
 import '../../../../core/layout/breakpoints.dart';
 import '../../../metadata_search/presentation/views/search_view.dart';
 import '../../../playlist_import/domain/entities/spotify_playlist.dart';
@@ -33,23 +32,10 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _initDefaultPlaylist());
-  }
-
-  Future<void> _initDefaultPlaylist() async {
-    final active = ref.read(activePlaylistProvider);
-    ref.read(navigationHistoryProvider.notifier).record('home', active);
-
-    // Proactively pre-warm top starter tracks so pressing Play starts in < 300ms
-    final isTest = WidgetsBinding.instance.runtimeType.toString().contains('Test');
-    // Web only: on native each lookup launches yt-dlp, so don't pre-warm at launch.
-    if (!isTest && kIsWeb) {
-      try {
-        final handler = ref.read(audioHandlerProvider);
-        final topTracks = CuratedPlaylists.todaysTopHits.tracks.take(4).toList();
-        handler.preloadTracks(topTracks, count: 4);
-      } catch (_) {}
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final active = ref.read(activePlaylistProvider);
+      ref.read(navigationHistoryProvider.notifier).record('home', active);
+    });
   }
 
   @override

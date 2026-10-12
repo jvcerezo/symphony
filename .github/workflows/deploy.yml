@@ -131,6 +131,9 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          # Full history and tags, to list the changes since the last release.
+          fetch-depth: 0
 
       - name: Create Release Directory
         run: mkdir -p release-assets
@@ -159,17 +162,25 @@ jobs:
             echo "title=Symphony v${{ env.SYMPHONY_VERSION }}" >> $GITHUB_OUTPUT
           fi
 
+      - name: Write Release Notes
+        # The app shows these in its update dialog, so list user-facing
+        # commits (feat/fix/perf) since the previous release in plain words.
+        run: |
+          PREV=$(git rev-list -n 1 "${{ steps.release_meta.outputs.tag }}" 2>/dev/null || true)
+          RANGE="${PREV:+$PREV..}HEAD"
+          git log --no-merges --format=%s "$RANGE" \
+            | grep -E '^(feat|fix|perf)(\([^)]*\))?!?: ' \
+            | sed -E 's/^feat[^:]*: (.)/New: \u\1/; s/^fix[^:]*: (.)/Fixed: \u\1/; s/^perf[^:]*: (.)/Faster: \u\1/; s/^/- /' \
+            | head -n 15 > release-notes.md || true
+          if [ ! -s release-notes.md ]; then echo "- Bug fixes and improvements." > release-notes.md; fi
+          cat release-notes.md
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.release_meta.outputs.tag }}
           name: ${{ steps.release_meta.outputs.title }}
-          body: |
-            ## 🎵 Symphony Release Distribution
-            - **Commit**: `${{ github.sha }}`
-            - **Windows Desktop (x64)**: [Download symphony-windows-x64.zip](https://github.com/${{ github.repository }}/releases/download/${{ steps.release_meta.outputs.tag }}/symphony-windows-x64.zip)
-            - **Android APK**: [Download symphony.apk](https://github.com/${{ github.repository }}/releases/download/${{ steps.release_meta.outputs.tag }}/symphony.apk)
-            - **Landing Page**: https://symphony.jettimothycerezo.dev
+          body_path: release-notes.md
           draft: false
           prerelease: false
           files: |

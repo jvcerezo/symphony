@@ -31,14 +31,6 @@ void main() {
     test('extractPlaylistId returns null for invalid input', () {
       expect(scraper.extractPlaylistId('https://invalid.com/something/else'), isNull);
     });
-
-    test('Curated fallback tracks have distinct individual artwork URIs', () async {
-      final playlist = await scraper.importPlaylist('37i9dQZF1DXcBWIGoYBM5M');
-      expect(playlist.tracks, isNotEmpty);
-      final artUris = playlist.tracks.map((t) => t.artworkUri?.toString()).toSet();
-      // Ensure tracks do not all have the exact same cover image
-      expect(artUris.length, greaterThan(1));
-    });
   });
 
   group('ArtworkResolverService Title Cleaning Tests', () {

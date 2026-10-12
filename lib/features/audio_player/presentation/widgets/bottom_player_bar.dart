@@ -5,7 +5,10 @@ import '../../../../core/layout/breakpoints.dart';
 import '../../../../core/theme/symphony_theme.dart';
 import '../../domain/entities/track.dart';
 import '../controllers/audio_player_providers.dart';
+import '../controllers/now_playing_panel_provider.dart';
 import '../desktop/desktop_volume_provider.dart';
+import '../mobile/mobile_now_playing_sheet.dart';
+import 'playback_mode_buttons.dart';
 import 'symphony_artwork.dart';
 
 class BottomPlayerBar extends ConsumerStatefulWidget {
@@ -17,8 +20,6 @@ class BottomPlayerBar extends ConsumerStatefulWidget {
 
 class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
   bool _isLiked = false;
-  bool _isShuffle = false;
-  bool _isRepeat = false;
   bool _isScrubberHovered = false;
   bool _isVolumeHovered = false;
 
@@ -149,17 +150,7 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  IconButton(
-                    iconSize: 18,
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                    tooltip: 'Enable shuffle',
-                    icon: Icon(
-                      Icons.shuffle,
-                      color: _isShuffle ? accent.primary : SymphonyTheme.textSecondary,
-                    ),
-                    onPressed: () => setState(() => _isShuffle = !_isShuffle),
-                  ),
+                  const ShuffleButton(),
                   const SizedBox(width: 8),
                   IconButton(
                     iconSize: 22,
@@ -213,17 +204,7 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
                     onPressed: () => handler.skipToNext(),
                   ),
                   const SizedBox(width: 8),
-                  IconButton(
-                    iconSize: 18,
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                    tooltip: 'Enable repeat',
-                    icon: Icon(
-                      Icons.repeat,
-                      color: _isRepeat ? accent.primary : SymphonyTheme.textSecondary,
-                    ),
-                    onPressed: () => setState(() => _isRepeat = !_isRepeat),
-                  ),
+                  const RepeatButton(),
                 ],
               ),
 
@@ -301,22 +282,8 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              IconButton(
-                iconSize: 18,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                tooltip: 'Lyrics',
-                icon: const Icon(Icons.mic_none_outlined, color: SymphonyTheme.textSecondary),
-                onPressed: () {},
-              ),
-              IconButton(
-                iconSize: 18,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                tooltip: 'Queue',
-                icon: const Icon(Icons.queue_music_rounded, color: SymphonyTheme.textSecondary),
-                onPressed: () {},
-              ),
+              _panelToggle(NowPlayingPanel.lyrics, Icons.mic_none_outlined, 'Lyrics', accent),
+              _panelToggle(NowPlayingPanel.queue, Icons.queue_music_rounded, 'Queue', accent),
               const SizedBox(width: 6),
               IconButton(
                 iconSize: 20,
@@ -375,11 +342,31 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
     );
   }
 
+  /// Opens or closes a side panel; lit while that panel is open.
+  Widget _panelToggle(NowPlayingPanel panel, IconData icon, String label, SymphonyAccent accent) {
+    final open = ref.watch(nowPlayingPanelProvider) == panel;
+    return IconButton(
+      iconSize: 18,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+      tooltip: open ? 'Hide $label' : label,
+      isSelected: open,
+      icon: Icon(icon, color: open ? accent.primary : SymphonyTheme.textSecondary),
+      onPressed: () => ref.read(nowPlayingPanelProvider.notifier).state = open ? null : panel,
+    );
+  }
+
   Widget _buildMobileLayout(MediaItem mediaItem, bool isPlaying, bool isBuffering) {
     final handler = ref.read(audioHandlerProvider);
     final accent = ref.watch(accentThemeProvider);
 
-    return Column(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => showMobileNowPlaying(context),
+      onVerticalDragEnd: (details) {
+        if ((details.primaryVelocity ?? 0) < -250) showMobileNowPlaying(context);
+      },
+      child: Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Row(
@@ -488,6 +475,7 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
           },
         ),
       ],
+      ),
     );
   }
 

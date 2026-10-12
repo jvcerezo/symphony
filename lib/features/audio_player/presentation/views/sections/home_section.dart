@@ -1,10 +1,8 @@
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../../core/constants/curated_playlists.dart';
 import '../../../../../core/theme/symphony_theme.dart';
 import '../../../../../core/widgets/symphony_brand_logo.dart';
-import '../../../../playlist_import/domain/entities/spotify_playlist.dart';
 import '../../../../settings/presentation/controllers/personalization_provider.dart';
 import '../../controllers/audio_player_providers.dart';
 import '../../controllers/navigation_history_provider.dart';
@@ -13,7 +11,6 @@ import '../../widgets/import_playlist_dialog.dart';
 import '../../widgets/nav_history_controls.dart';
 import '../../widgets/spotify_playlist_card.dart';
 import '../../widgets/spotify_quick_tile.dart';
-import '../../widgets/spotify_track_row.dart';
 import 'section_header_buttons.dart';
 
 /// Home dashboard: greeting, filter chips, quick tiles, featured playlists,
@@ -45,25 +42,25 @@ class HomeSection extends ConsumerWidget {
       title: 'Pop & Top Hits',
       gradientColors: [Color(0xFF8D137B), Color(0xFFE1306C)],
       icon: Icons.music_note_rounded,
-      playlistId: '37i9dQZF1DXcBWIGoYBM5M',
+      searchQuery: 'Top Hits',
     ),
     _GenreCardData(
       title: 'Chill & Lo-Fi',
       gradientColors: [Color(0xFF1E3264), Color(0xFF2E77D0)],
       icon: Icons.nightlife_rounded,
-      playlistId: '37i9dQZF1DXdLEN7aqioXM',
+      searchQuery: 'Lofi',
     ),
     _GenreCardData(
       title: 'Rock Classics',
       gradientColors: [Color(0xFF8B0000), Color(0xFFE91E63)],
       icon: Icons.electric_bolt_rounded,
-      playlistId: '37i9dQZF1DWXRqgorJj26U',
+      searchQuery: 'Classic Rock',
     ),
     _GenreCardData(
       title: 'Night Grooves',
       gradientColors: [Color(0xFF4A148C), Color(0xFF7B1FA2)],
       icon: Icons.dark_mode_rounded,
-      playlistId: '37i9dQZF1DX6VdMW310YCv',
+      searchQuery: 'R&B',
     ),
     _GenreCardData(
       title: 'Hip-Hop & Rap',
@@ -75,7 +72,7 @@ class HomeSection extends ConsumerWidget {
       title: 'Focus & Study',
       gradientColors: [Color(0xFF0D7377), Color(0xFF14FFEC)],
       icon: Icons.headphones_rounded,
-      playlistId: '37i9dQZF1DXdLEN7aqioXM',
+      searchQuery: 'Study',
     ),
     _GenreCardData(
       title: 'Workout & Energy',
@@ -121,24 +118,12 @@ class HomeSection extends ConsumerWidget {
     );
   }
 
-  Widget _buildGenreCard(WidgetRef ref, _GenreCardData card, List<SpotifyPlaylist> importedPlaylists) {
+  Widget _buildGenreCard(WidgetRef ref, _GenreCardData card) {
     return GestureDetector(
       onTap: () {
-        if (card.playlistId != null) {
-          final match = importedPlaylists.firstWhere(
-            (p) => p.id == card.playlistId,
-            orElse: () => CuratedPlaylists.all.firstWhere(
-              (p) => p.id == card.playlistId,
-              orElse: () => importedPlaylists.first,
-            ),
-          );
-          ref.read(activePlaylistProvider.notifier).state = match;
-          ref.read(navigationHistoryProvider.notifier).record('home', match);
-        } else if (card.searchQuery != null) {
-          ref.read(searchQueryProvider.notifier).state = card.searchQuery!;
-          ref.read(activeNavTabProvider.notifier).state = 'search';
-          ref.read(navigationHistoryProvider.notifier).record('search', null);
-        }
+        ref.read(searchQueryProvider.notifier).state = card.searchQuery;
+        ref.read(activeNavTabProvider.notifier).state = 'search';
+        ref.read(navigationHistoryProvider.notifier).record('search', null);
       },
       child: Container(
         decoration: BoxDecoration(
@@ -324,7 +309,6 @@ class HomeSection extends ConsumerWidget {
 
     final quickTiles = filteredPlaylists.take(6).toList();
     final featuredPlaylists = filteredPlaylists;
-    final popularTracks = CuratedPlaylists.todaysTopHits.tracks.take(5).toList();
 
     return SingleChildScrollView(
       padding: EdgeInsets.symmetric(
@@ -496,7 +480,7 @@ class HomeSection extends ConsumerWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text(
-                'Featured Playlists',
+                'Your Playlists',
                 style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white, letterSpacing: -0.4),
               ),
               Text(
@@ -507,24 +491,14 @@ class HomeSection extends ConsumerWidget {
           ),
           const SizedBox(height: 4),
           const Text(
-            'Handpicked collections ready for high-fidelity offline streaming',
+            'Everything you imported, ready to play or save offline',
             style: TextStyle(fontSize: 13, color: SymphonyTheme.textSecondary),
           ),
           const SizedBox(height: 16),
 
           if (featuredPlaylists.isEmpty)
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: const Color(0xFF181818),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Center(
-                child: Text(
-                  'No downloaded playlists found yet. Tap download on any playlist to save offline.',
-                  style: TextStyle(color: SymphonyTheme.textMuted, fontSize: 13),
-                ),
-              ),
+            _EmptyPlaylistsCard(
+              downloadedOnly: homeFilter == 'downloaded' && importedPlaylists.isNotEmpty,
             )
           else
             SizedBox(
@@ -586,86 +560,6 @@ class HomeSection extends ConsumerWidget {
 
           const SizedBox(height: 36),
 
-          // 5. Popular Songs Right Now
-          const Text(
-            'Popular Right Now',
-            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white, letterSpacing: -0.4),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Jump straight into trending tracks',
-            style: TextStyle(fontSize: 13, color: SymphonyTheme.textSecondary),
-          ),
-          const SizedBox(height: 14),
-          Container(
-            decoration: BoxDecoration(
-              color: const Color(0xFF141414),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.04)),
-            ),
-            child: Column(
-              children: [
-                for (int i = 0; i < popularTracks.length; i++) ...[
-                  SpotifyTrackRow(
-                    index: i + 1,
-                    track: popularTracks[i],
-                    isPlaying: isPlaying && (mediaItem?.title == popularTracks[i].title && mediaItem?.artist == popularTracks[i].artist),
-                    isCurrent: mediaItem?.title == popularTracks[i].title && mediaItem?.artist == popularTracks[i].artist,
-                    isBuffering: isBuffering && (mediaItem?.title == popularTracks[i].title && mediaItem?.artist == popularTracks[i].artist),
-                    isDownloaded: offlineState.isTrackDownloaded(popularTracks[i]),
-                    isDownloading: offlineState.isTrackDownloading(popularTracks[i].id),
-                    onDownload: () async {
-                      final t = popularTracks[i];
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          backgroundColor: SymphonyTheme.card,
-                          content: Text('Downloading "${t.title}" for offline playback...'),
-                          duration: const Duration(seconds: 2),
-                        ),
-                      );
-                      final ok = await offlineNotifier.downloadTrack(t);
-                      if (ok && context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            backgroundColor: SymphonyTheme.card,
-                            content: Text('Saved "${t.title}" offline!'),
-                            duration: const Duration(seconds: 2),
-                          ),
-                        );
-                      }
-                    },
-                    onTap: () async {
-                      final t = popularTracks[i];
-                      final isCurrent = mediaItem?.title == t.title && mediaItem?.artist == t.artist;
-                      try {
-                        if (isCurrent) {
-                          if (isPlaying) {
-                            await handler.pause();
-                          } else {
-                            await handler.play();
-                          }
-                        } else {
-                          await handler.playQueue(popularTracks, startIndex: i);
-                        }
-                      } catch (e) {
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              backgroundColor: SymphonyTheme.card,
-                              content: Text('Playback error: $e', style: const TextStyle(color: Colors.redAccent)),
-                            ),
-                          );
-                        }
-                      }
-                    },
-                  ),
-                ],
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 36),
-
           // 6. Browse Genres & Moods
           const Text(
             'Browse Genres & Moods',
@@ -696,7 +590,7 @@ class HomeSection extends ConsumerWidget {
                 itemCount: _genreCards.length,
                 itemBuilder: (context, index) {
                   final card = _genreCards[index];
-                  return _buildGenreCard(ref, card, importedPlaylists);
+                  return _buildGenreCard(ref, card);
                 },
               );
             },
@@ -718,14 +612,69 @@ class _GenreCardData {
   final String title;
   final List<Color> gradientColors;
   final IconData icon;
-  final String? playlistId;
-  final String? searchQuery;
+  final String searchQuery;
 
   const _GenreCardData({
     required this.title,
     required this.gradientColors,
     required this.icon,
-    this.playlistId,
-    this.searchQuery,
+    required this.searchQuery,
   });
+}
+
+/// Shown in place of the playlist shelf when there is nothing to list.
+class _EmptyPlaylistsCard extends StatelessWidget {
+  /// True when playlists exist but none are downloaded yet.
+  final bool downloadedOnly;
+
+  const _EmptyPlaylistsCard({required this.downloadedOnly});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+      decoration: BoxDecoration(
+        color: SymphonyTheme.card,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        children: [
+          Icon(
+            downloadedOnly ? Icons.download_for_offline_outlined : Icons.library_music_outlined,
+            color: SymphonyTheme.textSecondary,
+            size: 36,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            downloadedOnly ? 'Nothing downloaded yet' : 'Your library is empty',
+            style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            downloadedOnly
+                ? 'Open a playlist and tap download to keep it on this device.'
+                : 'Import a playlist from Spotify, YouTube or Apple Music, or search for a song to start listening.',
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: SymphonyTheme.textSecondary, fontSize: 13),
+          ),
+          if (!downloadedOnly) ...[
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: () => showDialog(context: context, builder: (_) => const ImportPlaylistDialog()),
+              icon: const Icon(Icons.add_rounded, size: 18, color: Colors.black),
+              label: const Text('Import a playlist', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                elevation: 0,
+                minimumSize: const Size(0, 48),
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(500)),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 }

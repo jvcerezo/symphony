@@ -180,12 +180,7 @@ class SpotifyEmbedScraperService {
       }
     }
 
-    // 4. If this is the default Today's Top Hits playlist and network is offline, provide curated fallback
-    if (playlistId == '37i9dQZF1DXcBWIGoYBM5M') {
-      return _buildCuratedFallback(playlistId);
-    }
-
-    // 5. For user playlists, DO NOT replace their playlist with 8 dummy tracks!
+    // 4. Never substitute placeholder tracks for a playlist we couldn't read.
     throw FormatException(
       'Could not import Spotify playlist "$playlistId". If this is a private playlist, please set it to "Public" on Spotify and try again.',
     );
@@ -241,99 +236,6 @@ class SpotifyEmbedScraperService {
       }
     }
     return null;
-  }
-
-  SpotifyPlaylist _buildCuratedFallback(String playlistId) {
-    developer.log('Providing curated fallback for playlist: $playlistId', name: 'SpotifyScraper');
-    return SpotifyPlaylist(
-      id: playlistId,
-      title: "Today's Top Hits",
-      description: 'The hottest tracks right now • Curated for Symphony',
-      coverUrl: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=1200&q=90',
-      ownerName: 'Spotify',
-      tracks: [
-        Track(
-          id: 'tth_01',
-          title: 'Blinding Lights',
-          artist: 'The Weeknd',
-          album: 'After Hours',
-          expectedDuration: const Duration(minutes: 3, seconds: 20),
-          artworkUri: Uri.parse(
-            'https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/2b/b9/fe/2bb9fef5-d7f3-8345-25a9-db0e79fde4e4/20UMGIM11048.rgb.jpg/600x600bb.jpg',
-          ),
-        ),
-        Track(
-          id: 'tth_02',
-          title: 'Starboy',
-          artist: 'The Weeknd ft. Daft Punk',
-          album: 'Starboy',
-          expectedDuration: const Duration(minutes: 3, seconds: 50),
-          artworkUri: Uri.parse(
-            'https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/5a/08/94/5a089454-e0e9-b541-6547-06399b109e9e/16UMGIM56476.rgb.jpg/600x600bb.jpg',
-          ),
-        ),
-        Track(
-          id: 'tth_03',
-          title: 'Cruel Summer',
-          artist: 'Taylor Swift',
-          album: 'Lover',
-          expectedDuration: const Duration(minutes: 2, seconds: 58),
-          artworkUri: Uri.parse(
-            'https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/49/3d/ab/493dab54-f920-9043-6181-809930f36894/19UMGIM68357.rgb.jpg/600x600bb.jpg',
-          ),
-        ),
-        Track(
-          id: 'tth_04',
-          title: 'As It Was',
-          artist: 'Harry Styles',
-          album: "Harry's House",
-          expectedDuration: const Duration(minutes: 2, seconds: 47),
-          artworkUri: Uri.parse(
-            'https://is1-ssl.mzstatic.com/image/thumb/Music112/v4/31/f0/24/31f02477-8025-a6fa-c146-5e58cfad1bc3/886449984711.jpg/600x600bb.jpg',
-          ),
-        ),
-        Track(
-          id: 'tth_05',
-          title: 'Flowers',
-          artist: 'Miley Cyrus',
-          album: 'Endless Summer Vacation',
-          expectedDuration: const Duration(minutes: 3, seconds: 20),
-          artworkUri: Uri.parse(
-            'https://is1-ssl.mzstatic.com/image/thumb/Music113/v4/2e/d0/09/2ed0092f-ef64-9665-27a3-aa04c8fca3cf/196589561726.jpg/600x600bb.jpg',
-          ),
-        ),
-        Track(
-          id: 'tth_06',
-          title: 'Levitating',
-          artist: 'Dua Lipa',
-          album: 'Future Nostalgia',
-          expectedDuration: const Duration(minutes: 3, seconds: 23),
-          artworkUri: Uri.parse(
-            'https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/a4/09/a5/a409a5cb-2292-9337-b648-842cefc3f9e9/190295286101.jpg/600x600bb.jpg',
-          ),
-        ),
-        Track(
-          id: 'tth_07',
-          title: 'Save Your Tears',
-          artist: 'The Weeknd',
-          album: 'After Hours',
-          expectedDuration: const Duration(minutes: 3, seconds: 35),
-          artworkUri: Uri.parse(
-            'https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/2b/b9/fe/2bb9fef5-d7f3-8345-25a9-db0e79fde4e4/20UMGIM11048.rgb.jpg/600x600bb.jpg',
-          ),
-        ),
-        Track(
-          id: 'tth_08',
-          title: 'Shape of You',
-          artist: 'Ed Sheeran',
-          album: 'Divide',
-          expectedDuration: const Duration(minutes: 3, seconds: 53),
-          artworkUri: Uri.parse(
-            'https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/4a/c3/05/4ac30560-60b8-c309-faee-a10c2c31e9c5/190295851286.jpg/600x600bb.jpg',
-          ),
-        ),
-      ],
-    );
   }
 
   void dispose() {

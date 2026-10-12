@@ -2,6 +2,27 @@
 
 Newest first. Note what changed in Shared code and how the other side should adapt.
 
+## 2026-10-12 — [core] Queue, shuffle/repeat, lyrics, onboarding, no starter playlists
+
+- `CuratedPlaylists` is gone. `ImportedPlaylistsNotifier` starts empty and
+  drops the four old starter ids (`legacyStarterIds`) from saved data.
+  Home genre cards are searches now.
+- Handler queue lives in `domain/play_queue.dart` (`PlayQueue`). The queue
+  stream is always play order; `currentIndex` indexes into it. New:
+  `playNext(track)`, `enqueue(track)`, `removeFromQueue(i)`,
+  `moveInQueue(from, to)`, `skipToQueueItem(i)`, `setShuffleMode`,
+  `setRepeatMode`. Both modes are reported in `PlaybackState`. With repeat
+  off, playback stops after the last song (it used to wrap).
+- Shared widgets: `ShuffleButton`/`RepeatButton`, `QueuePanel`,
+  `features/lyrics` (`LyricsPanel`, LRCLIB, on-device). Desktop opens them
+  in `NowPlayingSidePanel` via `nowPlayingPanelProvider`; mobile has
+  `showMobileNowPlaying` (mini player tap / swipe up).
+- `main.dart` loads `AppPrefs` before `runApp`: overrides
+  `accentThemeProvider` (now saved on change) and
+  `onboardingCompleteProvider` (defaults to true, so tests are unaffected).
+- Update dialog uses `AppReleaseInfo.displayVersion` / `displayNotes`. CI
+  writes release notes from feat/fix/perf commit subjects.
+
 ## 2026-10-12 — [core] Instant starts: remembered links + background prefetch
 
 - `MatchIndex` entries are now `MatchEntry` (video id + stream link,

@@ -39,6 +39,22 @@ class _SpotifyTrackRowState extends ConsumerState<SpotifyTrackRow> {
   bool _isHovered = false;
   bool _isLiked = false;
 
+  void _queueTrack({required bool next}) {
+    final handler = ref.read(audioHandlerProvider);
+    if (next) {
+      handler.playNext(widget.track);
+    } else {
+      handler.enqueue(widget.track);
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: SymphonyTheme.cardHover,
+        content: Text(next ? '"${widget.track.title}" plays next' : 'Added "${widget.track.title}" to the queue'),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
   void _showMobileTrackOptions(BuildContext context, SymphonyAccent accent) {
     showModalBottomSheet(
       context: context,
@@ -100,6 +116,22 @@ class _SpotifyTrackRowState extends ConsumerState<SpotifyTrackRow> {
                   onTap: () {
                     Navigator.pop(ctx);
                     widget.onTap();
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.playlist_play_rounded, color: Colors.white),
+                  title: const Text('Play next', style: TextStyle(color: Colors.white)),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _queueTrack(next: true);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.queue_music_rounded, color: Colors.white),
+                  title: const Text('Add to queue', style: TextStyle(color: Colors.white)),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _queueTrack(next: false);
                   },
                 ),
                 ListTile(
@@ -487,6 +519,10 @@ class _SpotifyTrackRowState extends ConsumerState<SpotifyTrackRow> {
                       widget.onDownload?.call();
                     } else if (val == 'play') {
                       widget.onTap();
+                    } else if (val == 'next') {
+                      _queueTrack(next: true);
+                    } else if (val == 'queue') {
+                      _queueTrack(next: false);
                     } else if (val == 'like') {
                       setState(() => _isLiked = !_isLiked);
                     }
@@ -516,6 +552,26 @@ class _SpotifyTrackRowState extends ConsumerState<SpotifyTrackRow> {
                           Icon(Icons.play_arrow_rounded, color: Colors.white, size: 18),
                           SizedBox(width: 10),
                           Text('Play Song', style: TextStyle(color: Colors.white, fontSize: 13)),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'next',
+                      child: Row(
+                        children: [
+                          Icon(Icons.playlist_play_rounded, color: Colors.white, size: 18),
+                          SizedBox(width: 10),
+                          Text('Play Next', style: TextStyle(color: Colors.white, fontSize: 13)),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'queue',
+                      child: Row(
+                        children: [
+                          Icon(Icons.queue_music_rounded, color: Colors.white, size: 18),
+                          SizedBox(width: 10),
+                          Text('Add to Queue', style: TextStyle(color: Colors.white, fontSize: 13)),
                         ],
                       ),
                     ),
