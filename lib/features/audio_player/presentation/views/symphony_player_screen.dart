@@ -3,6 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/layout/breakpoints.dart';
+import '../../../browse/presentation/genre_providers.dart';
+import '../../../browse/presentation/genre_section.dart';
 import '../../../metadata_search/presentation/views/search_view.dart';
 import '../../../playlist_import/domain/entities/spotify_playlist.dart';
 import '../controllers/audio_player_providers.dart';
@@ -42,6 +44,8 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
   Widget build(BuildContext context) {
     ref.listen<String>(activeNavTabProvider, (prev, next) {
       if (prev != next) {
+        // Leaving Home closes the genre being browsed.
+        ref.read(activeGenreProvider.notifier).state = null;
         final p = ref.read(activePlaylistProvider);
         ref.read(navigationHistoryProvider.notifier).record(next, p);
       }
@@ -102,6 +106,10 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
     }
 
     // Default 'home' tab
+    final genre = ref.watch(activeGenreProvider);
+    if (activePlaylist == null && genre != null) {
+      return GenreSection(genre: genre, isDesktop: isDesktop);
+    }
     if (activePlaylist == null) {
       return HomeSection(
         isDesktop: isDesktop,

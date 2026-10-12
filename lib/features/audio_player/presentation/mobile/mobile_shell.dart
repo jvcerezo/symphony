@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../browse/presentation/genre_providers.dart';
 import '../../../../core/services/app_update_service.dart';
 import '../../../../core/theme/symphony_theme.dart';
 import '../../../../core/widgets/app_update_dialog.dart';
@@ -35,6 +36,7 @@ class MobileShell extends ConsumerWidget {
                   : 'library';
           if (tab == 'home') {
             ref.read(activePlaylistProvider.notifier).state = null;
+            ref.read(activeGenreProvider.notifier).state = null;
           }
           ref.read(activeNavTabProvider.notifier).state = tab;
           ref.read(navigationHistoryProvider.notifier).record(tab, tab == 'home' ? null : ref.read(activePlaylistProvider));
