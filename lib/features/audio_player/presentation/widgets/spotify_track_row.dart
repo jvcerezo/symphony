@@ -38,6 +38,7 @@ class SpotifyTrackRow extends ConsumerStatefulWidget {
 class _SpotifyTrackRowState extends ConsumerState<SpotifyTrackRow> {
   bool _isHovered = false;
   bool _isLiked = false;
+  final _menuKey = GlobalKey<PopupMenuButtonState<String>>();
 
   void _queueTrack({required bool next}) {
     final handler = ref.read(audioHandlerProvider);
@@ -328,10 +329,13 @@ class _SpotifyTrackRowState extends ConsumerState<SpotifyTrackRow> {
     final showAlbum = screenWidth >= 800;
 
     return MouseRegion(
+      cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
       child: InkWell(
         onTap: widget.onTap,
+        // Right-click opens the same menu as the "..." button.
+        onSecondaryTap: () => _menuKey.currentState?.showButtonMenu(),
         borderRadius: BorderRadius.circular(4),
         hoverColor: Colors.transparent,
         child: Container(
@@ -508,6 +512,7 @@ class _SpotifyTrackRowState extends ConsumerState<SpotifyTrackRow> {
               Opacity(
                 opacity: _isHovered ? 1.0 : 0.0,
                 child: PopupMenuButton<String>(
+                  key: _menuKey,
                   icon: const Icon(Icons.more_horiz, color: SymphonyTheme.textSecondary, size: 18),
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(minWidth: 28, minHeight: 28),

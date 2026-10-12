@@ -2,6 +2,7 @@ import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../../core/theme/symphony_theme.dart';
+import '../../../../../core/widgets/hover_widgets.dart';
 import '../../../../../core/widgets/symphony_brand_logo.dart';
 import '../../../../settings/presentation/controllers/personalization_provider.dart';
 import '../../controllers/audio_player_providers.dart';
@@ -97,13 +98,13 @@ class HomeSection extends ConsumerWidget {
 
   Widget _buildHomeFilterChip(String label, String value, SymphonyAccent accent) {
     final isSelected = homeFilter == value;
-    return GestureDetector(
+    return HoverBuilder(
       onTap: () => onHomeFilterChanged(value),
-      child: AnimatedContainer(
+      builder: (context, hovered) => AnimatedContainer(
         duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.white : const Color(0xFF242424),
+          color: isSelected ? Colors.white : (hovered ? SymphonyTheme.cardActive : SymphonyTheme.divider),
           borderRadius: BorderRadius.circular(500),
         ),
         child: Text(
@@ -119,13 +120,17 @@ class HomeSection extends ConsumerWidget {
   }
 
   Widget _buildGenreCard(WidgetRef ref, _GenreCardData card) {
-    return GestureDetector(
+    return HoverBuilder(
       onTap: () {
         ref.read(searchQueryProvider.notifier).state = card.searchQuery;
         ref.read(activeNavTabProvider.notifier).state = 'search';
         ref.read(navigationHistoryProvider.notifier).record('search', null);
       },
-      child: Container(
+      builder: (context, hovered) => AnimatedScale(
+        scale: hovered ? 1.03 : 1.0,
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeOut,
+        child: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: card.gradientColors,
@@ -135,8 +140,8 @@ class HomeSection extends ConsumerWidget {
           borderRadius: BorderRadius.circular(8),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.2),
-              blurRadius: 8,
+              color: Colors.black.withValues(alpha: hovered ? 0.4 : 0.2),
+              blurRadius: hovered ? 14 : 8,
               offset: const Offset(0, 3),
             ),
           ],
@@ -170,6 +175,7 @@ class HomeSection extends ConsumerWidget {
             ),
           ],
         ),
+      ),
       ),
     );
   }

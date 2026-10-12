@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../core/layout/breakpoints.dart';
 import '../../../../core/theme/symphony_theme.dart';
+import '../../../../core/widgets/hover_widgets.dart';
 import '../../../playlist_import/domain/entities/spotify_playlist.dart';
 
 /// Playlist cover card with hover play button and a choices menu.
@@ -32,6 +33,7 @@ class SpotifyPlaylistCard extends StatefulWidget {
 
 class _SpotifyPlaylistCardState extends State<SpotifyPlaylistCard> {
   bool _isHovered = false;
+  final _menuKey = GlobalKey<PopupMenuButtonState<String>>();
 
   @override
   Widget build(BuildContext context) {
@@ -45,6 +47,8 @@ class _SpotifyPlaylistCardState extends State<SpotifyPlaylistCard> {
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
         onTap: widget.onTap,
+        // Right-click opens the card's options menu.
+        onSecondaryTap: () => _menuKey.currentState?.showButtonMenu(),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
           padding: EdgeInsets.all(isMobile ? 10 : 14),
@@ -88,6 +92,7 @@ class _SpotifyPlaylistCardState extends State<SpotifyPlaylistCard> {
                         shape: BoxShape.circle,
                       ),
                       child: PopupMenuButton<String>(
+                        key: _menuKey,
                         icon: const Icon(Icons.more_vert_rounded, color: Colors.white, size: 18),
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
@@ -215,7 +220,7 @@ class _SpotifyPlaylistCardState extends State<SpotifyPlaylistCard> {
                       child: AnimatedSlide(
                         offset: showPlay ? Offset.zero : const Offset(0, 0.25),
                         duration: const Duration(milliseconds: 200),
-                        child: GestureDetector(
+                        child: HoverGrow(
                           onTap: widget.onPlay,
                           child: Container(
                             width: isMobile ? 38 : 48,

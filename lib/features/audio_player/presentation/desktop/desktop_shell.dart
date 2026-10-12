@@ -1,8 +1,10 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/services/app_update_service.dart';
 import '../../../../core/theme/symphony_theme.dart';
 import '../../../../core/widgets/app_update_dialog.dart';
+import '../controllers/navigation_history_provider.dart';
 import '../controllers/now_playing_panel_provider.dart';
 import '../widgets/bottom_player_bar.dart';
 import '../widgets/realtime_download_toast.dart';
@@ -21,7 +23,15 @@ class DesktopShell extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final sidePanel = ref.watch(nowPlayingPanelProvider);
-    return DesktopShortcuts(
+    // Mouse side buttons go back/forward, like a browser.
+    return Listener(
+      onPointerDown: (event) {
+        if (event.kind != PointerDeviceKind.mouse) return;
+        final history = ref.read(navigationHistoryProvider.notifier);
+        if (event.buttons & kBackMouseButton != 0) history.goBack(ref);
+        if (event.buttons & kForwardMouseButton != 0) history.goForward(ref);
+      },
+      child: DesktopShortcuts(
       child: Scaffold(
         backgroundColor: SymphonyTheme.obsidian,
         body: SafeArea(
@@ -76,6 +86,7 @@ class DesktopShell extends ConsumerWidget {
           ),
         ),
       ),
+    ),
     );
   }
 }

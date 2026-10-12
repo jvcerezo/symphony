@@ -1,7 +1,7 @@
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/theme/symphony_theme.dart';
+import '../../../../core/widgets/hover_widgets.dart';
 import '../controllers/audio_player_providers.dart';
 
 /// Toggles shuffle. Lit in the accent color while on.
@@ -21,13 +21,13 @@ class ShuffleButton extends ConsumerWidget {
     final accent = ref.watch(accentThemeProvider);
     final on = (state?.shuffleMode ?? AudioServiceShuffleMode.none) != AudioServiceShuffleMode.none;
 
-    return IconButton(
+    return HoverIconButton(
       iconSize: iconSize,
-      padding: EdgeInsets.zero,
       constraints: constraints,
       tooltip: on ? 'Turn off shuffle' : 'Shuffle',
       isSelected: on,
-      icon: Icon(Icons.shuffle_rounded, color: on ? accent.primary : SymphonyTheme.textSecondary),
+      activeColor: accent.primary,
+      icon: Icons.shuffle_rounded,
       onPressed: () => ref
           .read(audioHandlerProvider)
           .setShuffleMode(on ? AudioServiceShuffleMode.none : AudioServiceShuffleMode.all),
@@ -59,16 +59,13 @@ class RepeatButton extends ConsumerWidget {
     };
     final on = mode != AudioServiceRepeatMode.none;
 
-    return IconButton(
+    return HoverIconButton(
       iconSize: iconSize,
-      padding: EdgeInsets.zero,
       constraints: constraints,
       tooltip: tooltip,
       isSelected: on,
-      icon: Icon(
-        mode == AudioServiceRepeatMode.one ? Icons.repeat_one_rounded : Icons.repeat_rounded,
-        color: on ? accent.primary : SymphonyTheme.textSecondary,
-      ),
+      activeColor: accent.primary,
+      icon: mode == AudioServiceRepeatMode.one ? Icons.repeat_one_rounded : Icons.repeat_rounded,
       onPressed: () => ref.read(audioHandlerProvider).setRepeatMode(next),
     );
   }
