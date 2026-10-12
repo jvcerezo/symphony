@@ -18,30 +18,22 @@ class PersonalizationDialog extends ConsumerStatefulWidget {
 
 class _PersonalizationDialogState extends ConsumerState<PersonalizationDialog> {
   late TextEditingController _nameController;
-  late TextEditingController _instanceController;
 
   @override
   void initState() {
     super.initState();
     final current = ref.read(personalizationProvider);
     _nameController = TextEditingController(text: current.userName);
-    _instanceController = TextEditingController(text: current.instanceName);
   }
 
   @override
   void dispose() {
     _nameController.dispose();
-    _instanceController.dispose();
     super.dispose();
   }
 
-  void _onNameChanged(String val) {
-    setState(() {
-      if (val.trim().isNotEmpty && (_instanceController.text.isEmpty || _instanceController.text == 'Symphony')) {
-        _instanceController.text = "${val.trim()}'s Symphony";
-      }
-    });
-  }
+  /// Redraws the avatar initial as the name is typed.
+  void _onNameChanged(String _) => setState(() {});
 
   @override
   Widget build(BuildContext context) {
@@ -108,7 +100,7 @@ class _PersonalizationDialogState extends ConsumerState<PersonalizationDialog> {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          'Add your name to customize your experience',
+                          'Your name is used to greet you',
                           style: TextStyle(
                             fontSize: 12,
                             color: SymphonyTheme.textSecondary,
@@ -159,54 +151,6 @@ class _PersonalizationDialogState extends ConsumerState<PersonalizationDialog> {
               ),
               const SizedBox(height: 18),
 
-              // Instance Name Field
-              const Text(
-                'APP TITLE / INSTANCE NAME',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.8,
-                  color: SymphonyTheme.textSecondary,
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _instanceController,
-                style: const TextStyle(color: Colors.white, fontSize: 14),
-                decoration: InputDecoration(
-                  hintText: "e.g. Jett's Symphony",
-                  hintStyle: const TextStyle(color: SymphonyTheme.textMuted),
-                  filled: true,
-                  fillColor: const Color(0xFF282828),
-                  prefixIcon: const Icon(Icons.music_note_rounded, color: SymphonyTheme.textSecondary, size: 20),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide.none,
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: accent.primary, width: 1.5),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              // Quick presets
-              if (enteredName.isNotEmpty) ...[
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 6,
-                  children: [
-                    _buildPresetChip("$enteredName's Symphony"),
-                    _buildPresetChip("$enteredName's Studio"),
-                    _buildPresetChip("$enteredName's Music"),
-                    _buildPresetChip("Symphony"),
-                  ],
-                ),
-                const SizedBox(height: 16),
-              ],
-
               // Software & Updates
               const Text(
                 'SOFTWARE & UPDATES',
@@ -246,7 +190,6 @@ class _PersonalizationDialogState extends ConsumerState<PersonalizationDialog> {
                   onPressed: () async {
                     await ref.read(personalizationProvider.notifier).updateProfile(
                           userName: _nameController.text,
-                          instanceName: _instanceController.text,
                         );
                     if (context.mounted) {
                       Navigator.of(context).pop();
@@ -254,7 +197,9 @@ class _PersonalizationDialogState extends ConsumerState<PersonalizationDialog> {
                         SnackBar(
                           backgroundColor: const Color(0xFF282828),
                           content: Text(
-                            'Personalized as "${ref.read(personalizationProvider).displayTitle}" ✨',
+                            ref.read(personalizationProvider).userName.isEmpty
+                                ? 'Saved'
+                                : 'Saved. Hi, ${ref.read(personalizationProvider).userName}!',
                             style: const TextStyle(color: Colors.white),
                           ),
                           duration: const Duration(seconds: 2),
@@ -276,35 +221,6 @@ class _PersonalizationDialogState extends ConsumerState<PersonalizationDialog> {
                 ),
               ),
             ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPresetChip(String label) {
-    final isSelected = _instanceController.text == label;
-    final accent = ref.watch(accentThemeProvider);
-
-    return InkWell(
-      onTap: () => setState(() => _instanceController.text = label),
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        decoration: BoxDecoration(
-          color: isSelected ? accent.primary.withOpacity(0.2) : const Color(0xFF282828),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isSelected ? accent.primary : const Color(0xFF404040),
-            width: 1,
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            color: isSelected ? accent.primary : Colors.white70,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
           ),
         ),
       ),

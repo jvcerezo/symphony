@@ -80,17 +80,6 @@ class _ImportPlaylistDialogState extends ConsumerState<ImportPlaylistDialog> {
       await ref.read(importedPlaylistsProvider.notifier).addPlaylist(playlist);
       ref.read(activePlaylistProvider.notifier).state = playlist;
 
-      // Automatically personalize user identity from public playlist owner
-      final owner = playlist.ownerName?.trim();
-      if (owner != null &&
-          owner.isNotEmpty &&
-          !['spotify', 'user', 'spotify user', 'apple music', 'youtube'].contains(owner.toLowerCase())) {
-        ref.read(personalizationProvider.notifier).updateProfile(
-          userName: owner,
-          instanceName: "$owner's Symphony",
-        );
-      }
-
       if (mounted) {
         Navigator.of(context).pop();
         ScaffoldMessenger.of(context).showSnackBar(

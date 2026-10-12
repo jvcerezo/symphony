@@ -16,7 +16,10 @@ class PersonalizationState {
   });
 
   String get displayName => userName.isNotEmpty ? userName : 'Listener';
-  String get displayTitle => instanceName.isNotEmpty ? instanceName : 'Symphony';
+
+  /// The app is always called Symphony. (Older builds let the title become
+  /// "<name>'s Symphony"; that saved value is ignored.)
+  String get displayTitle => 'Symphony';
 
   PersonalizationState copyWith({
     String? instanceId,
@@ -83,21 +86,13 @@ class PersonalizationNotifier extends StateNotifier<PersonalizationState> {
     }
   }
 
-  Future<void> updateProfile({required String userName, required String instanceName}) async {
+  Future<void> updateProfile({required String userName}) async {
     final cleanUser = userName.trim();
-    final cleanInstance = instanceName.trim().isNotEmpty
-        ? instanceName.trim()
-        : (cleanUser.isNotEmpty ? "$cleanUser's Symphony" : 'Symphony');
-
-    state = state.copyWith(
-      userName: cleanUser,
-      instanceName: cleanInstance,
-    );
+    state = state.copyWith(userName: cleanUser);
 
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_userNameKey, cleanUser);
-      await prefs.setString(_instanceNameKey, cleanInstance);
     } catch (_) {}
   }
 }
