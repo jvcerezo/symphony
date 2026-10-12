@@ -1,11 +1,11 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'dart:typed_data';
 import 'package:audio_service/audio_service.dart';
 
 /// The Symphony application on the Discord Developer Portal. Its name there
 /// is what Discord shows as "Listening to Symphony". Empty turns the
 /// Discord status off.
-const discordClientId = '';
+const discordClientId = '1559096164345970708';
 
 /// Shown when a song has no web artwork (Discord can't read local files).
 const _fallbackArtwork = 'https://raw.githubusercontent.com/jvcerezo/symphony/main/assets/images/symphony_icon_512.png';
