@@ -179,6 +179,20 @@ class _PersonalizationDialogState extends ConsumerState<PersonalizationDialog> {
                     style: TextStyle(color: SymphonyTheme.textSecondary, fontSize: 12),
                   ),
                 ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: ref.watch(discordPresenceProvider),
+                  onChanged: (v) => ref.read(discordPresenceProvider.notifier).state = v,
+                  activeThumbColor: accent.primary,
+                  title: const Text(
+                    'Show what I\'m playing on Discord',
+                    style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: const Text(
+                    'Your Discord status shows "Listening to Symphony" with the current song.',
+                    style: TextStyle(color: SymphonyTheme.textSecondary, fontSize: 12),
+                  ),
+                ),
                 const SizedBox(height: 12),
               ],
 

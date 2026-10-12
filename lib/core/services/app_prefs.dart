@@ -8,6 +8,7 @@ class AppPrefs {
   static const _onboardingDoneKey = 'symphony_onboarding_done';
   static const _accentKey = 'symphony_accent_id';
   static const _closeToTrayKey = 'symphony_close_to_tray';
+  static const _discordPresenceKey = 'symphony_discord_presence';
 
   /// Saved by every earlier build that ran, so their users skip onboarding.
   static const _legacyMarkers = ['symphony_user_playlists', 'symphony_user_name'];
@@ -18,7 +19,15 @@ class AppPrefs {
   /// Windows: the close button hides to the tray instead of quitting.
   final bool closeToTray;
 
-  const AppPrefs({required this.onboardingDone, required this.accent, this.closeToTray = true});
+  /// Windows: show the current song as a Discord status.
+  final bool discordPresence;
+
+  const AppPrefs({
+    required this.onboardingDone,
+    required this.accent,
+    this.closeToTray = true,
+    this.discordPresence = true,
+  });
 
   static Future<AppPrefs> load() async {
     try {
@@ -33,6 +42,7 @@ class AppPrefs {
         onboardingDone: done,
         accent: accent,
         closeToTray: prefs.getBool(_closeToTrayKey) ?? true,
+        discordPresence: prefs.getBool(_discordPresenceKey) ?? true,
       );
     } catch (e) {
       developer.log('Could not read startup settings: $e', name: 'AppPrefs');
@@ -45,6 +55,8 @@ class AppPrefs {
   static Future<void> saveAccent(SymphonyAccent accent) => _write((p) => p.setString(_accentKey, accent.id));
 
   static Future<void> saveCloseToTray(bool value) => _write((p) => p.setBool(_closeToTrayKey, value));
+
+  static Future<void> saveDiscordPresence(bool value) => _write((p) => p.setBool(_discordPresenceKey, value));
 
   static Future<void> _write(Future<bool> Function(SharedPreferences prefs) op) async {
     try {

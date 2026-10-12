@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 import 'core/config/feature_flags.dart';
 import 'core/services/app_prefs.dart';
+import 'core/services/discord_presence.dart';
 import 'core/services/legacy_data_migration.dart';
 import 'core/services/windows_shortcuts.dart';
 import 'core/services/windows_tray.dart';
@@ -53,6 +54,7 @@ Future<void> main() async {
         audioHandlerProvider.overrideWithValue(audioHandler),
         accentThemeProvider.overrideWith((ref) => startup.accent),
         closeToTrayProvider.overrideWith((ref) => startup.closeToTray),
+        discordPresenceProvider.overrideWith((ref) => startup.discordPresence),
         // The walkthrough is for the installed apps; web opens as before.
         onboardingCompleteProvider.overrideWith((ref) => kIsWeb || startup.onboardingDone),
       ],
@@ -65,6 +67,7 @@ Future<void> main() async {
   if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
     unawaited(initWindowsTray(handler: audioHandler, closeToTray: startup.closeToTray));
     unawaited(ensureWindowsShortcuts());
+    unawaited(initDiscordPresence(handler: audioHandler, enabled: startup.discordPresence));
     final ytDlp = WindowsYtDlpExtractor();
     YtDlpUpdateScheduler(isAvailable: ytDlp.isAvailable, update: ytDlp.update).scheduleAfterStart();
   }
@@ -82,6 +85,10 @@ class SymphonyApp extends ConsumerWidget {
     ref.listen(closeToTrayProvider, (prev, next) {
       setCloseToTray(next);
       AppPrefs.saveCloseToTray(next);
+    });
+    ref.listen(discordPresenceProvider, (prev, next) {
+      setDiscordPresenceEnabled(next);
+      AppPrefs.saveDiscordPresence(next);
     });
 
     Widget initialHome;
