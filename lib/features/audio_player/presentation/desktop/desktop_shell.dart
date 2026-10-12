@@ -3,10 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/services/app_update_service.dart';
 import '../../../../core/theme/symphony_theme.dart';
 import '../../../../core/widgets/app_update_dialog.dart';
+import '../controllers/now_playing_panel_provider.dart';
 import '../widgets/bottom_player_bar.dart';
 import '../widgets/realtime_download_toast.dart';
 import '../widgets/sidebar_nav.dart';
 import 'desktop_shortcuts.dart';
+import 'now_playing_side_panel.dart';
 
 /// Wide-window chrome: sidebar navigation, rounded content panel and the
 /// full-width player bar, with desktop keyboard shortcuts installed
@@ -18,6 +20,7 @@ class DesktopShell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final sidePanel = ref.watch(nowPlayingPanelProvider);
     return DesktopShortcuts(
       child: Scaffold(
         backgroundColor: SymphonyTheme.obsidian,
@@ -46,6 +49,10 @@ class DesktopShell extends ConsumerWidget {
                               ),
                             ),
                           ),
+                          if (sidePanel != null) ...[
+                            const SizedBox(width: 8),
+                            NowPlayingSidePanel(panel: sidePanel),
+                          ],
                         ],
                       ),
                     ),

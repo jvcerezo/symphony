@@ -9,6 +9,7 @@ import '../../../../core/errors/exceptions.dart';
 import '../../../../core/services/notification_permission_service.dart';
 import '../../domain/entities/resolved_audio_stream.dart';
 import '../../domain/entities/track.dart';
+import '../../domain/play_queue.dart';
 import '../../../metadata_search/data/services/artwork_resolver_service.dart';
 import 'audio_stream_resolver_service.dart';
 import 'offline/playback_cache.dart';
@@ -21,7 +22,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   final ArtworkResolverService _artworkResolver;
   final NotificationPermissionService _notificationPermission;
 
-  final List<Track> _playlistQueue = [];
+  final PlayQueue _queue;
   final BehaviorSubject<int> _currentIndexSubject = BehaviorSubject<int>.seeded(-1);
   final BehaviorSubject<List<Track>> _queueSubject = BehaviorSubject<List<Track>>.seeded([]);
 
@@ -46,7 +47,9 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
     ArtworkResolverService? artworkResolver,
     NotificationPermissionService? notificationPermission,
     PlaybackCache? playbackCache,
+    PlayQueue? queue,
   })  : _player = player ?? AudioPlayer(),
+        _queue = queue ?? PlayQueue(),
         _playbackCache = playbackCache ?? PlaybackCache(),
         _streamResolver = streamResolver ?? AudioStreamResolverService(),
         _artworkResolver = artworkResolver ?? ArtworkResolverService(),
@@ -60,11 +63,12 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   ValueStream<List<Track>> get playlistQueueStream => _queueSubject.stream;
 
   int get currentIndex => _currentIndexSubject.value;
-  List<Track> get currentQueue => _playlistQueue;
+  List<Track> get currentQueue => _queue.tracks;
 
-  Track? get currentTrack => (currentIndex >= 0 && currentIndex < _playlistQueue.length)
-      ? _playlistQueue[currentIndex]
-      : null;
+  Track? get currentTrack => _queue.current;
+
+  bool get isShuffled => _queue.isShuffled;
+  QueueRepeatMode get repeatMode => _queue.repeatMode;
 
   AudioStreamResolverService get streamResolver => _streamResolver;
 
@@ -91,17 +95,11 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
     }
   }
 
-  /// Helper to pre-resolve upcoming tracks in the playlist queue.
-  void _preloadUpcomingTracks(int fromIndex) {
-    if (_playlistQueue.isEmpty) return;
+  /// Helper to pre-resolve the tracks that play next (shuffle/repeat aware).
+  void _preloadUpcomingTracks() {
+    if (_queue.isEmpty) return;
     final ahead = _usesPlaybackCache ? 1 : 2;
-    final upcoming = <Track>[];
-    for (int offset = 1; offset <= ahead; offset++) {
-      final nextIdx = (fromIndex + offset) % _playlistQueue.length;
-      if (nextIdx != fromIndex && nextIdx < _playlistQueue.length) {
-        upcoming.add(_playlistQueue[nextIdx]);
-      }
-    }
+    final upcoming = _queue.upcoming(ahead);
     if (upcoming.isNotEmpty) {
       if (_usesPlaybackCache) {
         for (final t in upcoming) {
@@ -109,10 +107,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
         }
         // Prepare stream links for the few after that, so skipping ahead
         // also starts at once. Background, one at a time, yields to taps.
-        final later = <Track>[];
-        for (int offset = ahead + 1; offset <= ahead + 4 && offset < _playlistQueue.length; offset++) {
-          later.add(_playlistQueue[(fromIndex + offset) % _playlistQueue.length]);
-        }
+        final later = _queue.upcoming(ahead + 4).skip(ahead).toList();
         _streamResolver.prefetch(later, replace: true);
       } else {
         _streamResolver.preloadTracks(upcoming, count: 2);
@@ -191,6 +186,12 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
         bufferedPosition: _player.bufferedPosition,
         speed: _player.speed,
         queueIndex: currentIndex >= 0 ? currentIndex : null,
+        shuffleMode: _queue.isShuffled ? AudioServiceShuffleMode.all : AudioServiceShuffleMode.none,
+        repeatMode: switch (_queue.repeatMode) {
+          QueueRepeatMode.off => AudioServiceRepeatMode.none,
+          QueueRepeatMode.all => AudioServiceRepeatMode.all,
+          QueueRepeatMode.one => AudioServiceRepeatMode.one,
+        },
       ),
     );
   }
@@ -224,7 +225,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
     _lastPositionAdvanceTime = DateTime.now();
 
     _completionWatchdogTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
-      if (_isAutoSkipping || _playlistQueue.isEmpty || !_player.playing) return;
+      if (_isAutoSkipping || _queue.isEmpty || !_player.playing) return;
 
       final dur = _player.duration ?? mediaItem.value?.duration ?? currentTrack?.expectedDuration;
       if (dur == null || dur <= const Duration(seconds: 15)) return;
@@ -259,12 +260,27 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   }
 
   Future<void> _handleTrackCompleted([String reason = '']) async {
-    if (_isAutoSkipping || _playlistQueue.isEmpty) return;
+    if (_isAutoSkipping || _queue.isEmpty) return;
     _isAutoSkipping = true;
     _completionWatchdogTimer?.cancel();
-    developer.log('Track completed ($reason). Auto-skipping to next...', name: 'AudioHandler');
+    developer.log('Track completed ($reason). Moving on...', name: 'AudioHandler');
     try {
-      await skipToNext();
+      final next = _queue.nextIndex(auto: true);
+      if (next == null) {
+        // End of the queue with repeat off: stop on the last song, rewound.
+        await _player.pause();
+        await _player.seek(Duration.zero);
+        _updatePlaybackState();
+      } else if (next == currentIndex) {
+        await _player.seek(Duration.zero);
+        unawaited(_player.play().catchError((Object e) {
+          developer.log('play() failed: $e', name: 'AudioHandler');
+        }));
+        _startCompletionWatchdog();
+        _updatePlaybackState();
+      } else {
+        await _playAt(next);
+      }
     } catch (e) {
       developer.log('Auto-skip error: $e', name: 'AudioHandler');
     } finally {
@@ -289,27 +305,81 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   }
 
   /// Sets an entire playlist queue and starts playback at [startIndex].
+  /// With shuffle on, that song plays first and the rest are shuffled.
   Future<void> playQueue(List<Track> tracks, {int startIndex = 0}) async {
     if (tracks.isEmpty) return;
-    _playlistQueue
-      ..clear()
-      ..addAll(tracks);
-    _queueSubject.add(List.unmodifiable(_playlistQueue));
-
-    final targetIndex = startIndex.clamp(0, _playlistQueue.length - 1);
-    _currentIndexSubject.add(targetIndex);
-    _preloadUpcomingTracks(targetIndex);
-    await _loadAndPlayTrack(_playlistQueue[targetIndex]);
+    _queue.load(tracks, startIndex: startIndex);
+    await _playAt(_queue.index);
   }
 
   /// Plays a single [Track], updating the current queue.
   Future<void> playTrack(Track track) async {
-    _playlistQueue
-      ..clear()
-      ..add(track);
-    _queueSubject.add(List.unmodifiable(_playlistQueue));
-    _currentIndexSubject.add(0);
-    await _loadAndPlayTrack(track);
+    _queue.load([track]);
+    await _playAt(0);
+  }
+
+  /// Makes [index] (in play order) current and starts it.
+  Future<void> _playAt(int index) async {
+    if (!_queue.jumpTo(index)) return;
+    _emitQueue();
+    _preloadUpcomingTracks();
+    await _loadAndPlayTrack(_queue.current!);
+  }
+
+  void _emitQueue() {
+    _queueSubject.add(_queue.tracks);
+    _currentIndexSubject.add(_queue.index);
+    queue.add(_queue.tracks.map((t) => t.toMediaItem()).toList());
+  }
+
+  /// Queue edits from the UI. Indexes are positions in play order, as
+  /// listed by [playlistQueueStream].
+  void playNext(Track track) {
+    final wasEmpty = _queue.isEmpty;
+    _queue.playNext(track);
+    _afterQueueEdit();
+    if (wasEmpty) unawaited(_playAt(0));
+  }
+
+  void enqueue(Track track) {
+    final wasEmpty = _queue.isEmpty;
+    _queue.add(track);
+    _afterQueueEdit();
+    if (wasEmpty) unawaited(_playAt(0));
+  }
+
+  void removeFromQueue(int index) {
+    if (_queue.removeAt(index)) _afterQueueEdit();
+  }
+
+  void moveInQueue(int from, int to) {
+    if (_queue.move(from, to)) _afterQueueEdit();
+  }
+
+  void _afterQueueEdit() {
+    _emitQueue();
+    _preloadUpcomingTracks();
+    _updatePlaybackState();
+  }
+
+  @override
+  Future<void> skipToQueueItem(int index) => _playAt(index);
+
+  @override
+  Future<void> setShuffleMode(AudioServiceShuffleMode shuffleMode) async {
+    _queue.setShuffle(shuffleMode != AudioServiceShuffleMode.none);
+    _afterQueueEdit();
+  }
+
+  @override
+  Future<void> setRepeatMode(AudioServiceRepeatMode repeatMode) async {
+    _queue.repeatMode = switch (repeatMode) {
+      AudioServiceRepeatMode.none => QueueRepeatMode.off,
+      AudioServiceRepeatMode.one => QueueRepeatMode.one,
+      AudioServiceRepeatMode.all || AudioServiceRepeatMode.group => QueueRepeatMode.all,
+    };
+    _preloadUpcomingTracks();
+    _updatePlaybackState();
   }
 
   Future<void> _loadAndPlayTrack(Track track) async {
@@ -466,7 +536,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
       }));
       _updatePlaybackState();
       _startCompletionWatchdog();
-      _preloadUpcomingTracks(currentIndex);
+      _preloadUpcomingTracks();
 
       developer.log(
         'Started: "${track.title}" by "${track.artist}" [${streamInfo.bitrateKbps}kbps, duration: ${streamInfo.duration.inSeconds}s]',
@@ -525,23 +595,19 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> skipToNext() async {
-    if (_playlistQueue.isEmpty) return;
-    final nextIdx = (currentIndex + 1) % _playlistQueue.length;
-    _currentIndexSubject.add(nextIdx);
-    _preloadUpcomingTracks(nextIdx);
-    await _loadAndPlayTrack(_playlistQueue[nextIdx]);
+    final next = _queue.nextIndex(auto: false);
+    if (next == null) return;
+    await _playAt(next);
   }
 
   @override
   Future<void> skipToPrevious() async {
-    if (_playlistQueue.isEmpty) return;
-    if (_player.position.inSeconds > 3) {
+    if (_queue.isEmpty) return;
+    final prev = _queue.previousIndex();
+    if (_player.position.inSeconds > 3 || prev == null || prev == currentIndex) {
       await seek(Duration.zero);
     } else {
-      final prevIdx = currentIndex > 0 ? currentIndex - 1 : _playlistQueue.length - 1;
-      _currentIndexSubject.add(prevIdx);
-      _preloadUpcomingTracks(prevIdx);
-      await _loadAndPlayTrack(_playlistQueue[prevIdx]);
+      await _playAt(prev);
     }
   }
 
