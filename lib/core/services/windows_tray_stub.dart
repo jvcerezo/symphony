@@ -6,3 +6,6 @@ Future<void> initWindowsTray({required AudioHandler handler, required bool close
 
 /// No-op on web.
 void setCloseToTray(bool value) {}
+
+/// No-op on web.
+Future<void> toggleFullScreen() async {}

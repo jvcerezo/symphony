@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../core/layout/breakpoints.dart';
 import '../../../../core/theme/symphony_theme.dart';
+import '../../../../core/widgets/hover_widgets.dart';
 import '../../../playlist_import/domain/entities/spotify_playlist.dart';
 
 /// Compact quick-access playlist tile used on the Home dashboard.
@@ -93,7 +94,7 @@ class _SpotifyQuickTileState extends State<SpotifyQuickTile> {
                 opacity: showPlay ? 1.0 : 0.0,
                 child: Padding(
                   padding: const EdgeInsets.only(right: 10.0),
-                  child: GestureDetector(
+                  child: HoverGrow(
                     onTap: widget.onPlay,
                     child: Container(
                       width: 34,

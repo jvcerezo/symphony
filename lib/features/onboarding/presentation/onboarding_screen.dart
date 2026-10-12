@@ -52,7 +52,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   void _saveName() {
     final name = _nameController.text.trim();
     if (name == ref.read(personalizationProvider).userName) return;
-    ref.read(personalizationProvider.notifier).updateProfile(userName: name, instanceName: '');
+    ref.read(personalizationProvider.notifier).updateProfile(userName: name);
   }
 
   Future<void> _finish({String? openTab}) async {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../browse/presentation/genre_providers.dart';
 import '../../../../core/services/app_update_service.dart';
 import '../../../../core/theme/symphony_theme.dart';
 import '../../../../core/widgets/app_update_dialog.dart';
@@ -116,6 +117,7 @@ class _SidebarNavState extends ConsumerState<SidebarNav> {
                   isSelected: activeTab == 'home' && activePlaylist == null,
                   onTap: () {
                     ref.read(activePlaylistProvider.notifier).state = null;
+                    ref.read(activeGenreProvider.notifier).state = null;
                     ref.read(activeNavTabProvider.notifier).state = 'home';
                     ref.read(navigationHistoryProvider.notifier).record('home', null);
                   },

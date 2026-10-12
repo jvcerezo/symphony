@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/symphony_theme.dart';
+import '../../../../core/widgets/hover_widgets.dart';
 import '../../../playlist_import/domain/entities/spotify_playlist.dart';
 import '../../../settings/presentation/widgets/personalization_dialog.dart';
 import '../../data/services/symphony_audio_handler.dart';
@@ -223,12 +224,32 @@ class DesktopPlaylistHero extends ConsumerWidget {
                 ),
               ),
               const SizedBox(width: 24),
-              IconButton(
-                iconSize: 32,
-                tooltip: 'Save to Your Library',
-                icon: const Icon(Icons.favorite_border, color: SymphonyTheme.textSecondary),
-                onPressed: () {},
-              ),
+              Builder(builder: (context) {
+                // Browsed playlists open without being saved; the heart adds
+                // or removes this one from the library.
+                final saved = ref.watch(importedPlaylistsProvider).any((p) => p.id == playlist.id);
+                final library = ref.read(importedPlaylistsProvider.notifier);
+                return HoverIconButton(
+                  iconSize: 32,
+                  constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                  tooltip: saved ? 'Remove from Your Library' : 'Save to Your Library',
+                  icon: saved ? Icons.favorite : Icons.favorite_border,
+                  isSelected: saved,
+                  activeColor: accent.primary,
+                  onPressed: () {
+                    if (saved) {
+                      library.removePlaylist(playlist.id);
+                    } else {
+                      library.addPlaylist(playlist);
+                    }
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      backgroundColor: SymphonyTheme.cardHover,
+                      content: Text(saved ? 'Removed "${playlist.title}" from Your Library' : 'Saved "${playlist.title}" to Your Library'),
+                      duration: const Duration(seconds: 2),
+                    ));
+                  },
+                );
+              }),
               const SizedBox(width: 16),
               IconButton(
                 iconSize: 32,

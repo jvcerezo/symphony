@@ -5,6 +5,7 @@ import 'package:html/parser.dart' as html_parser;
 import 'package:http/http.dart' as http;
 import '../../../audio_player/domain/entities/track.dart';
 import '../../../metadata_search/data/services/artwork_resolver_service.dart';
+import '../../domain/entities/playlist_summary.dart';
 import '../../domain/entities/spotify_playlist.dart';
 import '../../../../core/config/server_config.dart';
 
@@ -69,43 +70,7 @@ class SpotifyEmbedScraperService {
     }
 
     // 2. Native socket fetch or Web proxy fallback
-    final targetEmbedUrl = 'https://open.spotify.com/embed/playlist/$playlistId';
-    String? htmlBody;
-
-    if (!kIsWeb) {
-      try {
-        final response = await _httpClient.get(
-          Uri.parse(targetEmbedUrl),
-          headers: {
-            'User-Agent':
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          },
-        ).timeout(const Duration(seconds: 10));
-
-        if (response.statusCode == 200) {
-          htmlBody = response.body;
-        }
-      } catch (e) {
-        developer.log('Native direct fetch failed, attempting web fallback', error: e, name: 'SpotifyScraper');
-      }
-    }
-
-    if (htmlBody == null) {
-      for (final proxy in _webCorsProxies) {
-        try {
-          final proxiedUri = Uri.parse('$proxy${Uri.encodeComponent(targetEmbedUrl)}');
-          final response = await _httpClient.get(proxiedUri).timeout(const Duration(seconds: 8));
-          if (response.statusCode == 200 && response.body.contains('__NEXT_DATA__')) {
-            htmlBody = response.body;
-            break;
-          }
-        } catch (e) {
-          developer.log('Proxy $proxy failed: $e', name: 'SpotifyScraper');
-          continue;
-        }
-      }
-    }
+    final htmlBody = await _fetchEmbedHtml(playlistId);
 
     // 3. If HTML was successfully extracted, parse __NEXT_DATA__
     if (htmlBody != null && htmlBody.contains('__NEXT_DATA__')) {
@@ -184,6 +149,81 @@ class SpotifyEmbedScraperService {
     throw FormatException(
       'Could not import Spotify playlist "$playlistId". If this is a private playlist, please set it to "Public" on Spotify and try again.',
     );
+  }
+
+  /// The playlist's embed page (direct on native, CORS proxies on web).
+  Future<String?> _fetchEmbedHtml(String playlistId) async {
+    final targetEmbedUrl = 'https://open.spotify.com/embed/playlist/$playlistId';
+    String? htmlBody;
+
+    if (!kIsWeb) {
+      try {
+        final response = await _httpClient.get(
+          Uri.parse(targetEmbedUrl),
+          headers: {
+            'User-Agent':
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          },
+        ).timeout(const Duration(seconds: 10));
+
+        if (response.statusCode == 200) {
+          htmlBody = response.body;
+        }
+      } catch (e) {
+        developer.log('Native direct fetch failed, attempting web fallback', error: e, name: 'SpotifyScraper');
+      }
+    }
+
+    if (htmlBody == null) {
+      for (final proxy in _webCorsProxies) {
+        try {
+          final proxiedUri = Uri.parse('$proxy${Uri.encodeComponent(targetEmbedUrl)}');
+          final response = await _httpClient.get(proxiedUri).timeout(const Duration(seconds: 8));
+          if (response.statusCode == 200 && response.body.contains('__NEXT_DATA__')) {
+            htmlBody = response.body;
+            break;
+          }
+        } catch (e) {
+          developer.log('Proxy $proxy failed: $e', name: 'SpotifyScraper');
+          continue;
+        }
+      }
+    }
+    return htmlBody;
+  }
+
+  /// Name, owner and cover of a Spotify playlist, without loading its
+  /// songs: for browse cards. Null when the playlist can't be read.
+  Future<PlaylistSummary?> fetchSummary(String playlistId) async {
+    final html = await _fetchEmbedHtml(playlistId);
+    if (html == null || !html.contains('__NEXT_DATA__')) return null;
+    try {
+      final script = html_parser.parse(html).getElementById('__NEXT_DATA__');
+      final entity = (jsonDecode(script!.text) as Map<String, dynamic>)['props']?['pageProps']?['state']?['data']?['entity'];
+      if (entity is! Map) return null;
+      final images = entity['coverArt']?['sources'];
+      String? cover;
+      if (images is List && images.isNotEmpty) {
+        final sorted = images.whereType<Map>().toList()
+          ..sort((a, b) => ((b['width'] as num?) ?? 0).compareTo((a['width'] as num?) ?? 0));
+        // 00000002 is a small cover; 00000003 the large one.
+        cover = (sorted.isEmpty ? null : sorted.first['url'] as String?)?.replaceAll('00000002', '00000003');
+      }
+      final tracks = entity['trackList'];
+      return PlaylistSummary(
+        source: PlaylistSource.spotify,
+        id: playlistId,
+        title: entity['name'] as String? ?? 'Spotify Playlist',
+        subtitle: entity['subtitle'] as String? ?? 'Spotify',
+        coverUrl: cover,
+        link: 'https://open.spotify.com/playlist/$playlistId',
+        trackCount: tracks is List ? tracks.length : null,
+      );
+    } catch (e) {
+      developer.log('Spotify summary parse failed for $playlistId: $e', name: 'SpotifyScraper');
+      return null;
+    }
   }
 
   /// Calls the local Symphony server to scrape Spotify without browser CORS limits.

@@ -2,6 +2,9 @@ import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../../core/theme/symphony_theme.dart';
+import '../../../../../core/widgets/hover_widgets.dart';
+import '../../../../browse/data/genre_catalog.dart';
+import '../../../../browse/presentation/genre_providers.dart';
 import '../../../../../core/widgets/symphony_brand_logo.dart';
 import '../../../../settings/presentation/controllers/personalization_provider.dart';
 import '../../controllers/audio_player_providers.dart';
@@ -37,57 +40,6 @@ class HomeSection extends ConsumerWidget {
     required this.onHomeFilterChanged,
   });
 
-  static const List<_GenreCardData> _genreCards = [
-    _GenreCardData(
-      title: 'Pop & Top Hits',
-      gradientColors: [Color(0xFF8D137B), Color(0xFFE1306C)],
-      icon: Icons.music_note_rounded,
-      searchQuery: 'Top Hits',
-    ),
-    _GenreCardData(
-      title: 'Chill & Lo-Fi',
-      gradientColors: [Color(0xFF1E3264), Color(0xFF2E77D0)],
-      icon: Icons.nightlife_rounded,
-      searchQuery: 'Lofi',
-    ),
-    _GenreCardData(
-      title: 'Rock Classics',
-      gradientColors: [Color(0xFF8B0000), Color(0xFFE91E63)],
-      icon: Icons.electric_bolt_rounded,
-      searchQuery: 'Classic Rock',
-    ),
-    _GenreCardData(
-      title: 'Night Grooves',
-      gradientColors: [Color(0xFF4A148C), Color(0xFF7B1FA2)],
-      icon: Icons.dark_mode_rounded,
-      searchQuery: 'R&B',
-    ),
-    _GenreCardData(
-      title: 'Hip-Hop & Rap',
-      gradientColors: [Color(0xFFBA5D00), Color(0xFFFF9800)],
-      icon: Icons.album_rounded,
-      searchQuery: 'Hip Hop',
-    ),
-    _GenreCardData(
-      title: 'Focus & Study',
-      gradientColors: [Color(0xFF0D7377), Color(0xFF14FFEC)],
-      icon: Icons.headphones_rounded,
-      searchQuery: 'Study',
-    ),
-    _GenreCardData(
-      title: 'Workout & Energy',
-      gradientColors: [Color(0xFFBF360C), Color(0xFFFF5722)],
-      icon: Icons.fitness_center_rounded,
-      searchQuery: 'Workout',
-    ),
-    _GenreCardData(
-      title: 'Acoustic & Peace',
-      gradientColors: [Color(0xFF2E7D32), Color(0xFF66BB6A)],
-      icon: Icons.spa_rounded,
-      searchQuery: 'Acoustic',
-    ),
-  ];
-
   String _getTimeGreeting() {
     final hour = DateTime.now().hour;
     if (hour < 12) return 'Good morning';
@@ -97,13 +49,13 @@ class HomeSection extends ConsumerWidget {
 
   Widget _buildHomeFilterChip(String label, String value, SymphonyAccent accent) {
     final isSelected = homeFilter == value;
-    return GestureDetector(
+    return HoverBuilder(
       onTap: () => onHomeFilterChanged(value),
-      child: AnimatedContainer(
+      builder: (context, hovered) => AnimatedContainer(
         duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.white : const Color(0xFF242424),
+          color: isSelected ? Colors.white : (hovered ? SymphonyTheme.cardActive : SymphonyTheme.divider),
           borderRadius: BorderRadius.circular(500),
         ),
         child: Text(
@@ -118,25 +70,25 @@ class HomeSection extends ConsumerWidget {
     );
   }
 
-  Widget _buildGenreCard(WidgetRef ref, _GenreCardData card) {
-    return GestureDetector(
-      onTap: () {
-        ref.read(searchQueryProvider.notifier).state = card.searchQuery;
-        ref.read(activeNavTabProvider.notifier).state = 'search';
-        ref.read(navigationHistoryProvider.notifier).record('search', null);
-      },
-      child: Container(
+  Widget _buildGenreCard(WidgetRef ref, Genre card) {
+    return HoverBuilder(
+      onTap: () => ref.read(activeGenreProvider.notifier).state = card,
+      builder: (context, hovered) => AnimatedScale(
+        scale: hovered ? 1.03 : 1.0,
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeOut,
+        child: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: card.gradientColors,
+            colors: card.gradient,
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
           borderRadius: BorderRadius.circular(8),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.2),
-              blurRadius: 8,
+              color: Colors.black.withValues(alpha: hovered ? 0.4 : 0.2),
+              blurRadius: hovered ? 14 : 8,
               offset: const Offset(0, 3),
             ),
           ],
@@ -170,6 +122,7 @@ class HomeSection extends ConsumerWidget {
             ),
           ],
         ),
+      ),
       ),
     );
   }
@@ -567,7 +520,7 @@ class HomeSection extends ConsumerWidget {
           ),
           const SizedBox(height: 4),
           const Text(
-            'Explore music tailored to your vibe',
+            'Current playlists from Spotify, Apple Music and YouTube',
             style: TextStyle(fontSize: 13, color: SymphonyTheme.textSecondary),
           ),
           const SizedBox(height: 16),
@@ -587,9 +540,9 @@ class HomeSection extends ConsumerWidget {
                   mainAxisSpacing: 14,
                   mainAxisExtent: 96,
                 ),
-                itemCount: _genreCards.length,
+                itemCount: GenreCatalog.all.length,
                 itemBuilder: (context, index) {
-                  final card = _genreCards[index];
+                  final card = GenreCatalog.all[index];
                   return _buildGenreCard(ref, card);
                 },
               );
@@ -606,20 +559,6 @@ class HomeSection extends ConsumerWidget {
       ),
     );
   }
-}
-
-class _GenreCardData {
-  final String title;
-  final List<Color> gradientColors;
-  final IconData icon;
-  final String searchQuery;
-
-  const _GenreCardData({
-    required this.title,
-    required this.gradientColors,
-    required this.icon,
-    required this.searchQuery,
-  });
 }
 
 /// Shown in place of the playlist shelf when there is nothing to list.

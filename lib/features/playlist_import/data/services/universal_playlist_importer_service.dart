@@ -6,7 +6,9 @@ import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 import '../../../audio_player/domain/entities/track.dart';
 import '../../../metadata_search/data/services/artwork_resolver_service.dart';
 import '../../domain/entities/spotify_playlist.dart';
+import 'apple_music_web_service.dart';
 import 'spotify_embed_scraper_service.dart';
+import 'youtube_playlist_page.dart';
 
 enum PlaylistSourceType { spotify, youtube, deezer, appleMusic, smartMix }
 
@@ -14,6 +16,7 @@ class UniversalPlaylistImporterService {
   final http.Client _httpClient;
   final SpotifyEmbedScraperService _spotifyScraper;
   final ArtworkResolverService _artworkResolver;
+  final AppleMusicWebService _appleMusic;
 
   static const List<String> _webCorsProxies = [
     'https://api.allorigins.win/raw?url=',
@@ -24,7 +27,9 @@ class UniversalPlaylistImporterService {
     http.Client? httpClient,
     SpotifyEmbedScraperService? spotifyScraper,
     ArtworkResolverService? artworkResolver,
+    AppleMusicWebService? appleMusic,
   })  : _httpClient = httpClient ?? http.Client(),
+        _appleMusic = appleMusic ?? AppleMusicWebService(client: httpClient),
         _artworkResolver = artworkResolver ?? ArtworkResolverService(httpClient: httpClient),
         _spotifyScraper = spotifyScraper ??
             SpotifyEmbedScraperService(
@@ -132,62 +137,9 @@ class UniversalPlaylistImporterService {
     throw FormatException('Unable to retrieve Deezer playlist: $playlistId');
   }
 
-  /// Scrapes or generates an Apple Music chart/playlist using iTunes public feeds.
-  Future<SpotifyPlaylist> _importAppleMusic(String input) async {
-    // 1. Fetch Apple Top Songs Chart feed
-    final chartUrl = 'https://itunes.apple.com/us/rss/topsongs/limit=50/json';
-    try {
-      final response = await _httpClient.get(Uri.parse(chartUrl)).timeout(const Duration(seconds: 6));
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> data = jsonDecode(response.body) as Map<String, dynamic>;
-        final feed = data['feed'] as Map<String, dynamic>?;
-        final feedTitle = feed?['title']?['label'] as String? ?? 'Apple Music Top Hits';
-        final entries = (feed?['entry'] as List<dynamic>?) ?? [];
-
-        final List<Track> tracks = [];
-        for (final entry in entries) {
-          if (entry is! Map<String, dynamic>) continue;
-          final trackTitle = entry['im:name']?['label'] as String? ?? 'Unknown Title';
-          final artist = entry['im:artist']?['label'] as String? ?? 'Unknown Artist';
-          String? rawArt;
-          final images = entry['im:image'];
-          if (images is List && images.isNotEmpty) {
-            final lastImg = images.last;
-            if (lastImg is Map) {
-              rawArt = lastImg['label'] as String?;
-            }
-          }
-          final highResArt = rawArt?.replaceAll(RegExp(r'\d+x\d+bb'), '1000x1000bb');
-
-          tracks.add(
-            Track(
-              id: 'apple_${tracks.length}',
-              title: trackTitle,
-              artist: artist,
-              album: 'Apple Music Charts',
-              artworkUri: highResArt != null ? Uri.tryParse(highResArt) : null,
-            ),
-          );
-        }
-
-        if (tracks.isNotEmpty) {
-          return SpotifyPlaylist(
-            id: 'apple_top_songs',
-            title: feedTitle,
-            description: 'Top Chart Hits on Apple Music • Streamed Ad-Free',
-            coverUrl: tracks.first.artworkUri?.toString(),
-            ownerName: 'Apple Music',
-            source: 'Apple Music',
-            tracks: tracks,
-          );
-        }
-      }
-    } catch (e) {
-      developer.log('Apple Music import error: $e', name: 'UniversalImporter');
-    }
-
-    return _buildSmartMix('Today\'s Hits');
-  }
+  /// Loads an Apple Music playlist from its link. Other Apple links
+  /// (songs, albums) are rejected instead of swapped for a chart.
+  Future<SpotifyPlaylist> _importAppleMusic(String input) => _appleMusic.importPlaylist(input);
 
   /// Scrapes YouTube playlist metadata and items.
   Future<SpotifyPlaylist> _importYouTube(String input) async {
@@ -244,8 +196,19 @@ class UniversalPlaylistImporterService {
       }
     }
 
-    // Web Fallback: Create curated mix based on YouTube topic / playlist ID
-    return _buildSmartMix('YouTube Hits Mix');
+    // youtube_explode can't read YouTube's current playlist layout (no
+    // videos come back), so read the playlist page itself.
+    if (!kIsWeb) {
+      try {
+        final fromPage = await YouTubePlaylistPage.fetch(playlistId, client: _httpClient);
+        if (fromPage != null) return fromPage;
+      } catch (e) {
+        developer.log('YouTube playlist page read failed: $e', name: 'UniversalImporter');
+      }
+    }
+
+    // Never stand in a different playlist for the one asked for.
+    throw const FormatException("Couldn't load that YouTube playlist. Make sure it's public or unlisted.");
   }
 
   /// Generates an instant high-fidelity playlist based on any search keyword or artist name.
@@ -328,5 +291,6 @@ class UniversalPlaylistImporterService {
     _httpClient.close();
     _spotifyScraper.dispose();
     _artworkResolver.dispose();
+    _appleMusic.dispose();
   }
 }

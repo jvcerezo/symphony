@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/symphony_theme.dart';
 import '../../../playlist_import/domain/entities/spotify_playlist.dart';
 import '../../data/services/symphony_audio_handler.dart';
+import '../controllers/audio_player_providers.dart';
 import '../controllers/navigation_history_provider.dart';
 import '../controllers/offline_provider.dart';
 import '../widgets/import_playlist_dialog.dart';
@@ -144,11 +145,30 @@ class MobilePlaylistHero extends ConsumerWidget {
             const SizedBox(height: 18),
             Row(
               children: [
-                IconButton(
-                  iconSize: 26,
-                  icon: const Icon(Icons.favorite_border, color: SymphonyTheme.textSecondary),
-                  onPressed: () {},
-                ),
+                Builder(builder: (context) {
+                  final saved = ref.watch(importedPlaylistsProvider).any((p) => p.id == playlist.id);
+                  return IconButton(
+                    iconSize: 26,
+                    tooltip: saved ? 'Remove from Your Library' : 'Save to Your Library',
+                    icon: Icon(
+                      saved ? Icons.favorite : Icons.favorite_border,
+                      color: saved ? accent.primary : SymphonyTheme.textSecondary,
+                    ),
+                    onPressed: () {
+                      final library = ref.read(importedPlaylistsProvider.notifier);
+                      if (saved) {
+                        library.removePlaylist(playlist.id);
+                      } else {
+                        library.addPlaylist(playlist);
+                      }
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        backgroundColor: SymphonyTheme.cardHover,
+                        content: Text(saved ? 'Removed "${playlist.title}" from Your Library' : 'Saved "${playlist.title}" to Your Library'),
+                        duration: const Duration(seconds: 2),
+                      ));
+                    },
+                  );
+                }),
                 const SizedBox(width: 8),
                 IconButton(
                   iconSize: 26,

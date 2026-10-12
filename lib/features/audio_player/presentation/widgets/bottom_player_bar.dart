@@ -1,8 +1,11 @@
 import 'package:audio_service/audio_service.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/layout/breakpoints.dart';
+import '../../../../core/services/windows_tray.dart';
 import '../../../../core/theme/symphony_theme.dart';
+import '../../../../core/widgets/hover_widgets.dart';
 import '../../domain/entities/track.dart';
 import '../controllers/audio_player_providers.dart';
 import '../controllers/now_playing_panel_provider.dart';
@@ -125,15 +128,11 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
                   ],
                 ),
               ),
-              IconButton(
-                iconSize: 18,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              HoverIconButton(
                 tooltip: _isLiked ? 'Remove from Your Library' : 'Save to Your Library',
-                icon: Icon(
-                  _isLiked ? Icons.favorite : Icons.favorite_border,
-                  color: _isLiked ? accent.primary : SymphonyTheme.textSecondary,
-                ),
+                icon: _isLiked ? Icons.favorite : Icons.favorite_border,
+                isSelected: _isLiked,
+                activeColor: accent.primary,
                 onPressed: () => setState(() => _isLiked = !_isLiked),
               ),
             ],
@@ -152,18 +151,16 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
                 children: [
                   const ShuffleButton(),
                   const SizedBox(width: 8),
-                  IconButton(
+                  HoverIconButton(
                     iconSize: 22,
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                     tooltip: 'Previous',
-                    icon: const Icon(Icons.skip_previous, color: SymphonyTheme.textSecondary),
-                    hoverColor: Colors.transparent,
+                    icon: Icons.skip_previous,
                     onPressed: () => handler.skipToPrevious(),
                   ),
                   const SizedBox(width: 8),
                   // Play/Pause Button (Spotify Benchmark: White circular button with black icon)
-                  Container(
+                  HoverGrow(
+                    child: Container(
                     width: 34,
                     height: 34,
                     decoration: const BoxDecoration(
@@ -193,14 +190,12 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
                       },
                     ),
                   ),
+                  ),
                   const SizedBox(width: 8),
-                  IconButton(
+                  HoverIconButton(
                     iconSize: 22,
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                     tooltip: 'Next',
-                    icon: const Icon(Icons.skip_next, color: SymphonyTheme.textSecondary),
-                    hoverColor: Colors.transparent,
+                    icon: Icons.skip_next,
                     onPressed: () => handler.skipToNext(),
                   ),
                   const SizedBox(width: 8),
@@ -285,16 +280,12 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
               _panelToggle(NowPlayingPanel.lyrics, Icons.mic_none_outlined, 'Lyrics', accent),
               _panelToggle(NowPlayingPanel.queue, Icons.queue_music_rounded, 'Queue', accent),
               const SizedBox(width: 6),
-              IconButton(
+              HoverIconButton(
                 iconSize: 20,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                icon: Icon(
-                  volume.effective == 0
-                      ? Icons.volume_off_rounded
-                      : (volume.level < 0.5 ? Icons.volume_down_rounded : Icons.volume_up_rounded),
-                  color: SymphonyTheme.textSecondary,
-                ),
+                tooltip: volume.effective == 0 ? 'Unmute' : 'Mute',
+                icon: volume.effective == 0
+                    ? Icons.volume_off_rounded
+                    : (volume.level < 0.5 ? Icons.volume_down_rounded : Icons.volume_up_rounded),
                 onPressed: () => ref.read(volumeProvider.notifier).toggleMute(),
               ),
               MouseRegion(
@@ -327,14 +318,12 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
                 ),
               ),
               const SizedBox(width: 4),
-              IconButton(
-                iconSize: 18,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                tooltip: 'Full screen',
-                icon: const Icon(Icons.fullscreen_rounded, color: SymphonyTheme.textSecondary),
-                onPressed: () {},
-              ),
+              if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows)
+                HoverIconButton(
+                  tooltip: 'Full screen',
+                  icon: Icons.fullscreen_rounded,
+                  onPressed: toggleFullScreen,
+                ),
             ],
           ),
         ),
@@ -345,13 +334,11 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
   /// Opens or closes a side panel; lit while that panel is open.
   Widget _panelToggle(NowPlayingPanel panel, IconData icon, String label, SymphonyAccent accent) {
     final open = ref.watch(nowPlayingPanelProvider) == panel;
-    return IconButton(
-      iconSize: 18,
-      padding: EdgeInsets.zero,
-      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+    return HoverIconButton(
       tooltip: open ? 'Hide $label' : label,
       isSelected: open,
-      icon: Icon(icon, color: open ? accent.primary : SymphonyTheme.textSecondary),
+      activeColor: accent.primary,
+      icon: icon,
       onPressed: () => ref.read(nowPlayingPanelProvider.notifier).state = open ? null : panel,
     );
   }

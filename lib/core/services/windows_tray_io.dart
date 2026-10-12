@@ -26,6 +26,16 @@ Future<void> initWindowsTray({required AudioHandler handler, required bool close
 /// Whether the close button hides to the tray (true) or quits (false).
 void setCloseToTray(bool value) => _tray?.closeToTray = value;
 
+/// Windows: switches the window in and out of full screen.
+Future<void> toggleFullScreen() async {
+  if (defaultTargetPlatform != TargetPlatform.windows) return;
+  try {
+    await windowManager.setFullScreen(!await windowManager.isFullScreen());
+  } catch (e) {
+    developer.log('Full screen toggle failed: $e', name: 'Tray');
+  }
+}
+
 class _WindowsTray with TrayListener, WindowListener {
   final AudioHandler _handler;
   bool closeToTray = true;
