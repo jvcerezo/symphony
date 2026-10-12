@@ -411,7 +411,13 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
       if (requestId != _playRequestId) return; // Superceded by another user tap
 
       // A track played recently is already on disk: start it without a lookup.
-      final cached = _usesPlaybackCache ? await _playbackCache.cachedStreamFor(track) : null;
+      var cached = _usesPlaybackCache ? await _playbackCache.cachedStreamFor(track) : null;
+      // A copy saved from a match that has since been replaced, or one not
+      // yet checked, could be the wrong song: drop it and match again.
+      if (cached != null && !await _streamResolver.isSettledMatch(track, cached.sourceVideoId)) {
+        await _playbackCache.forget(track);
+        cached = null;
+      }
       final streamInfo = cached ?? await _streamResolver.resolveBestAudioStream(track);
       if (requestId != _playRequestId) return;
 
