@@ -118,7 +118,7 @@ class AppUpdateDialog extends ConsumerWidget {
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
-                        release.tagName,
+                        release.displayVersion,
                         style: const TextStyle(
                           color: Colors.black,
                           fontSize: 12,
@@ -153,16 +153,7 @@ class AppUpdateDialog extends ConsumerWidget {
                     border: Border.all(color: const Color(0xFF222225)),
                   ),
                   child: SingleChildScrollView(
-                    child: Text(
-                      release.releaseNotes.isNotEmpty
-                          ? release.releaseNotes
-                          : 'Includes new features, audio caching updates, performance optimizations, and stability improvements.',
-                      style: const TextStyle(
-                        color: Color(0xFFD4D4D8),
-                        fontSize: 12.5,
-                        height: 1.5,
-                      ),
-                    ),
+                    child: _ReleaseNotes(lines: release.displayNotes),
                   ),
                 ),
               ),
@@ -468,7 +459,7 @@ class AppUpdateBanner extends ConsumerWidget {
                     style: TextStyle(color: Color(0xFFA1A1AA)),
                   ),
                   TextSpan(
-                    text: release.tagName,
+                    text: release.displayVersion,
                     style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
                   ),
                   const TextSpan(
@@ -509,6 +500,39 @@ class AppUpdateBanner extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Release notes as a bulleted list, or a short default when the release
+/// says nothing beyond download links.
+class _ReleaseNotes extends StatelessWidget {
+  final List<String> lines;
+
+  const _ReleaseNotes({required this.lines});
+
+  static const _style = TextStyle(color: Color(0xFFD4D4D8), fontSize: 12.5, height: 1.5);
+
+  @override
+  Widget build(BuildContext context) {
+    if (lines.isEmpty) {
+      return const Text('Bug fixes and improvements.', style: _style);
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final line in lines)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('•  ', style: _style),
+                Expanded(child: Text(line, style: _style)),
+              ],
+            ),
+          ),
+      ],
     );
   }
 }

@@ -24,6 +24,43 @@ class AppReleaseInfo {
     this.publishedAt,
   });
 
+  /// Version for display, e.g. "v1.0.29". CI publishes every build under
+  /// the tag "latest" and puts the version in the title, so read the tag
+  /// first and fall back to the title.
+  String get displayVersion {
+    final pattern = RegExp(r'v?(\d+\.\d+(?:\.\d+)?)');
+    final match = pattern.firstMatch(tagName) ?? pattern.firstMatch(title);
+    return match != null ? 'v${match.group(1)}' : tagName;
+  }
+
+  /// [releaseNotes] as readable lines. Markdown is flattened (bold, code
+  /// and links become plain text) and CI boilerplate is dropped: the
+  /// heading, commit hash, download links (the dialog has buttons for
+  /// those) and the landing page link. Empty when nothing is left.
+  List<String> get displayNotes => cleanReleaseNotes(releaseNotes);
+
+  static final _boilerplate = RegExp(
+    r'^(commit|windows desktop|android apk|landing page|download)\b',
+    caseSensitive: false,
+  );
+
+  static List<String> cleanReleaseNotes(String body) {
+    final lines = <String>[];
+    for (final raw in body.split(RegExp(r'\r?\n'))) {
+      var line = raw.trim();
+      if (line.isEmpty || line.startsWith('#')) continue;
+      line = line
+          .replaceFirst(RegExp(r'^[-*+]\s+'), '')
+          .replaceAllMapped(RegExp(r'\[([^\]]*)\]\([^)]*\)'), (m) => m.group(1)!)
+          .replaceAll(RegExp(r'\*\*|__|`'), '')
+          .replaceAll(RegExp(r'https?://\S+'), '')
+          .trim();
+      if (line.isEmpty || _boilerplate.hasMatch(line)) continue;
+      lines.add(line);
+    }
+    return lines;
+  }
+
   factory AppReleaseInfo.fromJson(Map<String, dynamic> json) {
     String? winUrl;
     String? apkUrl;

@@ -120,4 +120,35 @@ void main() {
       expect(installing.isInstalling, isTrue);
     });
   });
+
+  group('Release display', () {
+    const ciBody = '''## 🎵 Symphony Release Distribution
+- **Commit**: `73f38d79fa2f85898c86ad2bdc5b844682ed8805`
+- **Windows Desktop (x64)**: [Download symphony-windows-x64.zip](https://github.com/jvcerezo/symphony/releases/download/latest/symphony-windows-x64.zip)
+- **Android APK**: [Download symphony.apk](https://github.com/jvcerezo/symphony/releases/download/latest/symphony.apk)
+- **Landing Page**: https://symphony.jettimothycerezo.dev''';
+
+    test('drops the CI boilerplate entirely', () {
+      expect(AppReleaseInfo.cleanReleaseNotes(ciBody), isEmpty);
+    });
+
+    test('keeps real notes as plain text', () {
+      const body = '''## What's new
+- **Lyrics** that follow the song
+- Fixed [shuffle](https://example.com/pr/1) doing nothing
+* `Queue` can be reordered''';
+      expect(AppReleaseInfo.cleanReleaseNotes(body), [
+        'Lyrics that follow the song',
+        'Fixed shuffle doing nothing',
+        'Queue can be reordered',
+      ]);
+    });
+
+    test('shows the version from the title when the tag is "latest"', () {
+      const release = AppReleaseInfo(tagName: 'latest', title: 'Symphony v1.0.29', releaseNotes: '', htmlUrl: '');
+      expect(release.displayVersion, 'v1.0.29');
+      const tagged = AppReleaseInfo(tagName: 'v2.1.0', title: 'Symphony v2.1.0', releaseNotes: '', htmlUrl: '');
+      expect(tagged.displayVersion, 'v2.1.0');
+    });
+  });
 }

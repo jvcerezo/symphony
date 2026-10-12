@@ -329,7 +329,7 @@ class _PersonalizationDialogState extends ConsumerState<PersonalizationDialog> {
                   updateState.isChecking
                       ? 'Checking GitHub Releases...'
                       : updateState.hasUpdate
-                          ? 'Update ${updateState.latestRelease?.tagName} available'
+                          ? 'Update ${updateState.latestRelease?.displayVersion} available'
                           : 'Symphony is up to date',
                   style: TextStyle(
                     color: updateState.hasUpdate ? Colors.white70 : SymphonyTheme.textMuted,
