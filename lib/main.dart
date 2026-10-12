@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 import 'core/config/feature_flags.dart';
 import 'core/services/app_prefs.dart';
 import 'core/services/legacy_data_migration.dart';
+import 'core/services/windows_shortcuts.dart';
 import 'core/theme/symphony_theme.dart';
 import 'features/audio_player/data/services/extraction/windows_ytdlp_extractor.dart';
 import 'features/audio_player/data/services/extraction/ytdlp_update_scheduler.dart';
@@ -58,6 +60,7 @@ Future<void> main() async {
   // Keep the bundled yt-dlp current (YouTube changes often). Background,
   // at most once a day; playback never waits on it.
   if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
+    unawaited(ensureWindowsShortcuts());
     final ytDlp = WindowsYtDlpExtractor();
     YtDlpUpdateScheduler(isAvailable: ytDlp.isAvailable, update: ytDlp.update).scheduleAfterStart();
   }
