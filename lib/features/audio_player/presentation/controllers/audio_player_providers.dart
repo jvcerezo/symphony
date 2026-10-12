@@ -4,7 +4,6 @@ import 'package:audio_service/audio_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import '../../../../core/constants/curated_playlists.dart';
 import '../../../../core/theme/symphony_theme.dart';
 import '../../../metadata_search/data/services/artwork_resolver_service.dart';
 import '../../../metadata_search/data/services/search_service.dart';
@@ -85,10 +84,20 @@ final searchServiceProvider = Provider<SearchService>((ref) {
 /// StateNotifier for managing imported Spotify playlists with offline persistence unique to each user/instance
 class ImportedPlaylistsNotifier extends StateNotifier<List<SpotifyPlaylist>> {
   static const _localPlaylistsKey = 'symphony_user_playlists';
+
+  /// Starter playlists older builds seeded into every library. They are
+  /// dropped from saved data so the library only holds what the user added.
+  static const legacyStarterIds = {
+    '37i9dQZF1DXcBWIGoYBM5M',
+    '37i9dQZF1DXdLEN7aqioXM',
+    '37i9dQZF1DWXRqgorJj26U',
+    '37i9dQZF1DX6VdMW310YCv',
+  };
+
   final http.Client _httpClient = http.Client();
   String? _instanceId;
 
-  ImportedPlaylistsNotifier() : super(CuratedPlaylists.all) {
+  ImportedPlaylistsNotifier() : super(const []) {
     _initAndLoad();
   }
 
@@ -132,27 +141,20 @@ class ImportedPlaylistsNotifier extends StateNotifier<List<SpotifyPlaylist>> {
               'love in ray-trospect',
               'mga poging tambay sa bgc soundtrip',
             };
-            loaded.removeWhere((p) => legacyTestTitles.contains(p.title.trim().toLowerCase()));
+            loaded.removeWhere((p) =>
+                legacyTestTitles.contains(p.title.trim().toLowerCase()) || legacyStarterIds.contains(p.id));
 
-            final currentAdded = state.where((p) => !CuratedPlaylists.all.any((c) => c.id == p.id)).toList();
-            final merged = <SpotifyPlaylist>[...currentAdded];
+            final merged = <SpotifyPlaylist>[...state];
             for (final p in loaded) {
               if (!merged.any((existing) => existing.id == p.id)) {
                 merged.add(p);
               }
             }
-            final existingIds = merged.map((p) => p.id).toSet();
-            final missingCurated = CuratedPlaylists.all.where((c) => !existingIds.contains(c.id)).toList();
-            state = [...merged, ...missingCurated];
+            state = merged;
             await _saveToLocalPrefs();
-            return;
           }
         }
       }
-      if (state.isEmpty) {
-        state = CuratedPlaylists.all;
-      }
-      await _saveToLocalPrefs();
     } catch (e, st) {
       developer.log('Error loading playlists from local prefs: $e', error: e, stackTrace: st, name: 'PlaylistStore');
     }
@@ -185,7 +187,7 @@ class ImportedPlaylistsNotifier extends StateNotifier<List<SpotifyPlaylist>> {
               bool modified = false;
               for (final sp in serverPlaylists) {
                 final idx = merged.indexWhere((p) => p.id == sp.id);
-                if (idx == -1) {
+                if (idx == -1 && !legacyStarterIds.contains(sp.id)) {
                   merged.insert(0, sp);
                   modified = true;
                 }
@@ -197,9 +199,8 @@ class ImportedPlaylistsNotifier extends StateNotifier<List<SpotifyPlaylist>> {
               return;
             }
           }
-          final customPlaylists = state.where((p) => !CuratedPlaylists.all.any((c) => c.id == p.id)).toList();
-          if (customPlaylists.isNotEmpty) {
-            await _saveToServer(customPlaylists);
+          if (state.isNotEmpty) {
+            await _saveToServer(state);
           }
           return;
         }
@@ -249,16 +250,14 @@ class ImportedPlaylistsNotifier extends StateNotifier<List<SpotifyPlaylist>> {
     ];
     await _saveToLocalPrefs();
 
-    final customPlaylists = state.where((p) => !CuratedPlaylists.all.any((c) => c.id == p.id)).toList();
-    _saveToServer(customPlaylists);
+    _saveToServer(state);
   }
 
   Future<void> removePlaylist(String playlistId) async {
     state = state.where((p) => p.id != playlistId).toList();
     await _saveToLocalPrefs();
 
-    final customPlaylists = state.where((p) => !CuratedPlaylists.all.any((c) => c.id == p.id)).toList();
-    _saveToServer(customPlaylists);
+    _saveToServer(state);
   }
 
   @override
