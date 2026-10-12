@@ -1,5 +1,23 @@
 import 'match_index_stub.dart' if (dart.library.io) 'match_index_io.dart' as impl;
 
+/// How a match was found.
+enum MatchSource {
+  /// YouTube Music's song search: the album recording.
+  songSearch('s'),
+
+  /// The track came with its YouTube video (e.g. a YouTube playlist).
+  videoId('i'),
+
+  /// Scored general YouTube search, after song search found nothing.
+  scoredSearch('f');
+
+  const MatchSource(this.code);
+  final String code;
+
+  static MatchSource? fromCode(Object? code) =>
+      MatchSource.values.where((s) => s.code == code).firstOrNull;
+}
+
 /// What a track resolved to: the YouTube video, plus (while still valid) the
 /// stream link itself, so a replay within a few hours needs no yt-dlp run.
 class MatchEntry {
@@ -9,7 +27,15 @@ class MatchEntry {
   final int? durationMs;
   final String? container;
 
-  const MatchEntry(this.videoId, {this.url, this.expiresAt, this.durationMs, this.container});
+  /// Null for matches saved before sources were recorded. Some of those came
+  /// from a fallback search while yt-dlp couldn't start on Android, so they
+  /// are checked against song search once before being trusted.
+  final MatchSource? source;
+
+  const MatchEntry(this.videoId, {this.url, this.expiresAt, this.durationMs, this.container, this.source});
+
+  /// Settled: found by a search that knew about song search, or given.
+  bool get isTrusted => source != null;
 
   /// Safety margin so a link never expires mid-song.
   static const expiryMargin = Duration(minutes: 20);
@@ -17,7 +43,7 @@ class MatchEntry {
   bool get hasFreshLink =>
       url != null && expiresAt != null && expiresAt!.isAfter(DateTime.now().add(expiryMargin));
 
-  MatchEntry withoutLink() => MatchEntry(videoId);
+  MatchEntry withoutLink() => MatchEntry(videoId, source: source);
 
   Map<String, dynamic> toJson() => {
         'v': videoId,
@@ -25,6 +51,7 @@ class MatchEntry {
         if (expiresAt != null) 'e': expiresAt!.millisecondsSinceEpoch ~/ 1000,
         if (durationMs != null) 'd': durationMs,
         if (container != null) 'c': container,
+        if (source != null) 'm': source!.code,
       };
 
   /// Accepts the compact map form, or a bare video id (older files).
@@ -40,6 +67,7 @@ class MatchEntry {
       expiresAt: e is int ? DateTime.fromMillisecondsSinceEpoch(e * 1000) : null,
       durationMs: json['d'] is int ? json['d'] as int : null,
       container: json['c'] as String?,
+      source: MatchSource.fromCode(json['m']),
     );
   }
 

@@ -12,6 +12,12 @@ import 'local_track_store.dart';
 /// `AudioStreamResolverService.resolveBestAudioStream`.
 typedef RemoteStreamResolver = Future<ResolvedAudioStream> Function(Track track);
 
+/// Given a download's track and the video it was made from, returns the
+/// right recording's stream when it was the wrong one, or null. Throws when
+/// it can't tell right now. Normally
+/// `AudioStreamResolverService.checkDownloadedMatch`.
+typedef DownloadMatchCheck = Future<ResolvedAudioStream?> Function(Track track, String downloadedVideoId);
+
 /// Reports bytes received so far and the total if the server sent one.
 typedef DownloadProgressCallback = void Function(int received, int? total);
 
@@ -20,15 +26,18 @@ typedef DownloadProgressCallback = void Function(int received, int? total);
 class OfflineDownloadService {
   OfflineDownloadService({
     required RemoteStreamResolver resolve,
+    DownloadMatchCheck? checkMatch,
     LocalTrackStore? store,
     http.Client? httpClient,
     this.headerTimeout = const Duration(seconds: 20),
     this.stallTimeout = const Duration(seconds: 30),
   })  : _resolve = resolve,
+        _checkMatch = checkMatch,
         _store = store ?? LocalTrackStore.platform(),
         _client = httpClient ?? http.Client();
 
   final RemoteStreamResolver _resolve;
+  final DownloadMatchCheck? _checkMatch;
   final LocalTrackStore _store;
   final http.Client _client;
 
@@ -66,6 +75,10 @@ class OfflineDownloadService {
       if (local != null) return local;
     }
 
+    return _save(track, stream, onProgress);
+  }
+
+  Future<LocalTrackEntry> _save(Track track, ResolvedAudioStream stream, DownloadProgressCallback? onProgress) async {
     // Ranged chunks: YouTube throttles one long GET to roughly playback speed.
     final body = chunkedDownload(
       _client,
@@ -87,6 +100,37 @@ class OfflineDownloadService {
       name: 'OfflineDownload',
     );
     return entry;
+  }
+
+  /// Checks each download whose match was never checked and re-downloads
+  /// the ones that turn out to be a different recording. The old file stays
+  /// until its replacement is complete. One at a time; stops at the first
+  /// download it can't check (offline, no song search) to retry later.
+  /// [trackFor] supplies the library's track (with its real length) for an
+  /// entry. Returns how many downloads were replaced.
+  Future<int> recheckDownloads({Track? Function(LocalTrackEntry entry)? trackFor}) async {
+    final check = _checkMatch;
+    if (check == null || !isSupported) return 0;
+    var replaced = 0;
+    for (final entry in await _store.entries()) {
+      if (entry.sourceVideoId.isEmpty) continue;
+      final track = trackFor?.call(entry) ?? Track(id: entry.trackId, title: entry.title, artist: entry.artist);
+      final ResolvedAudioStream? right;
+      try {
+        right = await check(track, entry.sourceVideoId);
+      } catch (e) {
+        developer.log('Download check paused at "${entry.title}": $e', name: 'OfflineDownload');
+        break;
+      }
+      if (right == null) continue;
+      try {
+        await _save(track, right, null);
+        replaced++;
+      } catch (e) {
+        developer.log('Could not replace the download of "${entry.title}": $e', name: 'OfflineDownload');
+      }
+    }
+    return replaced;
   }
 
   /// Removes [track] from the device; returns bytes freed.

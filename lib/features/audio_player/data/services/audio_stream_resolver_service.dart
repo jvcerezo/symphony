@@ -163,7 +163,8 @@ class AudioStreamResolverService {
     final cached = getCachedStream(track);
     if (cached != null && !_isExpired(cached)) return true;
     if (_isWeb) return false;
-    return (await _matchIndex.lookup(_normKey(track)))?.hasFreshLink ?? false;
+    final remembered = await _matchIndex.lookup(_normKey(track));
+    return remembered != null && remembered.isTrusted && remembered.hasFreshLink;
   }
 
   static bool _isExpired(ResolvedAudioStream stream) {
@@ -293,7 +294,7 @@ class AudioStreamResolverService {
     final remembered = await _matchIndex.lookup(matchKey);
 
     // 0. A still-valid stream link from an earlier resolve: no yt-dlp at all.
-    if (remembered != null && remembered.hasFreshLink) {
+    if (remembered != null && remembered.isTrusted && remembered.hasFreshLink) {
       developer.log('Fresh remembered link for "${track.title}"', name: 'AudioStreamResolver');
       return ResolvedAudioStream(
         streamUri: remembered.url!,
@@ -310,23 +311,30 @@ class AudioStreamResolverService {
     if (knownVideoId != null) {
       try {
         final resolved = await _extractOnDevice(knownVideoId, fallbackDuration: track.expectedDuration);
-        await _rememberResolved(matchKey, resolved);
+        await _rememberResolved(matchKey, resolved, MatchSource.videoId);
         return resolved;
       } catch (e) {
         developer.log('On-device extraction failed for $knownVideoId: $e', name: 'AudioStreamResolver');
       }
     }
 
-    // 2. A video this track matched before (survives app restarts and cache eviction)
-    if (remembered != null) {
+    // 2. A video this track matched before (survives app restarts and cache
+    //    eviction). Older saves go through song search first, once.
+    Future<ResolvedAudioStream?> replayRemembered(MatchEntry entry) async {
       try {
-        final resolved = await _extractOnDevice(remembered.videoId, fallbackDuration: track.expectedDuration);
-        await _rememberResolved(matchKey, resolved);
+        final resolved = await _extractOnDevice(entry.videoId, fallbackDuration: track.expectedDuration);
+        await _rememberResolved(matchKey, resolved, entry.source ?? MatchSource.scoredSearch);
         return resolved;
       } catch (e) {
-        developer.log('Remembered match ${remembered.videoId} failed, searching again: $e', name: 'AudioStreamResolver');
+        developer.log('Remembered match ${entry.videoId} failed, searching again: $e', name: 'AudioStreamResolver');
         await _matchIndex.forget(matchKey);
+        return null;
       }
+    }
+
+    if (remembered != null && remembered.isTrusted) {
+      final resolved = await replayRemembered(remembered);
+      if (resolved != null) return resolved;
     }
 
     final cleanTitle = _cleanSongTitle(track.title);
@@ -335,27 +343,25 @@ class AudioStreamResolverService {
     // 3. YouTube Music song search: canonical album audio (lengths match the
     //    streaming services) found and extracted in a single yt-dlp run.
     try {
-      final song = await _extractor.searchSong('$cleanArtist $cleanTitle');
-      final expectedSec = track.expectedDuration?.inSeconds;
-      if (song.videoId != null &&
-          isAcceptableSongMatch(
-            resultTitle: song.title ?? '',
-            resultDurationSec: song.duration?.inSeconds,
-            targetTitle: cleanTitle,
-            expectedSec: expectedSec != null && expectedSec > 0 ? expectedSec : null,
-          )) {
-        final resolved = _toResolved(song, song.videoId!, fallbackDuration: track.expectedDuration);
-        await _rememberResolved(matchKey, resolved);
+      final resolved = await _searchSongMatch(track);
+      if (resolved != null) {
+        if (remembered != null && remembered.videoId != resolved.sourceVideoId) {
+          developer.log('Replacing old match ${remembered.videoId} for "${track.title}" with ${resolved.sourceVideoId}',
+              name: 'AudioStreamResolver');
+        }
+        await _rememberResolved(matchKey, resolved, MatchSource.songSearch);
         return resolved;
       }
-      developer.log(
-        'Song search result rejected for "$cleanArtist - $cleanTitle": "${song.title}" (${song.duration?.inSeconds}s vs $expectedSec s)',
-        name: 'AudioStreamResolver',
-      );
     } on UnsupportedError {
       // No song search on this extractor chain; fall through.
     } catch (e) {
       developer.log('Song search failed for "$cleanArtist - $cleanTitle": $e', name: 'AudioStreamResolver');
+    }
+
+    // An older save that song search couldn't improve on: keep it.
+    if (remembered != null && !remembered.isTrusted) {
+      final resolved = await replayRemembered(remembered);
+      if (resolved != null) return resolved;
     }
 
     // 4. Search YouTube on-device, score candidates, extract the best match
@@ -410,7 +416,7 @@ class AudioStreamResolverService {
               candidate.id.value,
               fallbackDuration: candidate.duration ?? track.expectedDuration,
             );
-            await _rememberResolved(matchKey, resolved);
+            await _rememberResolved(matchKey, resolved, MatchSource.scoredSearch);
             developer.log(
               'Resolved on-device via ${_extractor.name}: ${candidate.id.value} [${resolved.bitrateKbps} kbps, ${resolved.format}, score: ${scored.score}]',
               name: 'AudioStreamResolver',
@@ -431,6 +437,54 @@ class AudioStreamResolverService {
     );
   }
 
+  /// YouTube Music song search for [track]: its album recording, already
+  /// extracted, or null when the top result isn't it. Throws when the search
+  /// can't run (no song search on this platform, offline).
+  Future<ResolvedAudioStream?> _searchSongMatch(Track track) async {
+    final cleanTitle = _cleanSongTitle(track.title);
+    final cleanArtist = _cleanSongArtist(track.artist);
+    final song = await _extractor.searchSong('$cleanArtist $cleanTitle');
+    final expectedSec = track.expectedDuration?.inSeconds;
+    if (song.videoId != null &&
+        isAcceptableSongMatch(
+          resultTitle: song.title ?? '',
+          resultDurationSec: song.duration?.inSeconds,
+          targetTitle: cleanTitle,
+          expectedSec: expectedSec != null && expectedSec > 0 ? expectedSec : null,
+        )) {
+      return _toResolved(song, song.videoId!, fallbackDuration: track.expectedDuration);
+    }
+    developer.log(
+      'Song search result rejected for "$cleanArtist - $cleanTitle": "${song.title}" (${song.duration?.inSeconds}s vs $expectedSec s)',
+      name: 'AudioStreamResolver',
+    );
+    return null;
+  }
+
+  /// Checks a download made from [downloadedVideoId] against song search,
+  /// once, when that match was never checked. Returns the right recording's
+  /// stream when the download is a different one; null when it's fine.
+  /// Throws when it can't check now (offline, no song search), so the
+  /// caller can try again another time.
+  Future<ResolvedAudioStream?> checkDownloadedMatch(Track track, String downloadedVideoId) async {
+    if (_isWeb || downloadedVideoId.isEmpty) return null;
+    if (await isSettledMatch(track, downloadedVideoId)) return null;
+    final key = _normKey(track);
+    final found = await _searchSongMatch(track);
+    if (found == null || found.sourceVideoId == downloadedVideoId) {
+      // Nothing better to offer: the download stands.
+      await _matchIndex.remember(
+        key,
+        MatchEntry(downloadedVideoId, source: found == null ? MatchSource.scoredSearch : MatchSource.songSearch),
+      );
+      return null;
+    }
+    developer.log('Download of "${track.title}" was $downloadedVideoId; the song is ${found.sourceVideoId}',
+        name: 'AudioStreamResolver');
+    await _rememberResolved(key, found, MatchSource.songSearch);
+    return found;
+  }
+
   Future<ResolvedAudioStream> _extractOnDevice(String videoId, {Duration? fallbackDuration}) async =>
       _toResolved(await _extractor.extract(videoId), videoId, fallbackDuration: fallbackDuration);
 
@@ -446,7 +500,7 @@ class AudioStreamResolverService {
   }
 
   /// Remembers the video and, while it is valid, the stream link itself.
-  Future<void> _rememberResolved(String key, ResolvedAudioStream resolved) => _matchIndex.remember(
+  Future<void> _rememberResolved(String key, ResolvedAudioStream resolved, MatchSource source) => _matchIndex.remember(
         key,
         MatchEntry(
           resolved.sourceVideoId,
@@ -454,8 +508,19 @@ class AudioStreamResolverService {
           expiresAt: MatchEntry.expiryOf(resolved.streamUri),
           durationMs: resolved.duration > Duration.zero ? resolved.duration.inMilliseconds : null,
           container: resolved.format,
+          source: source,
         ),
       );
+
+  /// Whether a saved audio copy made from [videoId] is still [track]'s
+  /// settled match. A copy of an older, unchecked or replaced match isn't,
+  /// so the track is matched again rather than replaying the wrong song.
+  Future<bool> isSettledMatch(Track track, String videoId) async {
+    if (videoId.isEmpty) return false;
+    if (track.id == 'yt_$videoId') return true;
+    final entry = await _matchIndex.lookup(_normKey(track));
+    return entry != null && entry.isTrusted && entry.videoId == videoId;
+  }
 
   /// Drops every cached entry for [track] so the next resolve starts fresh
   /// (stream URLs expire, and a URL that failed to load should not be reused).
@@ -719,6 +784,8 @@ class AudioStreamResolverService {
     for (final rf in redFlags) {
       if (vTitle.contains(rf) || vAuthor.contains(rf)) return -9999;
     }
+    // Retuned uploads ("432 Hz", "528hz"): same title and length, wrong pitch.
+    if (RegExp(r'\b\d{3}\s?hz\b').hasMatch(vTitle) && !RegExp(r'\b\d{3}\s?hz\b').hasMatch(tTitle)) return -9999;
 
     int score = 0;
 

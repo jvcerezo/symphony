@@ -96,7 +96,7 @@ void main() {
     test('a remembered match skips searching entirely', () async {
       final ex = _FakeExtractor();
       final index = MemoryMatchIndex();
-      await index.remember('eden - sex', const MatchEntry('dNNf9rJMt8E'));
+      await index.remember('eden - sex', const MatchEntry('dNNf9rJMt8E', source: MatchSource.songSearch));
       final r = _resolver(ex, index);
       addTearDown(r.dispose);
 
@@ -116,7 +116,7 @@ void main() {
       final ex = _FakeExtractor();
       final index = MemoryMatchIndex();
       final url = link(DateTime.now().add(const Duration(hours: 5)));
-      await index.remember('eden - sex', MatchEntry('dNNf9rJMt8E', url: url, expiresAt: MatchEntry.expiryOf(url), durationMs: 219000));
+      await index.remember('eden - sex', MatchEntry('dNNf9rJMt8E', url: url, expiresAt: MatchEntry.expiryOf(url), durationMs: 219000, source: MatchSource.songSearch));
       final r = _resolver(ex, index);
       addTearDown(r.dispose);
 
@@ -133,7 +133,7 @@ void main() {
       final ex = _FakeExtractor();
       final index = MemoryMatchIndex();
       final url = link(DateTime.now().add(const Duration(minutes: 5)));
-      await index.remember('eden - sex', MatchEntry('dNNf9rJMt8E', url: url, expiresAt: MatchEntry.expiryOf(url)));
+      await index.remember('eden - sex', MatchEntry('dNNf9rJMt8E', url: url, expiresAt: MatchEntry.expiryOf(url), source: MatchSource.songSearch));
       final r = _resolver(ex, index);
       addTearDown(r.dispose);
 
@@ -148,7 +148,7 @@ void main() {
       final ex = _FakeExtractor();
       final index = MemoryMatchIndex();
       final url = link(DateTime.now().add(const Duration(hours: 5)));
-      await index.remember('eden - sex', MatchEntry('dNNf9rJMt8E', url: url, expiresAt: MatchEntry.expiryOf(url)));
+      await index.remember('eden - sex', MatchEntry('dNNf9rJMt8E', url: url, expiresAt: MatchEntry.expiryOf(url), source: MatchSource.songSearch));
       final r = _resolver(ex, index);
       addTearDown(r.dispose);
 
@@ -170,8 +170,8 @@ void main() {
     test('resolves queued tracks in the background and skips ready ones', () async {
       final ex = _FakeExtractor();
       final index = MemoryMatchIndex();
-      await index.remember('eden - sex', const MatchEntry('dNNf9rJMt8E'));
-      await index.remember('eden - start', const MatchEntry('startaaaaaa'));
+      await index.remember('eden - sex', const MatchEntry('dNNf9rJMt8E', source: MatchSource.songSearch));
+      await index.remember('eden - start', const MatchEntry('startaaaaaa', source: MatchSource.songSearch));
       final r = _resolver(ex, index);
       addTearDown(r.dispose);
       const start = Track(id: 'spotify:track:start', title: 'start', artist: 'EDEN', expectedDuration: Duration(seconds: 219));
@@ -199,6 +199,67 @@ void main() {
     test('an acoustic version loses to the album track', () {
       int s(String t, int d) => score(t, 'The Walters', d, target: 'I Love You So', artist: 'The Walters', exp: 160);
       expect(s('The Walters -- I Love You So', 161), greaterThan(s('The Walters - I Love You So Acoustic [Official Audio]', 148)));
+    });
+
+    test('retuned "432 Hz" uploads are never picked', () {
+      int s(String t) => score(t, 'Spirituaholic', 226, target: 'Sincerity Is Scary', artist: 'The 1975', exp: 225);
+      expect(s('The 1975 - Sincerity Is Scary (432 Hz)'), -9999);
+      expect(s('The 1975 - Sincerity Is Scary'), greaterThan(0));
+    });
+  });
+
+  group('matches saved before sources were recorded', () {
+    const sincerity = Track(
+        id: 'spotify:track:sis', title: 'Sincerity Is Scary', artist: 'The 1975', expectedDuration: Duration(seconds: 225));
+    const key = 'the 1975 - sincerity is scary';
+    final albumTrack = ExtractedAudio(
+      url: Uri.parse('https://media.example/NF07HNKVQd0'),
+      container: 'm4a',
+      duration: const Duration(seconds: 225),
+      videoId: 'NF07HNKVQd0',
+      title: 'Sincerity Is Scary',
+    );
+
+    test('are replaced by the song search result', () async {
+      final ex = _FakeExtractor(song: albumTrack);
+      final index = MemoryMatchIndex();
+      final url = Uri.parse('https://rr1---sn.googlevideo.com/videoplayback?expire=${DateTime.now().add(const Duration(hours: 5)).millisecondsSinceEpoch ~/ 1000}');
+      await index.remember(key, MatchEntry('lyricvideo1', url: url, expiresAt: MatchEntry.expiryOf(url)));
+      final r = _resolver(ex, index);
+      addTearDown(r.dispose);
+
+      expect(await r.hasInstantSource(sincerity), isFalse);
+      final resolved = await r.resolveBestAudioStream(sincerity);
+
+      expect(resolved.sourceVideoId, 'NF07HNKVQd0');
+      final saved = await index.lookup(key);
+      expect(saved?.videoId, 'NF07HNKVQd0');
+      expect(saved?.source, MatchSource.songSearch);
+      expect(await r.isSettledMatch(sincerity, 'lyricvideo1'), isFalse);
+      expect(await r.isSettledMatch(sincerity, 'NF07HNKVQd0'), isTrue);
+    });
+
+    test('are kept, and settled, when song search finds nothing better', () async {
+      final ex = _FakeExtractor();
+      final index = MemoryMatchIndex();
+      await index.remember(key, const MatchEntry('olduploadaa'));
+      final r = _resolver(ex, index);
+      addTearDown(r.dispose);
+
+      expect(await r.isSettledMatch(sincerity, 'olduploadaa'), isFalse);
+      final resolved = await r.resolveBestAudioStream(sincerity);
+
+      expect(ex.searched, isNotEmpty);
+      expect(resolved.sourceVideoId, 'olduploadaa');
+      expect((await index.lookup(key))?.source, MatchSource.scoredSearch);
+      expect(await r.isSettledMatch(sincerity, 'olduploadaa'), isTrue);
+    });
+
+    test('the source survives saving and loading', () {
+      final entry = MatchEntry.fromJson(const MatchEntry('abc', source: MatchSource.songSearch).toJson());
+      expect(entry?.source, MatchSource.songSearch);
+      expect(MatchEntry.fromJson({'v': 'abc'})?.isTrusted, isFalse);
+      expect(entry?.withoutLink().source, MatchSource.songSearch);
     });
   });
 }

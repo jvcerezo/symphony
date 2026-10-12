@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as developer;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
@@ -95,6 +97,19 @@ class OfflineManagerNotifier extends StateNotifier<OfflineState> {
   }
 
   bool get _useDevice => _deviceDownloads?.isSupported ?? false;
+
+  /// Swaps in the right recording for downloads made from a wrong match (see
+  /// [OfflineDownloadService.recheckDownloads]); [library] gives each
+  /// download's track with its real length.
+  Future<void> recheckDownloads(List<SpotifyPlaylist> Function() library) async {
+    if (!_useDevice) return;
+    final byId = {
+      for (final p in library())
+        for (final t in p.tracks) t.id: t,
+    };
+    final replaced = await _deviceDownloads!.recheckDownloads(trackFor: (e) => byId[e.trackId]);
+    if (replaced > 0 && mounted) await refreshOfflineStatus();
+  }
 
   /// Bytes used by on-device downloads (0 on web / server-cache mode).
   Future<int> deviceStorageBytes() async => _useDevice ? _deviceDownloads!.totalBytes() : 0;
@@ -386,6 +401,20 @@ final offlineProvider = StateNotifierProvider<OfflineManagerNotifier, OfflineSta
         : OfflineDownloadService(
             // Share the player's resolver (and its in-memory cache).
             resolve: (track) => ref.read(audioHandlerProvider).streamResolver.resolveBestAudioStream(track),
+            checkMatch: (track, videoId) =>
+                ref.read(audioHandlerProvider).streamResolver.checkDownloadedMatch(track, videoId),
           ),
   );
 });
+
+/// Native app start (from `main.dart`): rechecks downloads once, after
+/// startup has settled.
+void scheduleDownloadRecheck(ProviderContainer container) {
+  if (kIsWeb) return;
+  Timer(const Duration(seconds: 20), () {
+    unawaited(container
+        .read(offlineProvider.notifier)
+        .recheckDownloads(() => container.read(importedPlaylistsProvider))
+        .catchError((Object e) => developer.log('Download recheck failed: $e', name: 'Offline')));
+  });
+}
