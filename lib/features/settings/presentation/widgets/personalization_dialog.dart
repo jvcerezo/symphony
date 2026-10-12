@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/services/app_update_service.dart';
@@ -5,6 +6,7 @@ import '../../../../core/theme/symphony_theme.dart';
 import '../../../../core/widgets/app_update_dialog.dart';
 import '../../../../core/widgets/symphony_brand_logo.dart';
 import '../../../audio_player/presentation/controllers/audio_player_providers.dart';
+import '../controllers/desktop_settings_provider.dart';
 import '../controllers/personalization_provider.dart';
 
 class PersonalizationDialog extends ConsumerStatefulWidget {
@@ -218,6 +220,23 @@ class _PersonalizationDialogState extends ConsumerState<PersonalizationDialog> {
               const SizedBox(height: 8),
               _buildUpdateSection(context, ref, accent),
               const SizedBox(height: 18),
+              if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) ...[
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: ref.watch(closeToTrayProvider),
+                  onChanged: (v) => ref.read(closeToTrayProvider.notifier).state = v,
+                  activeThumbColor: accent.primary,
+                  title: const Text(
+                    'Keep playing in the background',
+                    style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: const Text(
+                    'Closing the window hides Symphony to the system tray. Quit from the tray icon.',
+                    style: TextStyle(color: SymphonyTheme.textSecondary, fontSize: 12),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
 
               // Save Button
               const SizedBox(height: 8),

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -6,6 +7,8 @@ import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 import 'core/config/feature_flags.dart';
 import 'core/services/app_prefs.dart';
 import 'core/services/legacy_data_migration.dart';
+import 'core/services/windows_shortcuts.dart';
+import 'core/services/windows_tray.dart';
 import 'core/theme/symphony_theme.dart';
 import 'features/audio_player/data/services/extraction/windows_ytdlp_extractor.dart';
 import 'features/audio_player/data/services/extraction/ytdlp_update_scheduler.dart';
@@ -14,6 +17,7 @@ import 'features/audio_player/presentation/controllers/audio_player_providers.da
 import 'features/audio_player/presentation/views/symphony_player_screen.dart';
 import 'features/landing/presentation/views/symphony_landing_page.dart';
 import 'features/onboarding/presentation/onboarding_screen.dart';
+import 'features/settings/presentation/controllers/desktop_settings_provider.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -48,6 +52,7 @@ Future<void> main() async {
       overrides: [
         audioHandlerProvider.overrideWithValue(audioHandler),
         accentThemeProvider.overrideWith((ref) => startup.accent),
+        closeToTrayProvider.overrideWith((ref) => startup.closeToTray),
         // The walkthrough is for the installed apps; web opens as before.
         onboardingCompleteProvider.overrideWith((ref) => kIsWeb || startup.onboardingDone),
       ],
@@ -58,6 +63,8 @@ Future<void> main() async {
   // Keep the bundled yt-dlp current (YouTube changes often). Background,
   // at most once a day; playback never waits on it.
   if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
+    unawaited(initWindowsTray(handler: audioHandler, closeToTray: startup.closeToTray));
+    unawaited(ensureWindowsShortcuts());
     final ytDlp = WindowsYtDlpExtractor();
     YtDlpUpdateScheduler(isAvailable: ytDlp.isAvailable, update: ytDlp.update).scheduleAfterStart();
   }
@@ -71,6 +78,10 @@ class SymphonyApp extends ConsumerWidget {
     // Keep the chosen accent across launches, wherever it was picked.
     ref.listen(accentThemeProvider, (prev, next) {
       if (prev?.id != next.id) AppPrefs.saveAccent(next);
+    });
+    ref.listen(closeToTrayProvider, (prev, next) {
+      setCloseToTray(next);
+      AppPrefs.saveCloseToTray(next);
     });
 
     Widget initialHome;

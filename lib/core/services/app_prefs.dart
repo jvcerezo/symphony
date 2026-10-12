@@ -7,6 +7,7 @@ import '../theme/symphony_theme.dart';
 class AppPrefs {
   static const _onboardingDoneKey = 'symphony_onboarding_done';
   static const _accentKey = 'symphony_accent_id';
+  static const _closeToTrayKey = 'symphony_close_to_tray';
 
   /// Saved by every earlier build that ran, so their users skip onboarding.
   static const _legacyMarkers = ['symphony_user_playlists', 'symphony_user_name'];
@@ -14,7 +15,10 @@ class AppPrefs {
   final bool onboardingDone;
   final SymphonyAccent accent;
 
-  const AppPrefs({required this.onboardingDone, required this.accent});
+  /// Windows: the close button hides to the tray instead of quitting.
+  final bool closeToTray;
+
+  const AppPrefs({required this.onboardingDone, required this.accent, this.closeToTray = true});
 
   static Future<AppPrefs> load() async {
     try {
@@ -25,7 +29,11 @@ class AppPrefs {
         (a) => a.id == accentId,
         orElse: () => SymphonyTheme.monochrome,
       );
-      return AppPrefs(onboardingDone: done, accent: accent);
+      return AppPrefs(
+        onboardingDone: done,
+        accent: accent,
+        closeToTray: prefs.getBool(_closeToTrayKey) ?? true,
+      );
     } catch (e) {
       developer.log('Could not read startup settings: $e', name: 'AppPrefs');
       return const AppPrefs(onboardingDone: true, accent: SymphonyTheme.monochrome);
@@ -35,6 +43,8 @@ class AppPrefs {
   static Future<void> setOnboardingDone() => _write((p) => p.setBool(_onboardingDoneKey, true));
 
   static Future<void> saveAccent(SymphonyAccent accent) => _write((p) => p.setString(_accentKey, accent.id));
+
+  static Future<void> saveCloseToTray(bool value) => _write((p) => p.setBool(_closeToTrayKey, value));
 
   static Future<void> _write(Future<bool> Function(SharedPreferences prefs) op) async {
     try {
