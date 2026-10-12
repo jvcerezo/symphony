@@ -343,27 +343,15 @@ class AudioStreamResolverService {
     // 3. YouTube Music song search: canonical album audio (lengths match the
     //    streaming services) found and extracted in a single yt-dlp run.
     try {
-      final song = await _extractor.searchSong('$cleanArtist $cleanTitle');
-      final expectedSec = track.expectedDuration?.inSeconds;
-      if (song.videoId != null &&
-          isAcceptableSongMatch(
-            resultTitle: song.title ?? '',
-            resultDurationSec: song.duration?.inSeconds,
-            targetTitle: cleanTitle,
-            expectedSec: expectedSec != null && expectedSec > 0 ? expectedSec : null,
-          )) {
-        final resolved = _toResolved(song, song.videoId!, fallbackDuration: track.expectedDuration);
-        if (remembered != null && remembered.videoId != song.videoId) {
-          developer.log('Replacing old match ${remembered.videoId} for "${track.title}" with ${song.videoId}',
+      final resolved = await _searchSongMatch(track);
+      if (resolved != null) {
+        if (remembered != null && remembered.videoId != resolved.sourceVideoId) {
+          developer.log('Replacing old match ${remembered.videoId} for "${track.title}" with ${resolved.sourceVideoId}',
               name: 'AudioStreamResolver');
         }
         await _rememberResolved(matchKey, resolved, MatchSource.songSearch);
         return resolved;
       }
-      developer.log(
-        'Song search result rejected for "$cleanArtist - $cleanTitle": "${song.title}" (${song.duration?.inSeconds}s vs $expectedSec s)',
-        name: 'AudioStreamResolver',
-      );
     } on UnsupportedError {
       // No song search on this extractor chain; fall through.
     } catch (e) {
@@ -447,6 +435,54 @@ class AudioStreamResolverService {
     throw AudioStreamResolutionException(
       'Could not resolve a playable audio stream for "${track.title}" by "${track.artist}"',
     );
+  }
+
+  /// YouTube Music song search for [track]: its album recording, already
+  /// extracted, or null when the top result isn't it. Throws when the search
+  /// can't run (no song search on this platform, offline).
+  Future<ResolvedAudioStream?> _searchSongMatch(Track track) async {
+    final cleanTitle = _cleanSongTitle(track.title);
+    final cleanArtist = _cleanSongArtist(track.artist);
+    final song = await _extractor.searchSong('$cleanArtist $cleanTitle');
+    final expectedSec = track.expectedDuration?.inSeconds;
+    if (song.videoId != null &&
+        isAcceptableSongMatch(
+          resultTitle: song.title ?? '',
+          resultDurationSec: song.duration?.inSeconds,
+          targetTitle: cleanTitle,
+          expectedSec: expectedSec != null && expectedSec > 0 ? expectedSec : null,
+        )) {
+      return _toResolved(song, song.videoId!, fallbackDuration: track.expectedDuration);
+    }
+    developer.log(
+      'Song search result rejected for "$cleanArtist - $cleanTitle": "${song.title}" (${song.duration?.inSeconds}s vs $expectedSec s)',
+      name: 'AudioStreamResolver',
+    );
+    return null;
+  }
+
+  /// Checks a download made from [downloadedVideoId] against song search,
+  /// once, when that match was never checked. Returns the right recording's
+  /// stream when the download is a different one; null when it's fine.
+  /// Throws when it can't check now (offline, no song search), so the
+  /// caller can try again another time.
+  Future<ResolvedAudioStream?> checkDownloadedMatch(Track track, String downloadedVideoId) async {
+    if (_isWeb || downloadedVideoId.isEmpty) return null;
+    if (await isSettledMatch(track, downloadedVideoId)) return null;
+    final key = _normKey(track);
+    final found = await _searchSongMatch(track);
+    if (found == null || found.sourceVideoId == downloadedVideoId) {
+      // Nothing better to offer: the download stands.
+      await _matchIndex.remember(
+        key,
+        MatchEntry(downloadedVideoId, source: found == null ? MatchSource.scoredSearch : MatchSource.songSearch),
+      );
+      return null;
+    }
+    developer.log('Download of "${track.title}" was $downloadedVideoId; the song is ${found.sourceVideoId}',
+        name: 'AudioStreamResolver');
+    await _rememberResolved(key, found, MatchSource.songSearch);
+    return found;
   }
 
   Future<ResolvedAudioStream> _extractOnDevice(String videoId, {Duration? fallbackDuration}) async =>

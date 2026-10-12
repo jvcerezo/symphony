@@ -15,6 +15,7 @@ import 'features/audio_player/data/services/extraction/windows_ytdlp_extractor.d
 import 'features/audio_player/data/services/extraction/ytdlp_update_scheduler.dart';
 import 'features/audio_player/data/services/symphony_audio_handler.dart';
 import 'features/audio_player/presentation/controllers/audio_player_providers.dart';
+import 'features/audio_player/presentation/controllers/offline_provider.dart';
 import 'features/audio_player/presentation/views/symphony_player_screen.dart';
 import 'features/landing/presentation/views/symphony_landing_page.dart';
 import 'features/onboarding/presentation/onboarding_screen.dart';
@@ -48,19 +49,20 @@ Future<void> main() async {
     ),
   );
 
-  runApp(
-    ProviderScope(
-      overrides: [
-        audioHandlerProvider.overrideWithValue(audioHandler),
-        accentThemeProvider.overrideWith((ref) => startup.accent),
-        closeToTrayProvider.overrideWith((ref) => startup.closeToTray),
-        discordPresenceProvider.overrideWith((ref) => startup.discordPresence),
-        // The walkthrough is for the installed apps; web opens as before.
-        onboardingCompleteProvider.overrideWith((ref) => kIsWeb || startup.onboardingDone),
-      ],
-      child: const SymphonyApp(),
-    ),
+  final container = ProviderContainer(
+    overrides: [
+      audioHandlerProvider.overrideWithValue(audioHandler),
+      accentThemeProvider.overrideWith((ref) => startup.accent),
+      closeToTrayProvider.overrideWith((ref) => startup.closeToTray),
+      discordPresenceProvider.overrideWith((ref) => startup.discordPresence),
+      // The walkthrough is for the installed apps; web opens as before.
+      onboardingCompleteProvider.overrideWith((ref) => kIsWeb || startup.onboardingDone),
+    ],
   );
+  runApp(UncontrolledProviderScope(container: container, child: const SymphonyApp()));
+
+  // Downloads made from a wrong match get the right recording.
+  scheduleDownloadRecheck(container);
 
   // Keep the bundled yt-dlp current (YouTube changes often). Background,
   // at most once a day; playback never waits on it.
