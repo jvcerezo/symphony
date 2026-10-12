@@ -13,7 +13,9 @@ void main() {
   late SymphonyAudioHandler handler;
 
   setUp(() => handler = SymphonyAudioHandler());
-  tearDown(() => handler.release());
+  tearDown(() {
+    handler.release();
+  });
 
   Future<ProviderContainer> pumpShell(WidgetTester tester, {NowPlayingPanel? panel}) async {
     tester.view.physicalSize = const Size(1400, 900);

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 import 'core/config/feature_flags.dart';
+import 'core/services/app_prefs.dart';
 import 'core/services/legacy_data_migration.dart';
 import 'core/theme/symphony_theme.dart';
 import 'features/audio_player/data/services/extraction/windows_ytdlp_extractor.dart';
@@ -12,6 +13,7 @@ import 'features/audio_player/data/services/symphony_audio_handler.dart';
 import 'features/audio_player/presentation/controllers/audio_player_providers.dart';
 import 'features/audio_player/presentation/views/symphony_player_screen.dart';
 import 'features/landing/presentation/views/symphony_landing_page.dart';
+import 'features/onboarding/presentation/onboarding_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -26,6 +28,8 @@ Future<void> main() async {
     JustAudioMediaKit.title = 'Symphony';
     JustAudioMediaKit.ensureInitialized(linux: false, windows: true);
   }
+
+  final startup = await AppPrefs.load();
 
   // Initialize background AudioService singleton
   final audioHandler = await AudioService.init(
@@ -43,6 +47,9 @@ Future<void> main() async {
     ProviderScope(
       overrides: [
         audioHandlerProvider.overrideWithValue(audioHandler),
+        accentThemeProvider.overrideWith((ref) => startup.accent),
+        // The walkthrough is for the installed apps; web opens as before.
+        onboardingCompleteProvider.overrideWith((ref) => kIsWeb || startup.onboardingDone),
       ],
       child: const SymphonyApp(),
     ),
@@ -56,11 +63,16 @@ Future<void> main() async {
   }
 }
 
-class SymphonyApp extends StatelessWidget {
+class SymphonyApp extends ConsumerWidget {
   const SymphonyApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Keep the chosen accent across launches, wherever it was picked.
+    ref.listen(accentThemeProvider, (prev, next) {
+      if (prev?.id != next.id) AppPrefs.saveAccent(next);
+    });
+
     Widget initialHome;
     if (kIsWeb) {
       final uri = Uri.base;
@@ -73,7 +85,9 @@ class SymphonyApp extends StatelessWidget {
           ? const SymphonyPlayerScreen(isWebDemoMode: true)
           : const SymphonyLandingPage();
     } else {
-      initialHome = const SymphonyPlayerScreen();
+      initialHome = ref.watch(onboardingCompleteProvider)
+          ? const SymphonyPlayerScreen()
+          : const OnboardingScreen();
     }
 
     return MaterialApp(
