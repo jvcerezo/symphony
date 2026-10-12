@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../settings/presentation/controllers/personalization_provider.dart';
 import '../controllers/audio_player_providers.dart';
 
+typedef _Preset = ({String name, String url});
+
 class ImportPlaylistDialog extends ConsumerStatefulWidget {
   const ImportPlaylistDialog({super.key});
 
@@ -12,33 +14,38 @@ class ImportPlaylistDialog extends ConsumerStatefulWidget {
 
 class _ImportPlaylistDialogState extends ConsumerState<ImportPlaylistDialog> {
   String _selectedPlatform = 'Spotify'; // 'Spotify' | 'YouTube' | 'Apple Music'
-  late final TextEditingController _inputController;
+  final _inputController = TextEditingController();
   bool _isLoading = false;
   String? _errorMessage;
 
-  static const Map<String, String> _defaultUrls = {
-    'Spotify': 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M',
-    'YouTube': 'https://www.youtube.com/playlist?list=PL4fGSIFgk5n0vF4P4V3d9_aF80hD_lD7w',
-    'Apple Music': 'https://itunes.apple.com/us/rss/topsongs/limit=50/json',
+  static const _platforms = ['Spotify', 'YouTube', 'Apple Music'];
+
+  static const Map<String, IconData> _icons = {
+    'Spotify': Icons.album_rounded,
+    'YouTube': Icons.play_circle_outline_rounded,
+    'Apple Music': Icons.music_note_rounded,
   };
 
   static const Map<String, String> _placeholders = {
-    'Spotify': 'https://open.spotify.com/playlist/37i9dQZF1DX... or playlist ID',
-    'YouTube': 'https://www.youtube.com/playlist?list=PL4fGSIFg...',
-    'Apple Music': 'https://music.apple.com/... or iTunes chart URL',
+    'Spotify': 'open.spotify.com/playlist/…',
+    'YouTube': 'youtube.com/playlist?list=…',
+    'Apple Music': 'music.apple.com/…/playlist/…',
   };
 
-  static const Map<String, String> _inputLabels = {
-    'Spotify': 'Spotify Playlist URL or ID',
-    'YouTube': 'YouTube Playlist Link',
-    'Apple Music': 'Apple Music or iTunes Link',
+  // Checked to open on 2026-10-12.
+  static const Map<String, List<_Preset>> _presets = {
+    'Spotify': [
+      (name: "Today's Top Hits", url: 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M'),
+      (name: 'Mega Hit Mix', url: 'https://open.spotify.com/playlist/37i9dQZF1DXbYM3nMM0oPk'),
+    ],
+    'YouTube': [
+      (name: "Pop's Biggest Hits", url: 'https://www.youtube.com/playlist?list=RDCLAK5uy_nmS3YoxSwVVQk9lEQJ0UX4ZCjXsW_psU8'),
+      (name: 'The Hit List', url: 'https://www.youtube.com/playlist?list=RDCLAK5uy_kmPRjHDECIcuVwnKsx2Ng7fyNgFKWNJFs'),
+    ],
+    'Apple Music': [
+      (name: "Today's Hits", url: 'https://music.apple.com/us/playlist/todays-hits/pl.f4d106fed2bd41149aaacabb233eb5eb'),
+    ],
   };
-
-  @override
-  void initState() {
-    super.initState();
-    _inputController = TextEditingController(text: _defaultUrls['Spotify']);
-  }
 
   @override
   void dispose() {
@@ -48,21 +55,34 @@ class _ImportPlaylistDialogState extends ConsumerState<ImportPlaylistDialog> {
 
   void _onSelectPlatform(String platform) {
     if (_selectedPlatform == platform) return;
-    final currentText = _inputController.text.trim();
-    final wasTemplate = _defaultUrls.values.contains(currentText) || currentText.isEmpty;
-
     setState(() {
       _selectedPlatform = platform;
-      if (wasTemplate) {
-        _inputController.text = _defaultUrls[platform] ?? '';
-      }
+      _errorMessage = null;
+    });
+  }
+
+  /// A pasted link picks its platform, so the tabs never disagree with it.
+  void _onInputChanged(String text) {
+    final s = text.toLowerCase();
+    final detected = s.contains('spotify')
+        ? 'Spotify'
+        : s.contains('youtu')
+            ? 'YouTube'
+            : s.contains('apple.com')
+                ? 'Apple Music'
+                : null;
+    setState(() {
+      if (detected != null) _selectedPlatform = detected;
       _errorMessage = null;
     });
   }
 
   Future<void> _handleImport() async {
     final input = _inputController.text.trim();
-    if (input.isEmpty) return;
+    if (input.isEmpty) {
+      setState(() => _errorMessage = 'Paste a playlist link first, or pick one below.');
+      return;
+    }
 
     setState(() {
       _isLoading = true;
@@ -115,160 +135,56 @@ class _ImportPlaylistDialogState extends ConsumerState<ImportPlaylistDialog> {
 
   @override
   Widget build(BuildContext context) {
-    const platforms = ['Spotify', 'YouTube', 'Apple Music'];
+    final compact = MediaQuery.sizeOf(context).width < 480;
 
     return Dialog(
       backgroundColor: const Color(0xFF121214),
+      insetPadding: compact
+          ? const EdgeInsets.symmetric(horizontal: 16, vertical: 24)
+          : const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         side: const BorderSide(color: Color(0xFF27272A), width: 1),
       ),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 560),
-        child: Padding(
-          padding: const EdgeInsets.all(26.0),
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: SingleChildScrollView(
+          padding: EdgeInsets.all(compact ? 20 : 26),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header
-              Row(
-                children: [
-                  Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1E1E22),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: const Color(0xFF2E2E34), width: 1),
-                    ),
-                    child: const Center(
-                      child: Icon(Icons.add_to_photos_rounded, color: Colors.white, size: 20),
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Import Playlist',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
-                            letterSpacing: -0.3,
-                          ),
-                        ),
-                        SizedBox(height: 3),
-                        Text(
-                          'Spotify • YouTube • Apple Music',
-                          style: TextStyle(fontSize: 12, color: Color(0xFFA1A1AA)),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close, color: Color(0xFF71717A), size: 20),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
-                ],
-              ),
+              _buildHeader(compact),
               const SizedBox(height: 20),
-
-              // Platform Selection Chips
-              const Text(
-                'Source Platform',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFFA1A1AA)),
-              ),
-              const SizedBox(height: 8),
-
-              Row(
-                children: platforms.map((platform) {
-                  final isSelected = _selectedPlatform == platform;
-                  final icon = switch (platform) {
-                    'Spotify' => Icons.album_rounded,
-                    'YouTube' => Icons.play_circle_outline_rounded,
-                    'Apple Music' => Icons.music_note_rounded,
-                    _ => Icons.music_note,
-                  };
-
-                  return Expanded(
-                    child: Padding(
-                      padding: EdgeInsets.only(right: platform != platforms.last ? 8.0 : 0.0),
-                      child: InkWell(
-                        onTap: () => _onSelectPlatform(platform),
-                        borderRadius: BorderRadius.circular(8),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 150),
-                          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
-                          decoration: BoxDecoration(
-                            color: isSelected ? Colors.white : const Color(0xFF18181B),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: isSelected ? Colors.white : const Color(0xFF27272A),
-                              width: 1,
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                icon,
-                                size: 16,
-                                color: isSelected ? Colors.black : const Color(0xFFA1A1AA),
-                              ),
-                              const SizedBox(width: 7),
-                              Text(
-                                platform,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                                  color: isSelected ? Colors.black : Colors.white,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-
+              _buildPlatformTabs(compact),
               const SizedBox(height: 18),
-
-              // Dynamic Input Label & Field
-              Text(
-                _inputLabels[_selectedPlatform] ?? 'Playlist Link',
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFFA1A1AA)),
-              ),
-              const SizedBox(height: 8),
-
               TextField(
                 controller: _inputController,
-                style: const TextStyle(color: Colors.white, fontSize: 13),
+                onChanged: _onInputChanged,
+                onSubmitted: (_) => _isLoading ? null : _handleImport(),
+                keyboardType: TextInputType.url,
+                textInputAction: TextInputAction.go,
+                style: const TextStyle(color: Colors.white, fontSize: 14),
                 decoration: InputDecoration(
-                  hintText: _placeholders[_selectedPlatform] ?? 'Paste playlist URL...',
+                  labelText: '$_selectedPlatform playlist link',
+                  labelStyle: const TextStyle(color: Color(0xFFA1A1AA), fontSize: 13),
+                  floatingLabelStyle: const TextStyle(color: Colors.white, fontSize: 13),
+                  hintText: _placeholders[_selectedPlatform],
                   hintStyle: const TextStyle(color: Color(0xFF52525B), fontSize: 13),
+                  prefixIcon: const Icon(Icons.link_rounded, color: Color(0xFF71717A), size: 20),
                   filled: true,
                   fillColor: const Color(0xFF18181B),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: Color(0xFF27272A)),
-                  ),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
                   enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(10),
                     borderSide: const BorderSide(color: Color(0xFF27272A)),
                   ),
                   focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(10),
                     borderSide: const BorderSide(color: Colors.white, width: 1.2),
                   ),
                 ),
               ),
-
               if (_errorMessage != null) ...[
                 const SizedBox(height: 10),
                 Text(
@@ -276,48 +192,19 @@ class _ImportPlaylistDialogState extends ConsumerState<ImportPlaylistDialog> {
                   style: const TextStyle(color: Color(0xFFEF4444), fontSize: 12),
                 ),
               ],
-
-              const SizedBox(height: 16),
+              const SizedBox(height: 18),
               const Text(
-                'Example Presets:',
-                style: TextStyle(fontSize: 11, color: Color(0xFF71717A)),
+                'Or start with one of these',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFFA1A1AA)),
               ),
               const SizedBox(height: 8),
-
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
-                children: _getFilteredPresets().map((p) => _buildPresetChip(p.name, p.url, p.source)).toList(),
+                children: (_presets[_selectedPlatform] ?? const <_Preset>[]).map(_buildPresetChip).toList(),
               ),
-
               const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed: _isLoading ? null : () => Navigator.of(context).pop(),
-                    child: const Text('Cancel', style: TextStyle(color: Color(0xFFA1A1AA), fontWeight: FontWeight.bold)),
-                  ),
-                  const SizedBox(width: 12),
-                  ElevatedButton(
-                    onPressed: _isLoading ? null : _handleImport,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: Colors.black,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
-                    ),
-                    child: _isLoading
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2),
-                          )
-                        : const Text('Import & Play', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                  ),
-                ],
-              ),
+              _buildActions(compact),
             ],
           ),
         ),
@@ -325,33 +212,160 @@ class _ImportPlaylistDialogState extends ConsumerState<ImportPlaylistDialog> {
     );
   }
 
-  List<({String name, String url, String source})> _getFilteredPresets() {
-    return switch (_selectedPlatform) {
-      'Spotify' => [
-          (name: "Today's Top Hits (100 tracks)", url: 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M', source: 'Spotify'),
-          (name: 'Mega Hit Mix', url: 'https://open.spotify.com/playlist/37i9dQZF1DXbYM3nMM0oPk', source: 'Spotify'),
+  Widget _buildHeader(bool compact) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (!compact) ...[
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E1E22),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFF2E2E34), width: 1),
+            ),
+            child: const Icon(Icons.add_to_photos_rounded, color: Colors.white, size: 20),
+          ),
+          const SizedBox(width: 14),
         ],
-      'YouTube' => [
-          (name: 'Pop Hits Essentials', url: 'https://www.youtube.com/playlist?list=PL4fGSIFgk5n0vF4P4V3d9_aF80hD_lD7w', source: 'YouTube'),
-        ],
-      'Apple Music' => [
-          (name: 'Apple Music Top 50 Chart', url: 'https://itunes.apple.com/us/rss/topsongs/limit=50/json', source: 'Apple Music'),
-        ],
-      _ => <({String name, String url, String source})>[],
-    };
+        const Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Import a playlist',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: -0.3),
+              ),
+              SizedBox(height: 4),
+              Text(
+                'Paste a link from Spotify, YouTube or Apple Music.',
+                style: TextStyle(fontSize: 13, color: Color(0xFFA1A1AA), height: 1.3),
+              ),
+            ],
+          ),
+        ),
+        IconButton(
+          tooltip: 'Close',
+          visualDensity: VisualDensity.compact,
+          icon: const Icon(Icons.close, color: Color(0xFF71717A), size: 20),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ],
+    );
   }
 
-  Widget _buildPresetChip(String label, String url, String source) {
+  /// Three equal tabs. On a phone the icon sits above the name so
+  /// "Apple Music" fits without cutting off.
+  Widget _buildPlatformTabs(bool compact) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: const Color(0xFF18181B),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF27272A)),
+      ),
+      child: Row(
+        children: _platforms.map((platform) {
+          final selected = _selectedPlatform == platform;
+          final color = selected ? Colors.black : const Color(0xFFA1A1AA);
+          final icon = Icon(_icons[platform], size: compact ? 18 : 16, color: color);
+          // Shrinks a little on the narrowest phones rather than cutting off.
+          final label = FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              platform,
+              maxLines: 1,
+              style: TextStyle(
+                fontSize: compact ? 12 : 13,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                color: selected ? Colors.black : Colors.white,
+              ),
+            ),
+          );
+          return Expanded(
+            child: Semantics(
+              button: true,
+              selected: selected,
+              child: InkWell(
+                onTap: () => _onSelectPlatform(platform),
+                borderRadius: BorderRadius.circular(9),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  padding: EdgeInsets.symmetric(vertical: compact ? 8 : 10, horizontal: compact ? 4 : 6),
+                  decoration: BoxDecoration(
+                    color: selected ? Colors.white : Colors.transparent,
+                    borderRadius: BorderRadius.circular(9),
+                  ),
+                  child: compact
+                      ? Column(mainAxisSize: MainAxisSize.min, children: [icon, const SizedBox(height: 4), label])
+                      : Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [icon, const SizedBox(width: 7), Flexible(child: label)],
+                        ),
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildActions(bool compact) {
+    final importButton = ElevatedButton(
+      onPressed: _isLoading ? null : _handleImport,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black,
+        disabledBackgroundColor: Colors.white70,
+        elevation: 0,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+      ),
+      child: _isLoading
+          ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2),
+            )
+          : const Text('Import & Play', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+    );
+    // On a phone the close button is enough; Import gets the full width.
+    if (compact) return SizedBox(width: double.infinity, child: importButton);
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        TextButton(
+          onPressed: _isLoading ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancel', style: TextStyle(color: Color(0xFFA1A1AA), fontWeight: FontWeight.bold)),
+        ),
+        const SizedBox(width: 12),
+        importButton,
+      ],
+    );
+  }
+
+  Widget _buildPresetChip(_Preset preset) {
+    final picked = _inputController.text.trim() == preset.url;
     return ActionChip(
-      label: Text(label, style: const TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.w500)),
-      backgroundColor: const Color(0xFF1E1E22),
+      avatar: Icon(
+        picked ? Icons.check_rounded : _icons[_selectedPlatform],
+        size: 16,
+        color: picked ? Colors.black : const Color(0xFFA1A1AA),
+      ),
+      label: Text(
+        preset.name,
+        style: TextStyle(fontSize: 12, color: picked ? Colors.black : Colors.white, fontWeight: FontWeight.w600),
+      ),
+      backgroundColor: picked ? Colors.white : const Color(0xFF1E1E22),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(6),
-        side: const BorderSide(color: Color(0xFF2E2E34), width: 0.8),
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: picked ? Colors.white : const Color(0xFF2E2E34), width: 0.8),
       ),
       onPressed: () {
         setState(() {
-          _inputController.text = url;
+          _inputController.text = preset.url;
           _errorMessage = null;
         });
       },
