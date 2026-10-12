@@ -57,4 +57,24 @@ void main() {
     expect(logText, contains('files replaced'));
     expect(logText, contains('relaunch failed'));
   }, skip: !Platform.isWindows, timeout: const Timeout(Duration(seconds: 60)));
+
+  test('the updater launch runs the script after this process lets go', () async {
+    // Regression: PowerShell started detached with no console never ran
+    // the script, so updates downloaded but were never installed.
+    final root = await Directory.systemTemp.createTemp('sym launch test');
+    addTearDown(() async {
+      if (await root.exists()) await root.delete(recursive: true);
+    });
+    final sep = Platform.pathSeparator;
+    final log = File('${root.path}${sep}probe.log');
+    final script = File('${root.path}${sep}probe.ps1');
+    await script.writeAsString("'ran' | Out-File -FilePath '${log.path.replaceAll("'", "''")}' -Encoding utf8\n");
+
+    await Process.start('cmd', updaterLaunchArgs(script.path), mode: ProcessStartMode.detached);
+
+    for (var i = 0; i < 100 && !log.existsSync(); i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    expect(log.existsSync(), isTrue, reason: 'update script never ran');
+  }, skip: !Platform.isWindows, timeout: const Timeout(Duration(seconds: 30)));
 }

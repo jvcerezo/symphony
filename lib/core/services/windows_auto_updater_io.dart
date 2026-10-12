@@ -54,24 +54,18 @@ Future<void> runWindowsAutoUpdate(
       appDir: currentAppDir,
       exePath: currentExe,
       appPid: currentPid,
-      logPath: '${Directory.systemTemp.path}\symphony_update.log',
+      logPath: updateLogPath,
     );
 
     await File(scriptPath).writeAsString(psScript);
 
-    // Launch detached updater process
+    // Start the updater so it outlives this process. PowerShell started
+    // directly in detached mode (no console) never runs the script, which
+    // left every update downloaded but not installed; `cmd /c start` gives
+    // it its own console, hidden by -WindowStyle.
     await Process.start(
-      'powershell',
-      [
-        '-NoProfile',
-        '-NonInteractive',
-        '-WindowStyle',
-        'Hidden',
-        '-ExecutionPolicy',
-        'Bypass',
-        '-File',
-        scriptPath,
-      ],
+      'cmd',
+      updaterLaunchArgs(scriptPath),
       mode: ProcessStartMode.detached,
     );
 
@@ -89,6 +83,28 @@ Future<void> runWindowsAutoUpdate(
     client.close();
   }
 }
+
+/// Where the update script logs each step (%TEMP%\symphony_update.log).
+String get updateLogPath => '${Directory.systemTemp.path}${Platform.pathSeparator}symphony_update.log';
+
+/// Arguments for `cmd` that start the update script in its own hidden
+/// PowerShell window, independent of Symphony.
+@visibleForTesting
+List<String> updaterLaunchArgs(String scriptPath) => [
+      '/c',
+      'start',
+      '""',
+      '/min',
+      'powershell',
+      '-NoProfile',
+      '-NonInteractive',
+      '-WindowStyle',
+      'Hidden',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-File',
+      scriptPath,
+    ];
 
 /// PowerShell that swaps in the extracted update after Symphony exits.
 /// Always relaunches the app and logs each step to [logPath].
