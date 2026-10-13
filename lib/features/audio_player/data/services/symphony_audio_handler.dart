@@ -83,6 +83,21 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
 
   AudioStreamResolverService get streamResolver => _streamResolver;
 
+  NetworkStatus get network => _network;
+
+  /// True while a song is loading or being picked up again; background
+  /// downloads wait for it.
+  bool get isLoadingTrack => _loading || _recovering;
+
+  /// [track]'s playback copy on this device, if it is of the song's
+  /// current match (an older one could be the wrong recording).
+  Future<ResolvedAudioStream?> playbackCopyFor(Track track) async {
+    if (!_usesPlaybackCache) return null;
+    final copy = await _playbackCache.cachedStreamFor(track);
+    if (copy == null || !await _streamResolver.isSettledMatch(track, copy.sourceVideoId)) return null;
+    return copy;
+  }
+
   /// Proactively preloads tracks into memory cache.
   void preloadTracks(List<Track> tracks, {int count = 2}) =>
       _streamResolver.preloadTracks(tracks, count: count);

@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../../../domain/entities/resolved_audio_stream.dart';
 import '../../../domain/entities/track.dart';
 import 'chunked_download.dart';
+import 'local_file_bytes.dart';
 import 'local_track_store.dart';
 
 /// Resolves a track to a remote stream. Normally
@@ -18,6 +19,10 @@ typedef RemoteStreamResolver = Future<ResolvedAudioStream> Function(Track track)
 /// `AudioStreamResolverService.checkDownloadedMatch`.
 typedef DownloadMatchCheck = Future<ResolvedAudioStream?> Function(Track track, String downloadedVideoId);
 
+/// [track]'s audio already saved on the device for playback (a `file://`
+/// stream of its current match), or null.
+typedef PlaybackCopyLookup = Future<ResolvedAudioStream?> Function(Track track);
+
 /// Reports bytes received so far and the total if the server sent one.
 typedef DownloadProgressCallback = void Function(int received, int? total);
 
@@ -27,17 +32,23 @@ class OfflineDownloadService {
   OfflineDownloadService({
     required RemoteStreamResolver resolve,
     DownloadMatchCheck? checkMatch,
+    PlaybackCopyLookup? playbackCopy,
+    Stream<List<int>> Function(Uri file)? readFile,
     LocalTrackStore? store,
     http.Client? httpClient,
     this.headerTimeout = const Duration(seconds: 20),
     this.stallTimeout = const Duration(seconds: 30),
   })  : _resolve = resolve,
         _checkMatch = checkMatch,
+        _playbackCopy = playbackCopy,
+        _readFile = readFile ?? readLocalFile,
         _store = store ?? LocalTrackStore.platform(),
         _client = httpClient ?? http.Client();
 
   final RemoteStreamResolver _resolve;
   final DownloadMatchCheck? _checkMatch;
+  final PlaybackCopyLookup? _playbackCopy;
+  final Stream<List<int>> Function(Uri file) _readFile;
   final LocalTrackStore _store;
   final http.Client _client;
 
@@ -67,6 +78,25 @@ class OfflineDownloadService {
   Future<LocalTrackEntry> _download(Track track, DownloadProgressCallback? onProgress) async {
     final existing = await _store.lookup(track);
     if (existing != null) return existing;
+
+    // Played recently: copy the player's saved file instead of downloading
+    // the song again.
+    final copy = await _playbackCopy?.call(track);
+    if (copy != null && copy.streamUri.isScheme('file')) {
+      try {
+        final entry = await _store.save(
+          track,
+          _readFile(copy.streamUri),
+          format: copy.format,
+          duration: copy.duration,
+          sourceVideoId: copy.sourceVideoId,
+        );
+        developer.log('Saved "${track.title}" from its playback copy', name: 'OfflineDownload');
+        return entry;
+      } catch (e) {
+        developer.log('Playback copy of "${track.title}" unusable, downloading: $e', name: 'OfflineDownload');
+      }
+    }
 
     final stream = await _resolve(track);
     if (stream.streamUri.isScheme('file')) {
