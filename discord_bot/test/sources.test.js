@@ -64,7 +64,8 @@ test('Spotify songs are matched only when asked to', async () => {
 test('yt-dlp entries and errors', () => {
   assert.equal(toVideo({ id: 'x', title: '[Deleted video]' }), null);
   assert.equal(toVideo({ id: 'x', title: 'T', channel: 'C', duration: 61.6 }).durationSec, 62);
-  assert.match(explainYtDlpError('ERROR: [youtube] x: Sign in to confirm you’re not a bot'), /cookies/);
+  assert.match(explainYtDlpError('ERROR: [youtube] x: Sign in to confirm you’re not a bot'), /blocking this server/);
+  assert.match(explainYtDlpError('ERROR: [youtube] x: Requested format is not available.'), /no audio/);
   assert.equal(explainYtDlpError('WARNING: a\nERROR: something broke\n'), 'something broke');
 });
 

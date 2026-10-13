@@ -20,6 +20,8 @@ export function loadConfig(env = process.env) {
     cookiesFile: cookiesFile(env),
     idleMinutes: number(env.IDLE_MINUTES, 5),
     maxQueue: number(env.MAX_QUEUE, 500),
+    // The PO token helper's main.js; the Docker image sets this.
+    potServerScript: env.POT_SERVER_SCRIPT?.trim() || null,
   };
 }
 

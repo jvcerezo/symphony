@@ -52,15 +52,17 @@ docker run -d --restart unless-stopped \
 
 Set `ALLOWED_GUILD_IDS` to your server's ID so the bot leaves any other server it is added to. If the host needs a web port (Render's "Web Service", for example), set `PORT`; the bot then answers health checks on it. A host that puts free services to sleep will cut the music off, so it needs one that stays on.
 
-### When YouTube asks the server to sign in
+### When YouTube blocks the server
 
-YouTube often blocks downloads from cloud machines with "Sign in to confirm you're not a bot". The bot then says so in the channel. The fix is cookies from a signed-in browser:
+YouTube often answers cloud machines with "Sign in to confirm you're not a bot". The Docker image deals with this itself: it runs a PO token helper ([bgutil-ytdlp-pot-provider](https://github.com/Brainicism/bgutil-ytdlp-pot-provider)) beside the bot. The helper makes the proof YouTube asks for, so no account is needed. It uses about 200 MB of extra memory, which still fits in a 512 MB free plan.
+
+If the bot still says YouTube is blocking it, cookies from a signed-in account are the last resort. They don't work with every account: YouTube serves some accounts, often new ones, a streaming format yt-dlp can't download yet.
 
 1. Use a spare Google account, not your main one. YouTube can flag accounts used this way.
-2. Sign in to YouTube in a private window and export cookies with a "cookies.txt" browser extension (Netscape format). Then close the private window without signing out.
+2. Sign in to YouTube in a private window, open `https://www.youtube.com/robots.txt` in the same window, and export cookies with the "Get cookies.txt LOCALLY" extension (Netscape format). Then close the private window without signing out.
 3. Give the bot the file, either as a path (`YTDLP_COOKIES_FILE`) or its contents in base64 (`YTDLP_COOKIES_B64`; on Windows: `[Convert]::ToBase64String([IO.File]::ReadAllBytes("cookies.txt"))`).
 
-Every CI run reports, in the "Check YouTube Audio From a Cloud Machine" step, whether a cloud machine can download audio without cookies right now.
+Every CI run reports, in the "Check YouTube Audio From a Cloud Machine" step, whether a cloud machine can download audio without help right now.
 
 ## Notes
 
