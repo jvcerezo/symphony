@@ -17,3 +17,4 @@ linux/flutter/ephemeral
 macos/Flutter/ephemeral
 *.apk
 *.aab
+discord_bot
