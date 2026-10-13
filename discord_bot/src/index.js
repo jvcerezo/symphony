@@ -76,19 +76,31 @@ function announce(player) {
 
 client.once(Events.ClientReady, async (c) => {
   console.log(`Logged in as ${c.user.tag}.`);
+  console.log(`Invite link: https://discord.com/oauth2/authorize?client_id=${c.user.id}&scope=bot+applications.commands&permissions=${INVITE_PERMISSIONS}`);
   for (const guild of c.guilds.cache.values()) await leaveIfNotAllowed(guild);
-  if (config.guildId) {
-    const guild = await c.guilds.fetch(config.guildId);
-    await guild.commands.set(commandData);
-    console.log(`Slash commands ready in ${guild.name}.`);
-  } else {
+  if (!config.guildId) {
     await c.application.commands.set(commandData);
     console.log('Slash commands registered everywhere (Discord can take up to an hour to show them).');
+  } else if (c.guilds.cache.has(config.guildId)) {
+    await registerIn(c.guilds.cache.get(config.guildId));
+  } else {
+    console.log('The bot is not in your server yet. Open the invite link above to add it.');
   }
-  console.log(`Invite link: https://discord.com/oauth2/authorize?client_id=${c.user.id}&scope=bot+applications.commands&permissions=${INVITE_PERMISSIONS}`);
 });
 
-client.on(Events.GuildCreate, leaveIfNotAllowed);
+client.on(Events.GuildCreate, async (guild) => {
+  await leaveIfNotAllowed(guild);
+  if (guild.id === config.guildId) await registerIn(guild);
+});
+
+async function registerIn(guild) {
+  try {
+    await guild.commands.set(commandData);
+    console.log(`Slash commands ready in ${guild.name}.`);
+  } catch (e) {
+    console.error(`Could not add slash commands in ${guild.name}:`, e.message);
+  }
+}
 
 client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.inGuild()) return;
