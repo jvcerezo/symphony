@@ -87,7 +87,12 @@ client.once(Events.ClientReady, async (c) => {
   for (const guild of c.guilds.cache.values()) await leaveIfNotAllowed(guild);
   if (!config.guildId) {
     await c.application.commands.set(commandData);
-    console.log('Slash commands registered everywhere (Discord can take up to an hour to show them).');
+    // Commands added to one server while testing would show up twice there.
+    for (const guild of c.guilds.cache.values()) {
+      const own = await guild.commands.fetch().catch(() => null);
+      if (own?.size) await guild.commands.set([]).catch(() => {});
+    }
+    console.log('Slash commands ready in every server (new ones can take a few minutes to appear).');
   } else if (c.guilds.cache.has(config.guildId)) {
     await registerIn(c.guilds.cache.get(config.guildId));
   } else {

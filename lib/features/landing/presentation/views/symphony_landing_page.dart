@@ -18,6 +18,10 @@ class SymphonyLandingPage extends ConsumerWidget {
       'https://github.com/jvcerezo/symphony/releases/download/latest/symphony-windows-x64.zip';
   static const String fallbackAndroidUrl =
       'https://github.com/jvcerezo/symphony/releases/download/latest/symphony.apk';
+  static const String discordInviteUrl =
+      'https://discord.com/oauth2/authorize?client_id=1559096164345970708&scope=bot+applications.commands&permissions=3165184';
+  static const String termsUrl = '/terms-of-service';
+  static const String privacyUrl = '/privacy-policy';
 
   static void _openExternal(String url, {bool isDownload = false}) {
     AppUpdateNotifier.openUrl(url, isDownload: isDownload);
@@ -103,12 +107,17 @@ class SymphonyLandingPage extends ConsumerWidget {
 
                         SizedBox(height: isDesktop ? 80 : 56),
 
-                        // 4. Architectural Features Breakdown
+                        // 4. The Discord bot
+                        _buildDiscordSection(isDesktop),
+
+                        SizedBox(height: isDesktop ? 80 : 56),
+
+                        // 5. Architectural Features Breakdown
                         _buildFeaturesSection(isDesktop),
 
                         SizedBox(height: isDesktop ? 80 : 56),
 
-                        // 5. Minimalist Portfolio Footer
+                        // 6. Minimalist Portfolio Footer
                         _buildFooter(context, isDesktop),
                       ],
                     ),
@@ -545,6 +554,140 @@ class SymphonyLandingPage extends ConsumerWidget {
     );
   }
 
+  // MARK: - Discord Bot
+  Widget _buildDiscordSection(bool isDesktop) {
+    const steps = [
+      (num: '1', title: 'Add it to your server', desc: 'Click "Add to Discord" and pick a server you manage.'),
+      (num: '2', title: 'Join a voice channel', desc: 'The bot joins the channel you are in.'),
+      (num: '3', title: 'Type /play', desc: 'A song name, a YouTube link, or a Spotify or YouTube playlist.'),
+    ];
+
+    final intro = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Row(
+          children: [
+            Icon(Icons.discord, color: Colors.white, size: 22),
+            SizedBox(width: 10),
+            Text(
+              'Symphony for Discord',
+              style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        const Text(
+          'Listen together. The Symphony bot plays music in your voice channel for everyone in it, '
+          'with a shared queue, skip and pause buttons, shuffle and repeat.',
+          style: TextStyle(color: Color(0xFFA1A1AA), fontSize: 14, height: 1.6),
+        ),
+        const SizedBox(height: 20),
+        ElevatedButton.icon(
+          onPressed: () => _openExternal(discordInviteUrl),
+          icon: const Icon(Icons.add_rounded, size: 18),
+          label: const Text('Add to Discord'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.white,
+            foregroundColor: Colors.black,
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            elevation: 0,
+          ),
+        ),
+        const SizedBox(height: 12),
+        const Text(
+          'Needs "Manage Server" permission in that server. The bot is a personal project, '
+          'so it may be offline at times.',
+          style: TextStyle(color: Color(0xFF71717A), fontSize: 12, height: 1.5),
+        ),
+      ],
+    );
+
+    final stepList = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final step in steps)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 26,
+                  height: 26,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E1E22),
+                    borderRadius: BorderRadius.circular(13),
+                    border: Border.all(color: const Color(0xFF2E2E33)),
+                  ),
+                  child: Text(
+                    step.num,
+                    style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        step.title,
+                        style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        step.desc,
+                        style: const TextStyle(color: Color(0xFFA1A1AA), fontSize: 13, height: 1.5),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'DISCORD BOT',
+          style: TextStyle(
+            color: Color(0xFFA1A1AA),
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 1.2,
+          ),
+        ),
+        const SizedBox(height: 14),
+        Container(
+          width: double.infinity,
+          padding: EdgeInsets.all(isDesktop ? 32 : 24),
+          decoration: BoxDecoration(
+            color: const Color(0xFF121215),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFF27272A)),
+          ),
+          child: isDesktop
+              ? Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: intro),
+                    const SizedBox(width: 48),
+                    Expanded(child: stepList),
+                  ],
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [intro, const SizedBox(height: 28), stepList],
+                ),
+        ),
+      ],
+    );
+  }
+
   // MARK: - Architectural Features
   Widget _buildFeaturesSection(bool isDesktop) {
     final features = [
@@ -696,6 +839,14 @@ class SymphonyLandingPage extends ConsumerWidget {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              TextButton(
+                onPressed: () => _openExternal(termsUrl),
+                child: const Text('Terms', style: TextStyle(color: Color(0xFFA1A1AA), fontSize: 12)),
+              ),
+              TextButton(
+                onPressed: () => _openExternal(privacyUrl),
+                child: const Text('Privacy', style: TextStyle(color: Color(0xFFA1A1AA), fontSize: 12)),
+              ),
               IconButton(
                 onPressed: () => _openExternal(repoUrl),
                 icon: const Icon(Icons.code_rounded, size: 16, color: Color(0xFFA1A1AA)),
