@@ -11,6 +11,7 @@ import { YtDlp } from './ytdlp.js';
 const INVITE_PERMISSIONS = 3165184;
 
 const config = loadConfig();
+await claimSingleInstance();
 const ytdlp = new YtDlp({
   path: config.ytDlpPath,
   cookiesFile: config.cookiesFile,
@@ -149,6 +150,26 @@ if (process.env.PORT) {
     res.writeHead(client.isReady() ? 200 : 503, { 'Content-Type': 'text/plain' });
     res.end(client.isReady() ? 'ok' : 'starting');
   }).listen(Number(process.env.PORT));
+}
+
+/**
+ * On a PC, a second copy of the bot would log in with the same token and
+ * answer every command twice. Holding a local port makes the second copy
+ * stop at once. Hosts that set PORT run one copy anyway.
+ */
+function claimSingleInstance() {
+  if (process.env.PORT) return Promise.resolve();
+  return new Promise((resolve) => {
+    const lock = createServer();
+    lock.once('error', () => {
+      console.log('Symphony is already running in another window.');
+      process.exit(2);
+    });
+    lock.listen(47815, '127.0.0.1', () => {
+      lock.unref();
+      resolve();
+    });
+  });
 }
 
 function shutdown() {
