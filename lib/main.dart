@@ -55,6 +55,7 @@ Future<void> main() async {
       accentThemeProvider.overrideWith((ref) => startup.accent),
       closeToTrayProvider.overrideWith((ref) => startup.closeToTray),
       discordPresenceProvider.overrideWith((ref) => startup.discordPresence),
+      autoDownloadPlaylistsProvider.overrideWith((ref) => startup.autoDownloadPlaylists),
       // The walkthrough is for the installed apps; web opens as before.
       onboardingCompleteProvider.overrideWith((ref) => kIsWeb || startup.onboardingDone),
     ],
@@ -63,6 +64,8 @@ Future<void> main() async {
 
   // Downloads made from a wrong match get the right recording.
   scheduleDownloadRecheck(container);
+  // Playlists being played are saved for offline in the background.
+  startQueueAutoDownload(container);
 
   // Keep the bundled yt-dlp current (YouTube changes often). Background,
   // at most once a day; playback never waits on it.
@@ -92,6 +95,7 @@ class SymphonyApp extends ConsumerWidget {
       setDiscordPresenceEnabled(next);
       AppPrefs.saveDiscordPresence(next);
     });
+    ref.listen(autoDownloadPlaylistsProvider, (prev, next) => AppPrefs.saveAutoDownloadPlaylists(next));
 
     Widget initialHome;
     if (kIsWeb) {

@@ -4,8 +4,10 @@ import 'dart:developer' as developer;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
+import 'package:rxdart/rxdart.dart';
 import '../../../playlist_import/domain/entities/spotify_playlist.dart';
 import '../../data/services/offline/offline_download_service.dart';
+import '../../data/services/offline/queue_auto_downloader.dart';
 import '../../domain/entities/track.dart';
 import '../../../../core/config/server_config.dart';
 import 'audio_player_providers.dart';
@@ -90,13 +92,36 @@ class OfflineManagerNotifier extends StateNotifier<OfflineState> {
   OfflineManagerNotifier({
     OfflineDownloadService? deviceDownloads,
     http.Client? client,
+    this.onRemoved,
   })  : _deviceDownloads = deviceDownloads,
         _client = client ?? http.Client(),
         super(const OfflineState()) {
     refreshOfflineStatus();
   }
 
+  /// Told about each track whose download the user removes.
+  final void Function(Track track)? onRemoved;
+
   bool get _useDevice => _deviceDownloads?.isSupported ?? false;
+
+  /// Whether [track] is saved on this device (false on web).
+  Future<bool> isOnDevice(Track track) async =>
+      _useDevice && await _deviceDownloads!.store.lookup(track) != null;
+
+  /// Saves [track] on the device without the progress banner: the playing
+  /// queue being prepared for offline. Throws on failure.
+  Future<void> saveInBackground(Track track) async {
+    if (!_useDevice) return;
+    state = state.copyWith(downloadingTrackIds: {...state.downloadingTrackIds, track.id});
+    try {
+      await _deviceDownloads!.download(track);
+      if (mounted) state = state.copyWith(cachedKeys: {...state.cachedKeys, ..._keysFor(track)});
+    } finally {
+      if (mounted) {
+        state = state.copyWith(downloadingTrackIds: Set<String>.from(state.downloadingTrackIds)..remove(track.id));
+      }
+    }
+  }
 
   /// Swaps in the right recording for downloads made from a wrong match (see
   /// [OfflineDownloadService.recheckDownloads]); [library] gives each
@@ -152,6 +177,7 @@ class OfflineManagerNotifier extends StateNotifier<OfflineState> {
   /// Removes a single on-device download. Returns bytes freed (0 on web).
   Future<int> removeDownloadedTrack(Track track) async {
     if (!_useDevice) return 0;
+    onRemoved?.call(track);
     final freed = await _deviceDownloads!.remove(track);
     state = state.copyWith(cachedKeys: Set<String>.from(state.cachedKeys)..removeAll(_keysFor(track)));
     await refreshOfflineStatus();
@@ -341,6 +367,7 @@ class OfflineManagerNotifier extends StateNotifier<OfflineState> {
       try {
         var freed = 0;
         for (final t in tracks) {
+          onRemoved?.call(t);
           freed += await _deviceDownloads!.remove(t);
         }
         state = state.copyWith(
@@ -394,7 +421,8 @@ class OfflineManagerNotifier extends StateNotifier<OfflineState> {
   }
 }
 
-final offlineProvider = StateNotifierProvider<OfflineManagerNotifier, OfflineState>((ref) {
+final StateNotifierProvider<OfflineManagerNotifier, OfflineState> offlineProvider =
+    StateNotifierProvider<OfflineManagerNotifier, OfflineState>((ref) {
   return OfflineManagerNotifier(
     deviceDownloads: kIsWeb
         ? null
@@ -403,9 +431,47 @@ final offlineProvider = StateNotifierProvider<OfflineManagerNotifier, OfflineSta
             resolve: (track) => ref.read(audioHandlerProvider).streamResolver.resolveBestAudioStream(track),
             checkMatch: (track, videoId) =>
                 ref.read(audioHandlerProvider).streamResolver.checkDownloadedMatch(track, videoId),
+            playbackCopy: (track) => ref.read(audioHandlerProvider).playbackCopyFor(track),
           ),
+    onRemoved: kIsWeb ? null : (track) => ref.read(queueAutoDownloaderProvider).removedByUser(track),
   );
 });
+
+/// Save the songs of a playing playlist for offline as they play.
+/// `main.dart` overrides it with the saved value.
+final autoDownloadPlaylistsProvider = StateProvider<bool>((ref) => true);
+
+/// Native: prepares the playing queue for offline in the background (see
+/// [QueueAutoDownloader]). Started from `main.dart`.
+final Provider<QueueAutoDownloader> queueAutoDownloaderProvider = Provider<QueueAutoDownloader>((ref) {
+  final handler = ref.read(audioHandlerProvider);
+  final offline = ref.read(offlineProvider.notifier);
+  final downloader = QueueAutoDownloader(
+    isDownloaded: offline.isOnDevice,
+    download: offline.saveInBackground,
+    isOnline: handler.network.isOnline,
+    isPlayerBusy: () => handler.isLoadingTrack,
+    enabled: !kIsWeb && ref.read(autoDownloadPlaylistsProvider),
+  );
+  ref.listen<bool>(autoDownloadPlaylistsProvider, (_, on) => downloader.enabled = on && !kIsWeb);
+  final sub = Rx.combineLatest2<List<Track>, int, (List<Track>, int)>(
+    handler.playlistQueueStream,
+    handler.currentIndexStream,
+    (queue, index) => (queue, index),
+  ).listen((e) => downloader.queueChanged(e.$1, e.$2));
+  ref.onDispose(() {
+    sub.cancel();
+    downloader.dispose();
+  });
+  return downloader;
+});
+
+/// Native app start (from `main.dart`): begins preparing played playlists
+/// for offline.
+void startQueueAutoDownload(ProviderContainer container) {
+  if (kIsWeb) return;
+  container.read(queueAutoDownloaderProvider);
+}
 
 /// Native app start (from `main.dart`): rechecks downloads once, after
 /// startup has settled.

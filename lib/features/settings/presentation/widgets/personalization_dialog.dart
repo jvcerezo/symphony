@@ -6,6 +6,7 @@ import '../../../../core/theme/symphony_theme.dart';
 import '../../../../core/widgets/app_update_dialog.dart';
 import '../../../../core/widgets/symphony_brand_logo.dart';
 import '../../../audio_player/presentation/controllers/audio_player_providers.dart';
+import '../../../audio_player/presentation/controllers/offline_provider.dart';
 import '../controllers/desktop_settings_provider.dart';
 import '../controllers/personalization_provider.dart';
 
@@ -164,6 +165,21 @@ class _PersonalizationDialogState extends ConsumerState<PersonalizationDialog> {
               const SizedBox(height: 8),
               _buildUpdateSection(context, ref, accent),
               const SizedBox(height: 18),
+              if (!kIsWeb)
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: ref.watch(autoDownloadPlaylistsProvider),
+                  onChanged: (v) => ref.read(autoDownloadPlaylistsProvider.notifier).state = v,
+                  activeThumbColor: accent.primary,
+                  title: const Text(
+                    'Save playlists for offline as they play',
+                    style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: const Text(
+                    'While you listen, the rest of the playlist downloads in the background, so it plays without internet later.',
+                    style: TextStyle(color: SymphonyTheme.textSecondary, fontSize: 12),
+                  ),
+                ),
               if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) ...[
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
