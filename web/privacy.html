@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy · Symphony</title>
+  <meta name="description" content="What the Symphony app and Discord bot collect, and what they don't.">
+  <link rel="icon" type="image/png" href="favicon.png">
+  <style>
+    :root { color-scheme: dark; }
+    body { margin: 0; background: #000; color: #d4d4d8; font: 16px/1.65 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    main { max-width: 720px; margin: 0 auto; padding: 48px 20px 80px; }
+    h1 { color: #fff; font-size: 2rem; margin: 0 0 4px; }
+    h2 { color: #fff; font-size: 1.15rem; margin: 36px 0 8px; }
+    .updated { color: #71717a; margin: 0 0 32px; }
+    a { color: #a78bfa; }
+    ul { padding-left: 22px; }
+    li { margin: 4px 0; }
+    nav { display: flex; gap: 16px; margin-bottom: 40px; font-size: 0.9rem; }
+    nav a { color: #a1a1aa; text-decoration: none; }
+    nav a:hover { color: #fff; }
+    strong { color: #f4f4f5; }
+  </style>
+</head>
+<body>
+<main>
+  <nav><a href="./">Symphony</a><a href="terms.html">Terms of Service</a><a href="privacy.html">Privacy Policy</a></nav>
+
+  <h1>Privacy Policy</h1>
+  <p class="updated">Last updated 13 October 2026</p>
+
+  <p>This policy covers the Symphony music app and the Symphony Discord bot. The short version: Symphony has no accounts, shows no ads, and does not sell or share your data. What you listen to stays with you.</p>
+
+  <h2>The Discord bot</h2>
+  <p>To play music, the bot uses:</p>
+  <ul>
+    <li><strong>The command you type</strong>, such as a song name or link given to <code>/play</code>.</li>
+    <li><strong>Your Discord user ID</strong>, to show who asked for each song in the queue.</li>
+    <li><strong>The server, voice channel and text channel IDs</strong>, to join the right channel and post "Now playing" messages.</li>
+    <li><strong>Who is in the bot's voice channel</strong>, so only listeners can control the music and the bot can leave when everyone has gone.</li>
+  </ul>
+  <p>The queue lives in the bot's memory only. It is gone when the queue ends, the bot leaves the channel, or the bot restarts. Nothing is written to a database. The bot does not read your messages, does not record voice audio, and does not keep a listening history.</p>
+  <p>The host running the bot may keep short technical logs, such as error messages and the names of servers the bot joins or leaves. These are used only to fix problems.</p>
+
+  <h2>The app</h2>
+  <ul>
+    <li>Your library, playlists, downloads, settings and the name you enter are stored <strong>on your device</strong>. Uninstalling the app deletes them.</li>
+    <li>On Windows, if you turn on "Show what I'm playing on Discord", the current song is sent to the Discord app on your PC so it can appear in your status. You can turn this off at any time.</li>
+    <li>The web version plays music through Symphony's server, which keeps a temporary audio cache. It is not linked to you.</li>
+  </ul>
+
+  <h2>Services Symphony talks to</h2>
+  <p>To find songs, play them and show artwork and lyrics, song names and search terms are sent to:</p>
+  <ul>
+    <li><strong>YouTube</strong>, to find and play audio,</li>
+    <li><strong>Spotify</strong>, to read the playlists you import or link,</li>
+    <li><strong>Apple Music (iTunes), Deezer and LRCLIB</strong>, for song details, artwork and lyrics (the app only),</li>
+    <li><strong>GitHub</strong>, to check for app updates.</li>
+  </ul>
+  <p>Their own privacy policies apply to what they receive. Symphony never sends them your Discord account or any other personal details.</p>
+
+  <h2>Children</h2>
+  <p>Symphony is not meant for children under 13, or under the minimum age to use Discord in your country.</p>
+
+  <h2>Your choices</h2>
+  <ul>
+    <li>Use <code>/stop</code> to clear the bot's queue at once, or remove the bot from your server to stop it using any data there.</li>
+    <li>Clear the app's data or uninstall it to delete everything it stored.</li>
+  </ul>
+
+  <h2>Changes</h2>
+  <p>If this policy changes, the new version is posted here with a new date.</p>
+
+  <h2>Contact</h2>
+  <p>Questions or requests: open an issue at <a href="https://github.com/jvcerezo/symphony/issues">github.com/jvcerezo/symphony/issues</a>.</p>
+</main>
+</body>
+</html>
