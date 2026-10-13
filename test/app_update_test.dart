@@ -67,6 +67,26 @@ void main() {
       expect(release.publishedAt, isNotNull);
     });
 
+    test('the macOS zip is never taken for the Windows update', () {
+      AppReleaseInfo parse(List<String> names) => AppReleaseInfo.fromJson({
+            'tag_name': 'latest',
+            'assets': [
+              for (final n in names) {'name': n, 'browser_download_url': 'https://dl/$n'},
+            ],
+          });
+
+      for (final order in [
+        ['symphony-windows-x64.zip', 'symphony-macos.zip', 'symphony-ios.ipa', 'symphony.apk'],
+        ['symphony-ios.ipa', 'symphony-macos.zip', 'symphony.apk', 'symphony-windows-x64.zip'],
+      ]) {
+        final release = parse(order);
+        expect(release.windowsDownloadUrl, 'https://dl/symphony-windows-x64.zip');
+        expect(release.macDownloadUrl, 'https://dl/symphony-macos.zip');
+        expect(release.iosDownloadUrl, 'https://dl/symphony-ios.ipa');
+        expect(release.androidDownloadUrl, 'https://dl/symphony.apk');
+      }
+    });
+
     test('Gracefully handles release with missing assets', () {
       const mockJson = '''
       {

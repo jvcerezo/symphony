@@ -12,6 +12,8 @@ class AppReleaseInfo {
   final String htmlUrl;
   final String? windowsDownloadUrl;
   final String? androidDownloadUrl;
+  final String? macDownloadUrl;
+  final String? iosDownloadUrl;
   final DateTime? publishedAt;
 
   const AppReleaseInfo({
@@ -21,6 +23,8 @@ class AppReleaseInfo {
     required this.htmlUrl,
     this.windowsDownloadUrl,
     this.androidDownloadUrl,
+    this.macDownloadUrl,
+    this.iosDownloadUrl,
     this.publishedAt,
   });
 
@@ -64,6 +68,8 @@ class AppReleaseInfo {
   factory AppReleaseInfo.fromJson(Map<String, dynamic> json) {
     String? winUrl;
     String? apkUrl;
+    String? macUrl;
+    String? ipaUrl;
 
     final rawAssets = json['assets'] as List<dynamic>? ?? [];
     for (final a in rawAssets) {
@@ -71,8 +77,14 @@ class AppReleaseInfo {
         final name = (a['name']?.toString() ?? '').toLowerCase();
         final download = a['browser_download_url']?.toString();
         if (download != null) {
+          // Releases also carry a macOS .zip, so a .zip is only the
+          // Windows build when its name doesn't say otherwise.
           if (name.endsWith('.apk')) {
             apkUrl = download;
+          } else if (name.endsWith('.ipa')) {
+            ipaUrl = download;
+          } else if (name.endsWith('.zip') && (name.contains('macos') || name.contains('mac-'))) {
+            macUrl = download;
           } else if (name.endsWith('.zip') || name.endsWith('.exe') || name.endsWith('.msi')) {
             winUrl = download;
           }
@@ -92,6 +104,8 @@ class AppReleaseInfo {
       htmlUrl: (json['html_url']?.toString() ?? 'https://github.com/jvcerezo/symphony/releases').trim(),
       windowsDownloadUrl: winUrl,
       androidDownloadUrl: apkUrl,
+      macDownloadUrl: macUrl,
+      iosDownloadUrl: ipaUrl,
       publishedAt: pubDate,
     );
   }
