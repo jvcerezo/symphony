@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:rxdart/rxdart.dart';
 import '../../../../core/errors/exceptions.dart';
+import '../../../../core/services/network_status.dart';
 import '../../../../core/services/notification_permission_service.dart';
 import '../../domain/entities/resolved_audio_stream.dart';
 import '../../domain/entities/track.dart';
@@ -21,6 +22,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   final PlaybackCache _playbackCache;
   final ArtworkResolverService _artworkResolver;
   final NotificationPermissionService _notificationPermission;
+  final NetworkStatus _network;
 
   final PlayQueue _queue;
   final BehaviorSubject<int> _currentIndexSubject = BehaviorSubject<int>.seeded(-1);
@@ -41,6 +43,13 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   Duration _lastObservedPosition = Duration.zero;
   DateTime _lastPositionAdvanceTime = DateTime.now();
 
+  /// True while a song whose stream broke is being picked up again.
+  bool _recovering = false;
+
+  /// The song already picked up once after its stream broke; a second
+  /// break moves on instead of retrying forever.
+  Track? _recoveredTrack;
+
   SymphonyAudioHandler({
     AudioPlayer? player,
     AudioStreamResolverService? streamResolver,
@@ -48,12 +57,14 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
     NotificationPermissionService? notificationPermission,
     PlaybackCache? playbackCache,
     PlayQueue? queue,
+    NetworkStatus? network,
   })  : _player = player ?? AudioPlayer(),
         _queue = queue ?? PlayQueue(),
         _playbackCache = playbackCache ?? PlaybackCache(),
         _streamResolver = streamResolver ?? AudioStreamResolverService(),
         _artworkResolver = artworkResolver ?? ArtworkResolverService(),
-        _notificationPermission = notificationPermission ?? NotificationPermissionService() {
+        _notificationPermission = notificationPermission ?? NotificationPermissionService(),
+        _network = network ?? NetworkStatus() {
     _initAudioSession();
     _broadcastPlaybackState();
     _listenToCompletion();
@@ -102,13 +113,18 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
     final upcoming = _queue.upcoming(ahead);
     if (upcoming.isNotEmpty) {
       if (_usesPlaybackCache) {
-        for (final t in upcoming) {
-          unawaited(_warmTrack(t));
-        }
         // Prepare stream links for the few after that, so skipping ahead
         // also starts at once. Background, one at a time, yields to taps.
         final later = _queue.upcoming(ahead + 4).skip(ahead).toList();
-        _streamResolver.prefetch(later, replace: true);
+        unawaited(() async {
+          // Offline every lookup would fail, and a failed one forgets the
+          // song's remembered match.
+          if (!await _network.isOnline()) return;
+          for (final t in upcoming) {
+            unawaited(_warmTrack(t));
+          }
+          _streamResolver.prefetch(later, replace: true);
+        }());
       } else {
         _streamResolver.preloadTracks(upcoming, count: 2);
       }
@@ -197,15 +213,24 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   }
 
   void _broadcastPlaybackState() {
-    _playbackEventSub = _player.playbackEventStream.listen((_) {
-      _updatePlaybackState();
-    });
+    _playbackEventSub = _player.playbackEventStream.listen(
+      (_) => _updatePlaybackState(),
+      onError: _onPlayerError,
+    );
+  }
+
+  /// The player gave up on the current source, e.g. the connection dropped
+  /// mid-song. Failures while a song loads are handled by that load.
+  void _onPlayerError(Object error, [StackTrace? stackTrace]) {
+    developer.log('Player error: $error', name: 'AudioHandler');
+    if (_loading || _recovering || _queue.isEmpty) return;
+    unawaited(_recoverPlayback());
   }
 
   void _listenToCompletion() {
     _playerStateSub = _player.playerStateStream.listen((state) {
       _updatePlaybackState();
-      if (state.processingState == ProcessingState.completed && !_isAutoSkipping) {
+      if (state.processingState == ProcessingState.completed && !_isAutoSkipping && !_loading && !_recovering) {
         final dur = _player.duration ?? mediaItem.value?.duration ?? currentTrack?.expectedDuration;
         if (dur != null && dur > const Duration(seconds: 15)) {
           final pos = _player.position;
@@ -216,7 +241,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
           }
         }
       }
-    });
+    }, onError: (Object _) {}); // Reported through playbackEventStream.
   }
 
   void _startCompletionWatchdog() {
@@ -225,7 +250,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
     _lastPositionAdvanceTime = DateTime.now();
 
     _completionWatchdogTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
-      if (_isAutoSkipping || _queue.isEmpty || !_player.playing) return;
+      if (_isAutoSkipping || _loading || _recovering || _queue.isEmpty || !_player.playing) return;
 
       final dur = _player.duration ?? mediaItem.value?.duration ?? currentTrack?.expectedDuration;
       if (dur == null || dur <= const Duration(seconds: 15)) return;
@@ -256,21 +281,27 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
           return;
         }
       }
+
+      // 3. Stuck buffering mid-song (the connection dropped): carry on from
+      //    the copy on this device, or move on when offline.
+      if (_player.processingState == ProcessingState.buffering &&
+          DateTime.now().difference(_lastPositionAdvanceTime) > _stallLimit) {
+        unawaited(_recoverPlayback(fromStall: true));
+      }
     });
   }
 
+  static const _stallLimit = Duration(seconds: 8);
+
   Future<void> _handleTrackCompleted([String reason = '']) async {
-    if (_isAutoSkipping || _queue.isEmpty) return;
+    if (_isAutoSkipping || _loading || _queue.isEmpty) return;
     _isAutoSkipping = true;
     _completionWatchdogTimer?.cancel();
     developer.log('Track completed ($reason). Moving on...', name: 'AudioHandler');
     try {
       final next = _queue.nextIndex(auto: true);
       if (next == null) {
-        // End of the queue with repeat off: stop on the last song, rewound.
-        await _player.pause();
-        await _player.seek(Duration.zero);
-        _updatePlaybackState();
+        await _stopAtEnd();
       } else if (next == currentIndex) {
         await _player.seek(Duration.zero);
         unawaited(_player.play().catchError((Object e) {
@@ -279,7 +310,9 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
         _startCompletionWatchdog();
         _updatePlaybackState();
       } else {
-        await _playAt(next);
+        // Not awaited: the next song can take a while to load, and the
+        // queue must keep going after it (_loading guards it meanwhile).
+        unawaited(_playOnFrom(next));
       }
     } catch (e) {
       developer.log('Auto-skip error: $e', name: 'AudioHandler');
@@ -287,6 +320,138 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
       await Future.delayed(const Duration(milliseconds: 600));
       _isAutoSkipping = false;
     }
+  }
+
+  /// End of the queue with repeat off: stop on the last song, rewound.
+  Future<void> _stopAtEnd() async {
+    await _player.pause();
+    await _player.seek(Duration.zero);
+    _updatePlaybackState();
+  }
+
+  /// Keeps the queue playing from [index] without the user: a song that
+  /// can't play (offline and not on this device, or no match found) is
+  /// passed over instead of stopping everything.
+  Future<void> _playOnFrom(int index) async {
+    final wrap = _queue.repeatMode == QueueRepeatMode.all;
+    var token = _playRequestId;
+    int? candidate = index;
+    for (var tries = 0; candidate != null && tries < _queue.length; tries++) {
+      final target = await _playableFrom(candidate, wrap: wrap);
+      // The user chose something else meanwhile.
+      if (token != _playRequestId) return;
+      if (target == null) {
+        developer.log('Nothing left in the queue can play offline', name: 'AudioHandler');
+        return _stopAtEnd();
+      }
+      try {
+        await _playAt(target);
+        return;
+      } catch (e) {
+        if (token + 1 != _playRequestId) return;
+        token = _playRequestId;
+        developer.log('Passing over "${_queue.current?.title}": $e', name: 'AudioHandler');
+        candidate = _indexAfter(target, wrap: wrap);
+      }
+    }
+    if (token == _playRequestId) await _stopAtEnd();
+  }
+
+  int? _indexAfter(int index, {required bool wrap}) {
+    if (index + 1 < _queue.length) return index + 1;
+    return wrap && _queue.length > 1 ? 0 : null;
+  }
+
+  /// [start], or offline the first song from there on (backwards with a
+  /// negative [step]) that is on this device. Null when none is.
+  Future<int?> _playableFrom(int start, {required bool wrap, int step = 1}) async {
+    if (!_usesPlaybackCache || await _network.isOnline()) return start;
+    final tracks = _queue.tracks;
+    final n = tracks.length;
+    var i = start;
+    for (var seen = 0; seen < n; seen++) {
+      if (await _onDeviceCopy(tracks[i]) != null) return i;
+      final next = i + step;
+      if (next < 0 || next >= n) {
+        if (!wrap) return null;
+        i = (next + n) % n;
+      } else {
+        i = next;
+      }
+    }
+    return null;
+  }
+
+  /// [track]'s audio already on this device: its download, else a copy
+  /// kept from playing it. Never touches the network.
+  Future<ResolvedAudioStream?> _onDeviceCopy(Track track) async {
+    if (!_usesPlaybackCache) return null;
+    return await _streamResolver.resolveLocal(track) ?? await _playbackCache.cachedStreamFor(track);
+  }
+
+  /// Picks the current song up again after its stream broke: from the copy
+  /// on this device at the same spot, else from a fresh link when online,
+  /// else (offline) with the next song that can play. Only once per song;
+  /// a second break moves on. [fromStall]: the player is stuck buffering
+  /// rather than failed, so with a connection and no copy it is left to
+  /// keep trying.
+  Future<void> _recoverPlayback({bool fromStall = false}) async {
+    final track = currentTrack;
+    if (track == null || _recovering || _loading) return;
+    _recovering = true;
+    final requestId = _playRequestId;
+    final position = _player.position;
+    try {
+      if (identical(_recoveredTrack, track)) {
+        if (fromStall && await _network.isOnline()) return;
+        developer.log('"${track.title}" broke again; moving on', name: 'AudioHandler');
+        _moveOn();
+        return;
+      }
+
+      final copy = await _onDeviceCopy(track);
+      if (requestId != _playRequestId) return;
+      if (copy != null) {
+        _recoveredTrack = track;
+        developer.log('Stream for "${track.title}" broke; continuing from the copy on this device at $position',
+            name: 'AudioHandler');
+        await _player
+            .setAudioSource(AudioSource.uri(copy.streamUri, tag: mediaItem.value), initialPosition: position)
+            .timeout(const Duration(seconds: 10));
+        if (requestId != _playRequestId) return;
+        unawaited(_player.play().catchError((Object e) {
+          developer.log('play() failed: $e', name: 'AudioHandler');
+        }));
+        _startCompletionWatchdog();
+        _updatePlaybackState();
+        return;
+      }
+
+      if (await _network.isOnline()) {
+        if (fromStall) return;
+        _recoveredTrack = track;
+        // The link may have expired: fetch a new one and resume there.
+        _streamResolver.forgetTrack(track);
+        _recovering = false;
+        await _loadAndPlayTrack(track, startAt: position);
+        return;
+      }
+
+      developer.log('Offline and "${track.title}" isn\'t on this device; moving on', name: 'AudioHandler');
+      _recoveredTrack = track;
+      _moveOn();
+    } catch (e) {
+      developer.log('Could not pick "${track.title}" up again: $e', name: 'AudioHandler');
+      if (identical(currentTrack, track) && !_loading) _moveOn();
+    } finally {
+      _recovering = false;
+    }
+  }
+
+  /// Leaves a song that can't go on for the next one that can play.
+  void _moveOn() {
+    final next = _indexAfter(currentIndex, wrap: _queue.repeatMode == QueueRepeatMode.all);
+    unawaited(next == null ? _stopAtEnd() : _playOnFrom(next));
   }
 
   AudioProcessingState _transformProcessingState(ProcessingState state) {
@@ -309,7 +474,8 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   Future<void> playQueue(List<Track> tracks, {int startIndex = 0}) async {
     if (tracks.isEmpty) return;
     _queue.load(tracks, startIndex: startIndex);
-    await _playAt(_queue.index);
+    // Offline, start at the first song from there that's on this device.
+    await _playAt(await _playableFrom(_queue.index, wrap: true) ?? _queue.index);
   }
 
   /// Plays a single [Track], updating the current queue.
@@ -321,6 +487,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   /// Makes [index] (in play order) current and starts it.
   Future<void> _playAt(int index) async {
     if (!_queue.jumpTo(index)) return;
+    _recoveredTrack = null;
     _emitQueue();
     _preloadUpcomingTracks();
     await _loadAndPlayTrack(_queue.current!);
@@ -382,7 +549,9 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
     _updatePlaybackState();
   }
 
-  Future<void> _loadAndPlayTrack(Track track) async {
+  /// Plays [track] from [startAt] (the start unless a broken stream is
+  /// being picked up again).
+  Future<void> _loadAndPlayTrack(Track track, {Duration startAt = Duration.zero}) async {
     final requestId = ++_playRequestId;
     _loading = true;
 
@@ -401,7 +570,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
       playbackState.value.copyWith(
         processingState: AudioProcessingState.buffering,
         playing: true,
-        updatePosition: Duration.zero,
+        updatePosition: startAt,
         bufferedPosition: Duration.zero,
         queueIndex: currentIndex >= 0 ? currentIndex : null,
       ),
@@ -410,23 +579,35 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
     try {
       if (requestId != _playRequestId) return; // Superceded by another user tap
 
-      // A track played recently is already on disk: start it without a lookup.
-      var cached = _usesPlaybackCache ? await _playbackCache.cachedStreamFor(track) : null;
+      // A downloaded track, or one played recently, is already on disk:
+      // start it without a lookup (and without needing a connection).
+      final download = _usesPlaybackCache ? await _streamResolver.resolveLocal(track) : null;
+      var cached = download == null && _usesPlaybackCache ? await _playbackCache.cachedStreamFor(track) : null;
       // A copy saved from a match that has since been replaced, or one not
       // yet checked, could be the wrong song: drop it and match again.
-      if (cached != null && !await _streamResolver.isSettledMatch(track, cached.sourceVideoId)) {
+      // Offline it is still better than nothing.
+      if (cached != null &&
+          !await _streamResolver.isSettledMatch(track, cached.sourceVideoId) &&
+          await _network.isOnline()) {
         await _playbackCache.forget(track);
         cached = null;
       }
-      final streamInfo = cached ?? await _streamResolver.resolveBestAudioStream(track);
+      final onDevice = download ?? cached;
+      if (onDevice == null && _usesPlaybackCache && !await _network.isOnline()) {
+        throw AudioStreamResolutionException('"${track.title}" isn\'t downloaded and there\'s no internet connection');
+      }
+      final streamInfo = onDevice ?? await _streamResolver.resolveBestAudioStream(track);
       if (requestId != _playRequestId) return;
 
-      // Resolve artwork if track doesn't have one yet, ensuring rich lock-screen and bottom bar
+      // Resolve artwork if track doesn't have one yet, ensuring rich lock-screen and bottom bar.
+      // A song on the device doesn't wait for it (it may be offline).
       Uri? resolvedArt = track.artworkUri;
-      if (resolvedArt == null) {
+      if (resolvedArt == null && onDevice == null) {
         try {
           resolvedArt = await _artworkResolver.resolveArtwork(track);
         } catch (_) {}
+      } else if (resolvedArt == null) {
+        unawaited(_addArtworkLater(track, requestId, streamInfo.duration));
       }
       if (requestId != _playRequestId) return;
 
@@ -481,6 +662,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
         await _player.setAudioSource(
           audioSource,
           preload: true,
+          initialPosition: startAt,
         ).timeout(const Duration(seconds: 10));
       } catch (loadErr) {
         developer.log('Primary stream load failed with $loadErr, attempting fallback...', name: 'AudioHandler');
@@ -495,7 +677,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
           try {
             final file = await copy.timeout(const Duration(seconds: 45));
             if (requestId != _playRequestId) return;
-            await _player.setAudioSource(AudioSource.uri(file, tag: item), preload: true).timeout(const Duration(seconds: 10));
+            await _player.setAudioSource(AudioSource.uri(file, tag: item), preload: true, initialPosition: startAt).timeout(const Duration(seconds: 10));
             recovered = true;
             developer.log('Recovered "${track.title}" from its local copy', name: 'AudioHandler');
           } catch (e) {
@@ -511,6 +693,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
             await _player.setAudioSource(
               serverSource,
               preload: true,
+              initialPosition: startAt,
             ).timeout(const Duration(seconds: 10));
             recovered = true;
             developer.log('Recovered playback via Symphony server stream proxy for: "${track.title}"', name: 'AudioHandler');
@@ -525,6 +708,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
             await _player.setAudioSource(
               fallbackSource,
               preload: true,
+              initialPosition: startAt,
             ).timeout(const Duration(seconds: 10));
             recovered = true;
           } else {
@@ -561,6 +745,15 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
       if (e is AudioStreamResolutionException) rethrow;
       throw PlaybackInitializationException('Failed to play "${track.title}"', e);
     }
+  }
+
+  /// Fills in [track]'s artwork once found, if it is still the one playing.
+  Future<void> _addArtworkLater(Track track, int requestId, Duration duration) async {
+    try {
+      final art = await _artworkResolver.resolveArtwork(track);
+      if (art == null || requestId != _playRequestId) return;
+      mediaItem.add(track.copyWith(artworkUri: art).toMediaItem(actualDuration: duration));
+    } catch (_) {}
   }
 
   @override
@@ -603,7 +796,8 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   Future<void> skipToNext() async {
     final next = _queue.nextIndex(auto: false);
     if (next == null) return;
-    await _playAt(next);
+    // Offline, go to the next song that's on this device.
+    await _playAt(await _playableFrom(next, wrap: true) ?? next);
   }
 
   @override
@@ -613,7 +807,8 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
     if (_player.position.inSeconds > 3 || prev == null || prev == currentIndex) {
       await seek(Duration.zero);
     } else {
-      await _playAt(prev);
+      final wrap = _queue.repeatMode == QueueRepeatMode.all;
+      await _playAt(await _playableFrom(prev, wrap: wrap, step: -1) ?? prev);
     }
   }
 
