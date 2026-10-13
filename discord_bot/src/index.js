@@ -4,17 +4,23 @@ import { Client, Events, GatewayIntentBits, MessageFlags } from 'discord.js';
 import { commandData, controls, createHandlers, nowPlayingEmbed } from './commands.js';
 import { loadConfig } from './config.js';
 import { GuildPlayer } from './player.js';
+import { startPotServer } from './pot_server.js';
 import { YtDlp } from './ytdlp.js';
 
 // View channel, send messages, embed links, connect, speak.
 const INVITE_PERMISSIONS = 3165184;
 
 const config = loadConfig();
-const ytdlp = new YtDlp({ path: config.ytDlpPath, cookiesFile: config.cookiesFile });
+const ytdlp = new YtDlp({
+  path: config.ytDlpPath,
+  cookiesFile: config.cookiesFile,
+  poTokens: Boolean(config.potServerScript),
+});
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
 
 checkTool('yt-dlp', config.ytDlpPath, ['--version']);
 checkTool('ffmpeg', config.ffmpegPath, ['-version']);
+const stopPotServer = config.potServerScript ? startPotServer(config.potServerScript) : () => {};
 
 /** One player per server, made the first time it is needed. */
 const players = {
@@ -147,6 +153,7 @@ if (process.env.PORT) {
 
 function shutdown() {
   for (const player of players.byGuild.values()) player.leave(null);
+  stopPotServer();
   client.destroy().finally(() => process.exit(0));
 }
 process.on('SIGINT', shutdown);
