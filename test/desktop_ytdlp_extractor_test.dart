@@ -2,10 +2,11 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:symphony/core/errors/exceptions.dart';
-import 'package:symphony/features/audio_player/data/services/extraction/windows_ytdlp_extractor_io.dart';
+import 'package:symphony/features/audio_player/data/services/extraction/desktop_ytdlp_extractor_io.dart';
 import 'package:symphony/features/audio_player/data/services/extraction/ytdlp_update_scheduler.dart';
 
 class _Call {
@@ -69,13 +70,20 @@ void main() {
     await File(supportPath()).writeAsString('support');
   }
 
-  WindowsYtDlpExtractor build(_FakeRunner runner, {bool isWindows = true, Duration? timeout}) =>
-      WindowsYtDlpExtractor(
+  DesktopYtDlpExtractor build(
+    _FakeRunner runner, {
+    bool isWindows = true,
+    TargetPlatform? platform,
+    BinaryDownloader? download,
+    Duration? timeout,
+  }) =>
+      DesktopYtDlpExtractor(
         runner: runner,
         supportDir: () async => supportDir,
         exeDir: () => exeDir.path,
-        isWindows: isWindows,
-        timeout: timeout ?? WindowsYtDlpExtractor.defaultExtractTimeout,
+        platform: platform ?? (isWindows ? TargetPlatform.windows : TargetPlatform.linux),
+        download: download ?? (url, target) async => fail('unexpected download of $url'),
+        timeout: timeout ?? DesktopYtDlpExtractor.defaultExtractTimeout,
       );
 
   YtDlpRunResult ok([Map<String, Object?> json = _sampleJson]) => YtDlpRunResult(0, '${jsonEncode(json)}\n', '');
@@ -306,6 +314,48 @@ void main() {
     await Future.wait([for (final id in ['a', 'b', 'c', 'd', 'e']) extractor.extract('${id}aaaaaaaaaa')]);
 
     expect(runner.calls, hasLength(5));
-    expect(peak, WindowsYtDlpExtractor.maxConcurrentRuns);
+    expect(peak, DesktopYtDlpExtractor.maxConcurrentRuns);
+  });
+
+  group('macOS', () {
+    String macPath() => sep(sep(supportDir.path, 'yt-dlp'), DesktopYtDlpExtractor.macBinaryName);
+
+    test('downloads yt-dlp on first start and makes it runnable', () async {
+      final downloads = <Uri>[];
+      final runner = _FakeRunner((_) async => const YtDlpRunResult(0, '', ''));
+      final ext = build(runner, platform: TargetPlatform.macOS, download: (url, target) async {
+        downloads.add(url);
+        await target.writeAsString('binary');
+      });
+
+      expect(await ext.install(), isTrue);
+      expect(downloads, [DesktopYtDlpExtractor.macDownloadUrl]);
+      expect(await File(macPath()).exists(), isTrue);
+      expect(runner.calls.single.executable, 'chmod');
+      expect(await ext.isAvailable(), isTrue);
+    });
+
+    test('an installed copy is not downloaded again', () async {
+      await Directory(sep(supportDir.path, 'yt-dlp')).create(recursive: true);
+      await File(macPath()).writeAsString('binary');
+      final ext = build(_FakeRunner((_) async => ok()), platform: TargetPlatform.macOS);
+
+      expect(await ext.install(), isTrue);
+      final audio = await ext.extract('abc123');
+      expect(audio.videoId, isNotEmpty);
+    });
+
+    test('not available until downloaded; a failed download is retried later', () async {
+      var attempts = 0;
+      final ext = build(_FakeRunner((_) async => ok()), platform: TargetPlatform.macOS, download: (url, target) async {
+        attempts++;
+        throw const SocketException('offline');
+      });
+
+      expect(await ext.isAvailable(), isFalse);
+      expect(await ext.install(), isFalse);
+      expect(await ext.install(), isFalse);
+      expect(attempts, greaterThanOrEqualTo(2));
+    });
   });
 }

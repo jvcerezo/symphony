@@ -2,9 +2,9 @@ import '../../../../../core/errors/exceptions.dart';
 import 'audio_extractor.dart';
 
 /// Web build: there is no process to run.
-class WindowsYtDlpExtractor implements AudioExtractor {
+class DesktopYtDlpExtractor implements AudioExtractor {
   @override
-  String get name => 'yt-dlp (windows)';
+  String get name => 'yt-dlp';
 
   @override
   Future<bool> isAvailable() async => false;
@@ -15,6 +15,9 @@ class WindowsYtDlpExtractor implements AudioExtractor {
 
   /// No self-update on web.
   Future<String?> update() async => null;
+
+  /// Nothing to install on web.
+  Future<bool> install() async => false;
 
   @override
   Future<ExtractedAudio> searchSong(String query) =>
