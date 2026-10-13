@@ -3,7 +3,7 @@ import { fetchSpotify, parseSpotifyLink } from './spotify.js';
 
 const YOUTUBE = /^(https?:\/\/)?((www|m|music)\.)?(youtube\.com|youtu\.be)\//i;
 
-/** What `/play` was given: a Spotify link, a YouTube link or words to search. */
+/** What `s!play` was given: a Spotify link, a YouTube link or words to search. */
 export function classifyInput(text) {
   const input = text.trim();
   const spotify = parseSpotifyLink(input);
@@ -22,7 +22,7 @@ export function classifyInput(text) {
 }
 
 /**
- * Turns `/play` input into songs. Returns `{ title, songs, isList }`, where
+ * Turns `s!play` input into songs. Returns `{ title, songs, isList }`, where
  * `title` names the playlist or album when there is one. Spotify songs are
  * only matched to a YouTube video when they are about to play.
  */

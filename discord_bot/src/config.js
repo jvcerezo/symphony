@@ -10,9 +10,6 @@ export function loadConfig(env = process.env) {
   }
   return {
     token,
-    // Commands show up at once in this server; without it they are global
-    // and Discord can take up to an hour to show them.
-    guildId: env.DISCORD_GUILD_ID?.trim() || null,
     // A private bot: any other server that adds it is left straight away.
     allowedGuildIds: list(env.ALLOWED_GUILD_IDS),
     ytDlpPath: env.YTDLP_PATH?.trim() || 'yt-dlp',

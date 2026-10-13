@@ -34,12 +34,12 @@
   <h2>The Discord bot</h2>
   <p>To play music, the bot uses:</p>
   <ul>
-    <li><strong>The command you type</strong>, such as a song name or link given to <code>/play</code>.</li>
+    <li><strong>Messages that start with <code>s!</code></strong>, the bot's commands, such as a song name or link given to <code>s!play</code>.</li>
     <li><strong>Your Discord user ID</strong>, to show who asked for each song in the queue.</li>
     <li><strong>The server, voice channel and text channel IDs</strong>, to join the right channel and post "Now playing" messages.</li>
     <li><strong>Who is in the bot's voice channel</strong>, so only listeners can control the music and the bot can leave when everyone has gone.</li>
   </ul>
-  <p>The queue lives in the bot's memory only. It is gone when the queue ends, the bot leaves the channel, or the bot restarts. Nothing is written to a database. The bot does not read your messages, does not record voice audio, and does not keep a listening history.</p>
+  <p>The queue lives in the bot's memory only. It is gone when the queue ends, the bot leaves the channel, or the bot restarts. Nothing is written to a database. To spot its commands, the bot sees new messages in channels it can read. It ignores any message that doesn't start with <code>s!</code> and never stores messages. It does not record voice audio and does not keep a listening history.</p>
   <p>The host running the bot may keep short technical logs, such as error messages and the names of servers the bot joins or leaves. These are used only to fix problems.</p>
 
   <h2>The app</h2>
@@ -64,7 +64,7 @@
 
   <h2>Your choices</h2>
   <ul>
-    <li>Use <code>/stop</code> to clear the bot's queue at once, or remove the bot from your server to stop it using any data there.</li>
+    <li>Use <code>s!stop</code> to clear the bot's queue at once, or remove the bot from your server to stop it using any data there.</li>
     <li>Clear the app's data or uninstall it to delete everything it stored.</li>
   </ul>
 

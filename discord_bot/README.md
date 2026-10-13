@@ -2,17 +2,20 @@
 
 Plays music in a Discord voice channel for everyone in it. Give it a song name, a YouTube link, or a Spotify or YouTube playlist, the same links the Symphony app imports.
 
+Commands start with `s!`, so they don't clash with other music bots' `/play`.
+
 | Command | What it does |
 | --- | --- |
-| `/play <song or link>` | Joins your voice channel and plays it, or adds it to the queue |
-| `/playnext <song or link>` | Plays it right after the current song |
-| `/skip`, `/pause`, `/resume` | What they say. The "Now playing" message has these as buttons too |
-| `/stop` | Clears the queue and leaves |
-| `/queue [page]` | What's coming up |
-| `/nowplaying` | The current song and how far in it is |
-| `/shuffle` | Shuffles the songs still to come |
-| `/remove <number>` | Takes a song out of the queue (numbers are from `/queue`) |
-| `/loop off / song / queue` | Repeats the song or the whole queue |
+| `s!play <song or link>` (`s!p`) | Joins your voice channel and plays it, or adds it to the queue |
+| `s!playnext <song or link>` | Plays it right after the current song |
+| `s!skip` (`s!s`), `s!pause`, `s!resume` | What they say. The "Now playing" message has these as buttons too |
+| `s!stop` | Clears the queue and leaves |
+| `s!queue [page]` (`s!q`) | What's coming up |
+| `s!np` | The current song and how far in it is |
+| `s!shuffle` | Shuffles the songs still to come |
+| `s!remove <number>` | Takes a song out of the queue (numbers are from `s!queue`) |
+| `s!loop off / song / queue` | Repeats the song or the whole queue |
+| `s!help` | Lists the commands |
 
 Only people in the bot's voice channel can control it. It leaves after 5 minutes with nothing playing, or 2 minutes after everyone else has left.
 
@@ -21,11 +24,9 @@ Only people in the bot's voice channel can control it. It leaves after 5 minutes
 1. Open <https://discord.com/developers/applications> and click **New Application**. Name it "Symphony".
 2. Go to **Bot**:
    - Click **Reset Token** and copy the token. This is `DISCORD_TOKEN`. Keep it secret; anyone with it controls the bot.
-   - Turn **Public Bot** off, so only you can add it to servers.
-   - No privileged intents are needed.
+   - Under **Privileged Gateway Intents**, turn on **Message Content Intent**. The bot needs it to read `s!` commands; without it, it can't log in.
+   - **Public Bot** on lets anyone with the invite link add it; off, only you can.
 3. Start the bot (step 2 or 3 below). It prints an **Invite link**. Open it and pick your server.
-
-To get your server's ID for `DISCORD_GUILD_ID`: Discord **Settings > Advanced > Developer Mode** on, then right-click your server icon > **Copy Server ID**.
 
 ## 2. Run it on your PC
 
@@ -33,7 +34,7 @@ Needs Node 22.9 or newer, [yt-dlp](https://github.com/yt-dlp/yt-dlp) and ffmpeg 
 
 ```sh
 cd discord_bot
-cp .env.example .env   # then fill in DISCORD_TOKEN and DISCORD_GUILD_ID
+cp .env.example .env   # then fill in DISCORD_TOKEN
 npm install
 npm start
 ```
@@ -46,7 +47,7 @@ Each push to `main` publishes the image `ghcr.io/jvcerezo/symphony-discord-bot:l
 
 ```sh
 docker run -d --restart unless-stopped \
-  -e DISCORD_TOKEN=... -e DISCORD_GUILD_ID=... -e ALLOWED_GUILD_IDS=... \
+  -e DISCORD_TOKEN=... -e ALLOWED_GUILD_IDS=... \
   ghcr.io/jvcerezo/symphony-discord-bot:latest
 ```
 
