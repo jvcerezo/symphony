@@ -26,6 +26,8 @@ class AppUpdateDialog extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final winUrl = release.windowsDownloadUrl;
     final apkUrl = release.androidDownloadUrl;
+    final macUrl = release.macDownloadUrl;
+    final ipaUrl = release.iosDownloadUrl;
 
     return Dialog(
       backgroundColor: const Color(0xFF0F0F12),
@@ -331,6 +333,34 @@ class AppUpdateDialog extends ConsumerWidget {
                           onPressed: () => AppUpdateNotifier.openUrl(apkUrl),
                           icon: const Icon(Icons.android_rounded, size: 18, color: Colors.white),
                           label: const Text('Download Android (.apk)', style: TextStyle(color: Colors.white)),
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: Color(0xFF3F3F46)),
+                            padding: const EdgeInsets.symmetric(vertical: 13),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+
+                      if (macUrl != null) ...[
+                        OutlinedButton.icon(
+                          onPressed: () => AppUpdateNotifier.openUrl(macUrl, isDownload: true),
+                          icon: const Icon(Icons.laptop_mac_rounded, size: 18, color: Colors.white),
+                          label: const Text('Download Mac (.zip)', style: TextStyle(color: Colors.white)),
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: Color(0xFF3F3F46)),
+                            padding: const EdgeInsets.symmetric(vertical: 13),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+
+                      if (ipaUrl != null) ...[
+                        OutlinedButton.icon(
+                          onPressed: () => AppUpdateNotifier.openUrl(ipaUrl, isDownload: true),
+                          icon: const Icon(Icons.phone_iphone_rounded, size: 18, color: Colors.white),
+                          label: const Text('Download iPhone (.ipa)', style: TextStyle(color: Colors.white)),
                           style: OutlinedButton.styleFrom(
                             side: const BorderSide(color: Color(0xFF3F3F46)),
                             padding: const EdgeInsets.symmetric(vertical: 13),

@@ -46,20 +46,48 @@ class IoYtDlpProcessRunner implements YtDlpProcessRunner {
     return YtDlpRunResult(exitCode, await stdoutFuture, await stderrFuture);
   }
 
-  /// The official `yt-dlp.exe` is a PyInstaller one-file build: the visible
+  /// The official yt-dlp builds are PyInstaller one-file builds: the visible
   /// process spawns the real interpreter as a child, so kill the whole tree.
   static Future<void> _killTree(Process process) async {
     try {
-      await Process.run('taskkill', ['/PID', '${process.pid}', '/T', '/F']);
+      if (Platform.isWindows) {
+        await Process.run('taskkill', ['/PID', '${process.pid}', '/T', '/F']);
+      } else {
+        await Process.run('pkill', ['-KILL', '-P', '${process.pid}']);
+        process.kill(ProcessSignal.sigkill);
+      }
     } catch (_) {
       process.kill();
     }
   }
 }
 
-/// Windows: runs `yt-dlp.exe` on the user's PC — no Symphony server.
+/// Saves [url] to [target]. Injectable so tests never download anything.
+typedef BinaryDownloader = Future<void> Function(Uri url, File target);
+
+Future<void> _httpDownload(Uri url, File target) async {
+  final client = HttpClient();
+  try {
+    final request = await client.getUrl(url);
+    final response = await request.close();
+    if (response.statusCode != 200) {
+      throw HttpException('Download failed with ${response.statusCode}', uri: url);
+    }
+    await response.pipe(target.openWrite());
+  } finally {
+    client.close();
+  }
+}
+
+/// Runs yt-dlp on the user's computer — no Symphony server. Windows and macOS.
 ///
-/// Binary lookup, in order:
+/// macOS: the app downloads `yt-dlp_macos` into `<app support>/yt-dlp/` on
+/// first start ([install]) and keeps it current with [update]. It is not
+/// shipped inside the app: a binary inside a downloaded, un-notarized app is
+/// quarantined and macOS refuses to run it, while one the app downloads
+/// itself is not.
+///
+/// Windows binary lookup, in order:
 /// 1. `<dir of Symphony.exe>\yt-dlp\yt-dlp.exe` — the official *folder*
 ///    build shipped by CI. It starts ~0.5 s faster per run than the one-file
 ///    build (no self-extraction to %TEMP%); [update] runs `-U` on it in place.
@@ -70,8 +98,10 @@ class IoYtDlpProcessRunner implements YtDlpProcessRunner {
 /// If `deno.exe` or `qjs.exe` sits next to the binary in use, it is passed via
 /// `--js-runtimes`. None is bundled today: YouTube audio currently extracts
 /// and range-seeks fine without one (see CHANGELOG 2026-10-11).
-class WindowsYtDlpExtractor implements AudioExtractor {
-  static const binaryName = 'yt-dlp.exe';
+class DesktopYtDlpExtractor implements AudioExtractor {
+  static const windowsBinaryName = 'yt-dlp.exe';
+  static const macBinaryName = 'yt-dlp_macos';
+  static final macDownloadUrl = Uri.parse('https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos');
   static const formatSelector = 'ba[ext=m4a]/ba[acodec^=mp4a]/ba';
   static const defaultExtractTimeout = Duration(seconds: 25);
   static const defaultUpdateTimeout = Duration(minutes: 3);
@@ -83,10 +113,12 @@ class WindowsYtDlpExtractor implements AudioExtractor {
   final YtDlpProcessRunner _runner;
   final Future<Directory> Function() _supportDir;
   final String Function() _exeDir;
-  final bool _isWindows;
+  final TargetPlatform? _platform;
+  final BinaryDownloader _download;
   final Duration _timeout;
 
   bool? _available;
+  Future<bool>? _installing;
   final Map<String, Future<ExtractedAudio>> _inFlight = {};
 
   /// Each yt-dlp.exe launch unpacks itself and starts Python, so cap how many
@@ -112,25 +144,66 @@ class WindowsYtDlpExtractor implements AudioExtractor {
     }
   }
 
-  WindowsYtDlpExtractor({
+  DesktopYtDlpExtractor({
     YtDlpProcessRunner runner = const IoYtDlpProcessRunner(),
     Future<Directory> Function()? supportDir,
     String Function()? exeDir,
-    bool? isWindows,
+    TargetPlatform? platform,
+    BinaryDownloader? download,
     Duration timeout = defaultExtractTimeout,
   })  : _runner = runner,
         _supportDir = supportDir ?? getApplicationSupportDirectory,
         _exeDir = exeDir ?? (() => File(Platform.resolvedExecutable).parent.path),
-        _isWindows = isWindows ?? (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows),
+        _platform = platform ?? (kIsWeb ? null : defaultTargetPlatform),
+        _download = download ?? _httpDownload,
         _timeout = timeout;
 
+  bool get _isWindows => _platform == TargetPlatform.windows;
+  bool get _isMac => _platform == TargetPlatform.macOS;
+  String get _binaryName => _isMac ? macBinaryName : windowsBinaryName;
+
   @override
-  String get name => 'yt-dlp (windows)';
+  String get name => _isMac ? 'yt-dlp (macos)' : 'yt-dlp (windows)';
 
   @override
   Future<bool> isAvailable() async {
+    if (_isMac) {
+      if (_available == true) return true;
+      final found = await _findBinary() != null;
+      // Not downloaded yet: fetch it in the background; songs use the next
+      // extractor until it is ready.
+      if (!found) unawaited(install());
+      return _available = found;
+    }
     if (!_isWindows) return false;
     return _available ??= await _findBinary() != null;
+  }
+
+  /// macOS: downloads yt-dlp into app support if it isn't there yet. Returns
+  /// whether it is ready. Never throws. Elsewhere, reports availability.
+  Future<bool> install() {
+    if (!_isMac) return isAvailable();
+    return _installing ??= _install().whenComplete(() {
+      _installing = null;
+    });
+  }
+
+  Future<bool> _install() async {
+    try {
+      final target = File(await _supportBinaryPath());
+      if (await target.exists()) return _available = true;
+      await target.parent.create(recursive: true);
+      final partial = File('${target.path}.download');
+      developer.log('Downloading yt-dlp for macOS…', name: 'YtDlp');
+      await _download(macDownloadUrl, partial);
+      await _runner.run('chmod', ['755', partial.path], timeout: const Duration(seconds: 10));
+      await partial.rename(target.path);
+      developer.log('yt-dlp for macOS is ready', name: 'YtDlp');
+      return _available = true;
+    } catch (e) {
+      developer.log('yt-dlp download failed: $e', name: 'YtDlp');
+      return false;
+    }
   }
 
   @override
@@ -163,7 +236,7 @@ class WindowsYtDlpExtractor implements AudioExtractor {
     final binary = await _findBinary(preferBundled: _updateInFlight != null);
     if (binary == null) {
       _available = false;
-      throw AudioStreamResolutionException('yt-dlp.exe not found for $what');
+      throw AudioStreamResolutionException('yt-dlp not found for $what');
     }
     final args = [
       ..._jsRuntimeArgs(binary),
@@ -201,7 +274,7 @@ class WindowsYtDlpExtractor implements AudioExtractor {
   /// binary first. Returns the new version if it changed, else null. Never
   /// throws; failures are logged.
   Future<String?> update() {
-    if (!_isWindows) return Future.value(null);
+    if (!_isWindows && !_isMac) return Future.value(null);
     return _updateInFlight ??= _update().whenComplete(() {
       _updateInFlight = null;
     });
@@ -209,6 +282,7 @@ class WindowsYtDlpExtractor implements AudioExtractor {
 
   Future<String?> _update() async {
     try {
+      if (_isMac && !await install()) return null;
       final folderBuild = File(_bundledFolderBinaryPath());
       final target = await folderBuild.exists() ? folderBuild : File(await _supportBinaryPath());
       if (target != folderBuild && !await target.exists()) {
@@ -233,14 +307,18 @@ class WindowsYtDlpExtractor implements AudioExtractor {
   }
 
   Future<String> _supportBinaryPath() async =>
-      '${(await _supportDir()).path}${Platform.pathSeparator}yt-dlp${Platform.pathSeparator}$binaryName';
+      '${(await _supportDir()).path}${Platform.pathSeparator}yt-dlp${Platform.pathSeparator}$_binaryName';
 
-  String _bundledBinaryPath() => '${_exeDir()}${Platform.pathSeparator}$binaryName';
+  String _bundledBinaryPath() => '${_exeDir()}${Platform.pathSeparator}$_binaryName';
 
   String _bundledFolderBinaryPath() =>
-      '${_exeDir()}${Platform.pathSeparator}yt-dlp${Platform.pathSeparator}$binaryName';
+      '${_exeDir()}${Platform.pathSeparator}yt-dlp${Platform.pathSeparator}$_binaryName';
 
   Future<String?> _findBinary({bool preferBundled = false}) async {
+    if (_isMac) {
+      final downloaded = await _supportBinaryPath();
+      return await File(downloaded).exists() ? downloaded : null;
+    }
     final folderBuild = _bundledFolderBinaryPath();
     if (await File(folderBuild).exists()) return folderBuild;
     final candidates = <String>[];
@@ -259,8 +337,9 @@ class WindowsYtDlpExtractor implements AudioExtractor {
 
   static List<String> _jsRuntimeArgs(String binary) {
     final dir = File(binary).parent.path;
-    for (final (runtime, exe) in const [('deno', 'deno.exe'), ('quickjs', 'qjs.exe')]) {
-      final path = '$dir${Platform.pathSeparator}$exe';
+    final ext = Platform.isWindows ? '.exe' : '';
+    for (final (runtime, exe) in const [('deno', 'deno'), ('quickjs', 'qjs')]) {
+      final path = '$dir${Platform.pathSeparator}$exe$ext';
       if (File(path).existsSync()) return ['--js-runtimes', '$runtime:$path'];
     }
     return const [];

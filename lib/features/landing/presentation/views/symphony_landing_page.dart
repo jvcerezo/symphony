@@ -18,6 +18,10 @@ class SymphonyLandingPage extends ConsumerWidget {
       'https://github.com/jvcerezo/symphony/releases/download/latest/symphony-windows-x64.zip';
   static const String fallbackAndroidUrl =
       'https://github.com/jvcerezo/symphony/releases/download/latest/symphony.apk';
+  static const String fallbackMacUrl =
+      'https://github.com/jvcerezo/symphony/releases/download/latest/symphony-macos.zip';
+  static const String fallbackIosUrl =
+      'https://github.com/jvcerezo/symphony/releases/download/latest/symphony-ios.ipa';
   static const String discordInviteUrl =
       'https://discord.com/oauth2/authorize?client_id=1559096164345970708&scope=bot&permissions=3230720';
   static const String termsUrl = '/terms-of-service';
@@ -49,6 +53,8 @@ class SymphonyLandingPage extends ConsumerWidget {
         latestRelease?.windowsDownloadUrl != null || fallbackWindowsUrl.endsWith('.zip');
     final winDownloadUrl = latestRelease?.windowsDownloadUrl ?? fallbackWindowsUrl;
     final apkDownloadUrl = latestRelease?.androidDownloadUrl ?? fallbackAndroidUrl;
+    final macDownloadUrl = latestRelease?.macDownloadUrl ?? fallbackMacUrl;
+    final iosDownloadUrl = latestRelease?.iosDownloadUrl ?? fallbackIosUrl;
 
     final screenWidth = MediaQuery.of(context).size.width;
     final isDesktop = screenWidth >= 860;
@@ -102,6 +108,8 @@ class SymphonyLandingPage extends ConsumerWidget {
                           hasDirectWindowsAsset,
                           winDownloadUrl,
                           apkDownloadUrl,
+                          macDownloadUrl,
+                          iosDownloadUrl,
                           versionTag,
                         ),
 
@@ -371,6 +379,8 @@ class SymphonyLandingPage extends ConsumerWidget {
     bool hasDirectWindowsAsset,
     String winDownloadUrl,
     String apkDownloadUrl,
+    String macDownloadUrl,
+    String iosDownloadUrl,
     String versionTag,
   ) {
     return Column(
@@ -388,7 +398,7 @@ class SymphonyLandingPage extends ConsumerWidget {
         const SizedBox(height: 14),
         LayoutBuilder(
           builder: (context, constraints) {
-            final columns = FeatureFlags.webDemoEnabled ? 3 : 2;
+            const columns = 2;
             final cardWidth = isDesktop ? (constraints.maxWidth - 16 * (columns - 1)) / columns : constraints.maxWidth;
 
             return Wrap(
@@ -423,7 +433,37 @@ class SymphonyLandingPage extends ConsumerWidget {
                   onTap: () => _openExternal(apkDownloadUrl, isDownload: true),
                 ),
 
-                // 3. Web Player Card (needs a live server.dart backend)
+                // 3. macOS Card
+                _buildPlatformCard(
+                  width: cardWidth,
+                  icon: Icons.laptop_mac_rounded,
+                  title: 'macOS',
+                  badge: 'Universal .zip',
+                  spec: 'macOS 10.15+ • Apple silicon & Intel',
+                  description:
+                      'The first time, right-click Symphony and choose Open: the app is not notarized by Apple. '
+                      'It sets up its audio tools on first start.',
+                  buttonText: 'Download .zip',
+                  isPrimary: false,
+                  onTap: () => _openExternal(macDownloadUrl, isDownload: true),
+                ),
+
+                // 4. iPhone / iPad Card
+                _buildPlatformCard(
+                  width: cardWidth,
+                  icon: Icons.phone_iphone_rounded,
+                  title: 'iPhone & iPad',
+                  badge: 'Sideload .ipa',
+                  spec: 'iOS 13+ • install with Sideloadly',
+                  description:
+                      'Install from your computer with Sideloadly and a free Apple ID; re-install every 7 days. '
+                      'Early version: some songs may not play yet.',
+                  buttonText: 'Download .ipa',
+                  isPrimary: false,
+                  onTap: () => _openExternal(iosDownloadUrl, isDownload: true),
+                ),
+
+                // 5. Web Player Card (needs a live server.dart backend)
                 if (FeatureFlags.webDemoEnabled)
                   _buildPlatformCard(
                   width: cardWidth,

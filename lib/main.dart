@@ -11,7 +11,7 @@ import 'core/services/legacy_data_migration.dart';
 import 'core/services/windows_shortcuts.dart';
 import 'core/services/windows_tray.dart';
 import 'core/theme/symphony_theme.dart';
-import 'features/audio_player/data/services/extraction/windows_ytdlp_extractor.dart';
+import 'features/audio_player/data/services/extraction/desktop_ytdlp_extractor.dart';
 import 'features/audio_player/data/services/extraction/ytdlp_update_scheduler.dart';
 import 'features/audio_player/data/services/symphony_audio_handler.dart';
 import 'features/audio_player/presentation/controllers/audio_player_providers.dart';
@@ -73,7 +73,13 @@ Future<void> main() async {
     unawaited(initWindowsTray(handler: audioHandler, closeToTray: startup.closeToTray));
     unawaited(ensureWindowsShortcuts());
     unawaited(initDiscordPresence(handler: audioHandler, enabled: startup.discordPresence));
-    final ytDlp = WindowsYtDlpExtractor();
+    final ytDlp = DesktopYtDlpExtractor();
+    YtDlpUpdateScheduler(isAvailable: ytDlp.isAvailable, update: ytDlp.update).scheduleAfterStart();
+  }
+  // macOS fetches yt-dlp itself on first start, then keeps it current.
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.macOS) {
+    final ytDlp = DesktopYtDlpExtractor();
+    unawaited(ytDlp.install());
     YtDlpUpdateScheduler(isAvailable: ytDlp.isAvailable, update: ytDlp.update).scheduleAfterStart();
   }
 }
