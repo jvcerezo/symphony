@@ -569,9 +569,11 @@ class SymphonyLandingPage extends ConsumerWidget {
           children: [
             Icon(Icons.discord, color: Colors.white, size: 22),
             SizedBox(width: 10),
-            Text(
-              'Symphony for Discord',
-              style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+            Flexible(
+              child: Text(
+                'Symphony for Discord',
+                style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+              ),
             ),
           ],
         ),
