@@ -14,6 +14,10 @@ if not exist "node_modules" (
   call npm install --no-fund --no-audit || (pause & exit /b 1)
 )
 
+call "%~dp0setup-tools.cmd" || (echo Could not set up the tools the bot needs. & pause & exit /b 1)
+set "YTDLP_PATH=%~dp0tools\yt-dlp.exe"
+set "POT_SERVER_SCRIPT=%~dp0tools\pot\build\main.js"
+
 echo Symphony is starting. Leave this window open while you listen; close it to stop the bot.
 echo.
 call npm start
