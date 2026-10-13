@@ -9,8 +9,11 @@ WORKDIR /home/node/bot
 
 # The standalone yt-dlp build needs no Python. It sits in a folder the bot
 # owns so it can update itself on every start (YouTube changes often).
+# Built for x86 and ARM servers (such as Oracle's free Ampere machines).
+ARG TARGETARCH
 RUN mkdir -p /home/node/bin \
-    && curl -fsSL -o /home/node/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux \
+    && case "$TARGETARCH" in arm64) build=yt-dlp_linux_aarch64 ;; *) build=yt-dlp_linux ;; esac \
+    && curl -fsSL -o /home/node/bin/yt-dlp "https://github.com/yt-dlp/yt-dlp/releases/latest/download/$build" \
     && chmod +x /home/node/bin/yt-dlp
 ENV PATH="/home/node/bin:${PATH}"
 

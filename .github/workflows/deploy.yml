@@ -313,12 +313,19 @@ jobs:
         id: repo_name
         run: echo "name=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       # Built on every branch so a broken image shows up before main;
-      # published from main and tags only.
+      # published from main and tags only. ARM too, for Oracle's free servers.
       - name: Build (and Publish) Bot Image
         uses: docker/build-push-action@v5
         with:
           context: discord_bot
+          platforms: linux/amd64,linux/arm64
           push: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') }}
           tags: |
             ghcr.io/${{ steps.repo_name.outputs.name }}-discord-bot:latest
