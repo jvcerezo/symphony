@@ -1,14 +1,15 @@
 import { spawnSync } from 'node:child_process';
 import { createServer } from 'node:http';
-import { Client, Events, GatewayIntentBits, MessageFlags } from 'discord.js';
-import { commandData, controls, createHandlers, nowPlayingEmbed } from './commands.js';
+import { ActivityType, Client, Events, GatewayIntentBits, MessageFlags } from 'discord.js';
+import { PREFIX, controls, createHandlers, nowPlayingEmbed } from './commands.js';
 import { loadConfig } from './config.js';
 import { GuildPlayer } from './player.js';
 import { startPotServer } from './pot_server.js';
 import { YtDlp } from './ytdlp.js';
 
-// View channel, send messages, embed links, connect, speak.
-const INVITE_PERMISSIONS = 3165184;
+// View channel, send messages, embed links, read message history (to reply
+// to commands), connect, speak.
+const INVITE_PERMISSIONS = 3230720;
 
 const config = loadConfig();
 await claimSingleInstance();
@@ -17,7 +18,16 @@ const ytdlp = new YtDlp({
   cookiesFile: config.cookiesFile,
   poTokens: Boolean(config.potServerScript),
 });
-const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
+// Reading s! commands needs Message Content, a switch in the Developer
+// Portal (Bot > Privileged Gateway Intents).
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildVoiceStates,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+  ],
+});
 
 checkTool('yt-dlp', config.ytDlpPath, ['--version']);
 checkTool('ffmpeg', config.ffmpegPath, ['-version']);
@@ -45,7 +55,7 @@ const players = {
 
 const handlers = createHandlers({ players, ytdlp });
 
-/** Posts what the player is doing in the channel /play was used in. */
+/** Posts what the player is doing in the channel the last s!play was used in. */
 function announce(player) {
   let nowPlaying = null;
   const channel = () => client.channels.cache.get(player.textChannelId);
@@ -83,46 +93,46 @@ function announce(player) {
 
 client.once(Events.ClientReady, async (c) => {
   console.log(`Logged in as ${c.user.tag}.`);
-  console.log(`Invite link: https://discord.com/oauth2/authorize?client_id=${c.user.id}&scope=bot+applications.commands&permissions=${INVITE_PERMISSIONS}`);
+  console.log(`Invite link: https://discord.com/oauth2/authorize?client_id=${c.user.id}&scope=bot&permissions=${INVITE_PERMISSIONS}`);
+  c.user.setActivity(`${PREFIX}help`, { type: ActivityType.Listening });
   for (const guild of c.guilds.cache.values()) await leaveIfNotAllowed(guild);
-  if (!config.guildId) {
-    await c.application.commands.set(commandData);
-    // Commands added to one server while testing would show up twice there.
-    for (const guild of c.guilds.cache.values()) {
-      const own = await guild.commands.fetch().catch(() => null);
-      if (own?.size) await guild.commands.set([]).catch(() => {});
-    }
-    console.log('Slash commands ready in every server (new ones can take a few minutes to appear).');
-  } else if (c.guilds.cache.has(config.guildId)) {
-    await registerIn(c.guilds.cache.get(config.guildId));
-  } else {
-    console.log('The bot is not in your server yet. Open the invite link above to add it.');
-  }
+  await removeSlashCommands(c);
+  console.log(`Ready. Type ${PREFIX}help in a server to see the commands.`);
 });
 
-client.on(Events.GuildCreate, async (guild) => {
-  await leaveIfNotAllowed(guild);
-  if (guild.id === config.guildId) await registerIn(guild);
-});
+client.on(Events.GuildCreate, leaveIfNotAllowed);
 
-async function registerIn(guild) {
-  try {
-    await guild.commands.set(commandData);
-    console.log(`Slash commands ready in ${guild.name}.`);
-  } catch (e) {
-    console.error(`Could not add slash commands in ${guild.name}:`, e.message);
+/**
+ * Earlier versions used /play, which clashes with other music bots. Clears
+ * those so only the s! commands are left.
+ */
+async function removeSlashCommands(c) {
+  const global = await c.application.commands.fetch().catch(() => null);
+  if (global?.size) await c.application.commands.set([]).catch(() => {});
+  for (const guild of c.guilds.cache.values()) {
+    const own = await guild.commands.fetch().catch(() => null);
+    if (own?.size) await guild.commands.set([]).catch(() => {});
   }
 }
 
-client.on(Events.InteractionCreate, async (interaction) => {
-  if (!interaction.inGuild()) return;
+client.on(Events.MessageCreate, async (message) => {
+  if (!message.inGuild() || message.author.bot) return;
   try {
-    if (interaction.isChatInputCommand()) await handlers.onCommand(interaction);
-    else if (interaction.isButton() && interaction.customId.startsWith('np:')) await handlers.onButton(interaction);
+    await handlers.onMessage(message);
+  } catch (e) {
+    console.error(e);
+    await message.channel.send('Something went wrong with that.').catch(() => {});
+  }
+});
+
+client.on(Events.InteractionCreate, async (interaction) => {
+  if (!interaction.inGuild() || !interaction.isButton() || !interaction.customId.startsWith('np:')) return;
+  try {
+    await handlers.onButton(interaction);
   } catch (e) {
     console.error(e);
     const content = 'Something went wrong with that.';
-    if (interaction.deferred || interaction.replied) await interaction.editReply(content).catch(() => {});
+    if (interaction.replied) await interaction.followUp({ content, flags: MessageFlags.Ephemeral }).catch(() => {});
     else await interaction.reply({ content, flags: MessageFlags.Ephemeral }).catch(() => {});
   }
 });

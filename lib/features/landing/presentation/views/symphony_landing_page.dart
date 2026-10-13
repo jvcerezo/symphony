@@ -19,7 +19,7 @@ class SymphonyLandingPage extends ConsumerWidget {
   static const String fallbackAndroidUrl =
       'https://github.com/jvcerezo/symphony/releases/download/latest/symphony.apk';
   static const String discordInviteUrl =
-      'https://discord.com/oauth2/authorize?client_id=1559096164345970708&scope=bot+applications.commands&permissions=3165184';
+      'https://discord.com/oauth2/authorize?client_id=1559096164345970708&scope=bot&permissions=3230720';
   static const String termsUrl = '/terms-of-service';
   static const String privacyUrl = '/privacy-policy';
 
@@ -559,7 +559,7 @@ class SymphonyLandingPage extends ConsumerWidget {
     const steps = [
       (num: '1', title: 'Add it to your server', desc: 'Click "Add to Discord" and pick a server you manage.'),
       (num: '2', title: 'Join a voice channel', desc: 'The bot joins the channel you are in.'),
-      (num: '3', title: 'Type /play', desc: 'A song name, a YouTube link, or a Spotify or YouTube playlist.'),
+      (num: '3', title: 'Type s!play', desc: 'A song name, a YouTube link, or a Spotify or YouTube playlist.'),
     ];
 
     final intro = Column(

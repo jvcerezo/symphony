@@ -3,120 +3,136 @@ import {
   ButtonBuilder,
   ButtonStyle,
   EmbedBuilder,
-  InteractionContextType,
   MessageFlags,
   PermissionFlagsBits,
-  SlashCommandBuilder,
 } from 'discord.js';
 import { songsFor } from './sources.js';
 
 const COLOR = 0x8b5cf6;
 const QUEUE_PAGE = 10;
 
-const guildOnly = (b) => b.setContexts(InteractionContextType.Guild);
+/** Commands start with this, so they don't clash with other bots' /play. */
+export const PREFIX = 's!';
 
-export const commandData = [
-  guildOnly(new SlashCommandBuilder().setName('play').setDescription('Play a song, a YouTube link, or a Spotify/YouTube playlist')
-    .addStringOption((o) => o.setName('song').setDescription('Song name or link').setRequired(true))),
-  guildOnly(new SlashCommandBuilder().setName('playnext').setDescription('Play this right after the current song')
-    .addStringOption((o) => o.setName('song').setDescription('Song name or link').setRequired(true))),
-  guildOnly(new SlashCommandBuilder().setName('skip').setDescription('Skip to the next song')),
-  guildOnly(new SlashCommandBuilder().setName('pause').setDescription('Pause the music')),
-  guildOnly(new SlashCommandBuilder().setName('resume').setDescription('Carry on playing')),
-  guildOnly(new SlashCommandBuilder().setName('stop').setDescription('Stop, clear the queue and leave the channel')),
-  guildOnly(new SlashCommandBuilder().setName('queue').setDescription("Show what's coming up")
-    .addIntegerOption((o) => o.setName('page').setDescription('Page number').setMinValue(1))),
-  guildOnly(new SlashCommandBuilder().setName('nowplaying').setDescription("Show what's playing")),
-  guildOnly(new SlashCommandBuilder().setName('shuffle').setDescription('Shuffle the songs still to come')),
-  guildOnly(new SlashCommandBuilder().setName('remove').setDescription('Remove a song from the queue')
-    .addIntegerOption((o) => o.setName('position').setDescription('Its number in /queue').setRequired(true).setMinValue(1))),
-  guildOnly(new SlashCommandBuilder().setName('loop').setDescription('Repeat the song or the whole queue')
-    .addStringOption((o) => o.setName('mode').setDescription('What to repeat').setRequired(true)
-      .addChoices({ name: 'Off', value: 'off' }, { name: 'This song', value: 'song' }, { name: 'The queue', value: 'queue' }))),
-].map((b) => b.toJSON());
+const ALIASES = {
+  p: 'play', pn: 'playnext', s: 'skip', q: 'queue', np: 'nowplaying',
+  rm: 'remove', leave: 'stop', dc: 'stop', h: 'help', commands: 'help',
+};
 
-/** Handles slash commands and the buttons on "Now playing" messages. */
+const CONTROLS = ['skip', 'pause', 'resume', 'stop', 'queue', 'nowplaying', 'shuffle', 'remove', 'loop'];
+
+const HELP = [
+  ['play <song or link>', 'Play a song, a YouTube link, or a Spotify/YouTube playlist'],
+  ['playnext <song or link>', 'Play it right after the current song'],
+  ['skip', 'Skip to the next song'],
+  ['pause / resume', 'Pause or carry on'],
+  ['stop', 'Clear the queue and leave'],
+  ['queue [page]', "What's coming up"],
+  ['np', "What's playing"],
+  ['shuffle', 'Shuffle the songs still to come'],
+  ['remove <number>', 'Take a song out of the queue'],
+  ['loop off / song / queue', 'Repeat the song or the whole queue'],
+];
+
+/**
+ * `{ name, args }` for a message like "s!play daft punk", else null.
+ * The prefix and command name ignore case.
+ */
+export function parseCommand(content) {
+  const text = content.trim();
+  if (!text.toLowerCase().startsWith(PREFIX)) return null;
+  const [word = '', ...rest] = text.slice(PREFIX.length).trim().split(/\s+/);
+  if (!word) return null;
+  const name = word.toLowerCase();
+  return { name: ALIASES[name] ?? name, args: rest.join(' ') };
+}
+
+/** Handles s! commands and the buttons on "Now playing" messages. */
 export function createHandlers({ players, ytdlp }) {
-  async function onCommand(interaction) {
-    const player = players.get(interaction.guild);
-    const name = interaction.commandName;
+  async function onMessage(message) {
+    const command = parseCommand(message.content);
+    if (!command) return;
+    const player = players.get(message.guild);
+    const send = (payload) => answer(message, payload);
+    const { name, args } = command;
 
-    if (name === 'play' || name === 'playnext') return play(interaction, player, { next: name === 'playnext' });
+    if (name === 'help') return send({ embeds: [helpEmbed()] });
+    if (name === 'play' || name === 'playnext') return play(message, player, args, { next: name === 'playnext' });
+    if (!CONTROLS.includes(name)) return send(`I don't know \`${PREFIX}${name}\`. Try \`${PREFIX}help\`.`);
 
-    const problem = controlProblem(interaction, player);
-    if (problem) return reply(interaction, problem);
+    const problem = controlProblem(message.member, player);
+    if (problem) return send(problem);
 
     switch (name) {
       case 'skip': {
         const title = player.queue.current?.title ?? 'the song';
-        return reply(interaction, player.skip() ? `Skipped **${title}**.` : 'Nothing is playing.', false);
+        return send(player.skip() ? `Skipped **${title}**.` : 'Nothing is playing.');
       }
       case 'pause':
-        return reply(interaction, player.pause() ? 'Paused.' : 'Nothing is playing.', false);
+        return send(player.pause() ? 'Paused.' : 'Nothing is playing.');
       case 'resume':
-        return reply(interaction, player.resume() ? 'Playing again.' : 'Nothing is paused.', false);
+        return send(player.resume() ? 'Playing again.' : 'Nothing is paused.');
       case 'stop':
         player.stop();
-        return reply(interaction, 'Stopped and left the channel.', false);
+        return send('Stopped and left the channel.');
       case 'queue':
-        return interaction.reply({ embeds: [queueEmbed(player, interaction.options.getInteger('page') ?? 1)] });
+        return send({ embeds: [queueEmbed(player, Number.parseInt(args, 10) || 1)] });
       case 'nowplaying': {
         const song = player.queue.current;
-        if (!song) return reply(interaction, 'Nothing is playing.');
-        return interaction.reply({ embeds: [nowPlayingEmbed(song, player)] });
+        return send(song ? { embeds: [nowPlayingEmbed(song, player)] } : 'Nothing is playing.');
       }
       case 'shuffle': {
         const n = player.queue.shuffle();
-        return reply(interaction, n > 1 ? `Shuffled ${n} songs.` : 'Not enough songs to shuffle.', n <= 1);
+        return send(n > 1 ? `Shuffled ${n} songs.` : 'Not enough songs to shuffle.');
       }
       case 'remove': {
-        const removed = player.queue.remove(interaction.options.getInteger('position'));
-        return reply(interaction, removed ? `Removed **${removed.title}**.` : 'There is no song at that number. See /queue.', !removed);
+        const removed = player.queue.remove(Number.parseInt(args, 10));
+        return send(removed ? `Removed **${removed.title}**.` : `There is no song at that number. See \`${PREFIX}queue\`.`);
       }
       case 'loop': {
-        const mode = interaction.options.getString('mode');
+        const mode = { off: 'off', song: 'song', one: 'song', queue: 'queue', all: 'queue' }[args.toLowerCase()];
+        if (!mode) return send(`Use \`${PREFIX}loop off\`, \`${PREFIX}loop song\` or \`${PREFIX}loop queue\`.`);
         player.queue.loop = mode;
-        return reply(interaction, { off: 'Repeat is off.', song: 'Repeating this song.', queue: 'Repeating the queue.' }[mode], false);
+        return send({ off: 'Repeat is off.', song: 'Repeating this song.', queue: 'Repeating the queue.' }[mode]);
       }
     }
   }
 
-  async function play(interaction, player, { next }) {
-    const voice = interaction.member.voice.channel;
-    if (!voice) return reply(interaction, 'Join a voice channel first.');
+  async function play(message, player, query, { next }) {
+    const send = (payload) => answer(message, payload);
+    if (!query) return send(`What should I play? For example: \`${PREFIX}play daft punk get lucky\``);
+    const voice = message.member.voice.channel;
+    if (!voice) return send('Join a voice channel first.');
     if (player.channelId && player.channelId !== voice.id && player.isPlaying) {
-      return reply(interaction, `I'm playing in <#${player.channelId}>. Join it to add songs.`);
+      return send(`I'm playing in <#${player.channelId}>. Join it to add songs.`);
     }
-    const perms = voice.permissionsFor(interaction.guild.members.me);
+    const perms = voice.permissionsFor(message.guild.members.me);
     if (!perms?.has(PermissionFlagsBits.Connect) || !perms.has(PermissionFlagsBits.Speak)) {
-      return reply(interaction, `I'm not allowed to connect and speak in <#${voice.id}>.`);
+      return send(`I'm not allowed to connect and speak in <#${voice.id}>.`);
     }
 
-    await interaction.deferReply();
+    message.channel.sendTyping().catch(() => {});
     try {
-      const found = await songsFor(interaction.options.getString('song'), {
-        ytdlp,
-        requestedBy: interaction.user.id,
-      });
+      const found = await songsFor(query, { ytdlp, requestedBy: message.author.id });
       await player.join(voice);
-      player.textChannelId = interaction.channelId;
+      player.textChannelId = message.channelId;
       const added = player.add(found.songs, { next });
-      if (added === 0) return interaction.editReply('The queue is full.');
+      if (added === 0) return send('The queue is full.');
       if (found.isList) {
         const cut = added < found.songs.length ? ` (the queue is full, so ${found.songs.length - added} were left out)` : '';
-        return interaction.editReply(`Added **${added}** songs from **${found.title}**${cut}.`);
+        return send(`Added **${added}** songs from **${found.title}**${cut}.`);
       }
       const song = found.songs[0];
-      return interaction.editReply(`${next ? 'Playing next' : 'Added'}: **${song.title}**${song.artist ? ` by ${song.artist}` : ''} (${time(song.durationSec)})`);
+      return send(`${next ? 'Playing next' : 'Added'}: **${song.title}**${song.artist ? ` by ${song.artist}` : ''} (${time(song.durationSec)})`);
     } catch (e) {
-      return interaction.editReply(`Could not play that: ${e.message}`);
+      return send(`Could not play that: ${e.message}`);
     }
   }
 
   async function onButton(interaction) {
     const player = players.get(interaction.guild);
-    const problem = controlProblem(interaction, player);
-    if (problem) return reply(interaction, problem);
+    const problem = controlProblem(interaction.member, player);
+    if (problem) return interaction.reply({ content: problem, flags: MessageFlags.Ephemeral });
     if (interaction.customId === 'np:toggle') {
       if (player.isPaused) player.resume();
       else player.pause();
@@ -132,18 +148,35 @@ export function createHandlers({ players, ytdlp }) {
     }
   }
 
-  return { onCommand, onButton };
+  return { onMessage, onButton };
 }
 
 /** Why this person can't control the music right now, or null if they can. */
-function controlProblem(interaction, player) {
-  if (!player.channelId) return 'Nothing is playing. Start something with /play.';
-  if (interaction.member.voice.channelId !== player.channelId) return `Join <#${player.channelId}> to control the music.`;
+function controlProblem(member, player) {
+  if (!player.channelId) return `Nothing is playing. Start something with \`${PREFIX}play\`.`;
+  if (member.voice.channelId !== player.channelId) return `Join <#${player.channelId}> to control the music.`;
   return null;
 }
 
-function reply(interaction, content, onlyForYou = true) {
-  return interaction.reply({ content, flags: onlyForYou ? MessageFlags.Ephemeral : undefined });
+/**
+ * Replies to the command message; posts in the channel instead when the bot
+ * can't reply there (replying needs Read Message History).
+ */
+async function answer(message, payload) {
+  const body = typeof payload === 'string' ? { content: payload } : payload;
+  try {
+    return await message.reply({ ...body, allowedMentions: { repliedUser: false } });
+  } catch {
+    return message.channel.send(body).catch(() => null);
+  }
+}
+
+export function helpEmbed() {
+  return new EmbedBuilder()
+    .setColor(COLOR)
+    .setTitle('Symphony commands')
+    .setDescription(HELP.map(([cmd, what]) => `\`${PREFIX}${cmd}\` · ${what}`).join('\n'))
+    .setFooter({ text: `Short forms: ${PREFIX}p, ${PREFIX}s, ${PREFIX}q, ${PREFIX}np` });
 }
 
 export function nowPlayingEmbed(song, player) {
