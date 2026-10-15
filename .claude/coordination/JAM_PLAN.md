@@ -127,8 +127,9 @@ the join dialog accepts it typed in. A QR code can come later.
 ## Phases
 
 **1. Core (Shared, branch `shared/jam-core`, one agent)**: done except discovery.
-Not done yet: `jam_discovery` / `bonsoir` (needs per-platform build checks).
-Until then, joining is manual: IP:port + code. Also open: changing
+Discovery: done without `bonsoir`, as a UDP broadcast for the code
+(`jam_discovery.dart`); guests type only the code. iOS guests can't use it
+(Apple's multicast entitlement). Also open: changing
 `permissions` while hosting isn't sent to guests yet (only in `welcome`).
 Domain + transport + host/guest services + handler hooks. No UI.
 Tests (`test/jam_*_test.dart`):

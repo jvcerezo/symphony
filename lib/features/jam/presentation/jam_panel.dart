@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/layout/breakpoints.dart';
@@ -116,7 +115,7 @@ class JamPanel extends ConsumerWidget {
       JamIdle() => _IdleView(session: session),
       JamConnecting(:final hosting) => _Message(
           icon: Icons.groups_rounded,
-          text: hosting ? 'Starting a Jam…' : 'Joining the Jam…',
+          text: hosting ? 'Starting a Jam…' : 'Looking for the Jam on this Wi-Fi…',
           busy: true,
         ),
       JamHosting() => _HostingView(session: session),
@@ -166,30 +165,23 @@ class _IdleView extends ConsumerStatefulWidget {
 }
 
 class _IdleViewState extends ConsumerState<_IdleView> {
-  final _address = TextEditingController();
   final _code = TextEditingController();
   String? _formError;
 
   @override
   void dispose() {
-    _address.dispose();
     _code.dispose();
     super.dispose();
   }
 
   void _join() {
-    final address = parseJamAddress(_address.text);
     final code = _code.text.trim();
-    if (address == null) {
-      setState(() => _formError = 'Enter the address the host sees, like 192.168.1.5:41234');
-      return;
-    }
     if (!RegExp(r'^\d{4}$').hasMatch(code)) {
       setState(() => _formError = 'The Jam code is 4 digits');
       return;
     }
     setState(() => _formError = null);
-    ref.read(jamProvider.notifier).join(host: address.host, port: address.port, code: code);
+    ref.read(jamProvider.notifier).join(code: code);
   }
 
   static String? _endMessage(String? reason) => switch (reason) {
@@ -227,13 +219,7 @@ class _IdleViewState extends ConsumerState<_IdleView> {
         const SizedBox(height: 28),
         const Text('JOIN A JAM', style: _sectionStyle),
         const SizedBox(height: 10),
-        _Field(
-          controller: _address,
-          label: 'Host address',
-          hint: '192.168.1.5:41234',
-          keyboardType: TextInputType.url,
-          onSubmitted: (_) => _join(),
-        ),
+        const Text('Ask the host for their code. You need to be on the same Wi-Fi.', style: _bodyStyle),
         const SizedBox(height: 10),
         _Field(
           controller: _code,
@@ -332,62 +318,29 @@ class _HostingView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final controller = ref.read(jamProvider.notifier);
     final accent = ref.watch(accentThemeProvider);
-    final address = session.addresses.isEmpty ? null : '${session.addresses.first}:${session.port}';
     final isWindows = !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
       children: [
-        const Text('Guests join with this address and code:', style: _bodyStyle),
+        const Text('Guests on the same Wi-Fi join with this code:', style: _bodyStyle),
         const SizedBox(height: 14),
         Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.symmetric(vertical: 20),
           decoration: BoxDecoration(color: SymphonyTheme.cardHover, borderRadius: BorderRadius.circular(10)),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('CODE', style: _sectionStyle),
-              const SizedBox(height: 4),
-              SelectableText(
-                session.code,
-                style: TextStyle(color: accent.primary, fontSize: 40, fontWeight: FontWeight.w900, letterSpacing: 8),
-              ),
-              const SizedBox(height: 12),
-              const Text('ADDRESS', style: _sectionStyle),
-              const SizedBox(height: 4),
-              if (address == null)
-                const Text('Connect to Wi-Fi so guests can find you.', style: TextStyle(color: Colors.white))
-              else
-                Row(
-                  children: [
-                    Expanded(
-                      child: SelectableText(
-                        address,
-                        style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: 'Copy address and code',
-                      constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-                      icon: const Icon(Icons.copy_rounded, size: 20, color: SymphonyTheme.textSecondary),
-                      onPressed: () {
-                        Clipboard.setData(ClipboardData(text: 'Symphony Jam: $address, code ${session.code}'));
-                        ScaffoldMessenger.maybeOf(context)
-                            ?.showSnackBar(const SnackBar(content: Text('Copied the Jam address and code')));
-                      },
-                    ),
-                  ],
-                ),
-              if (session.addresses.length > 1) ...[
-                const SizedBox(height: 4),
-                Text(
-                  'Other networks: ${session.addresses.skip(1).map((a) => '$a:${session.port}').join(', ')}',
-                  style: const TextStyle(color: SymphonyTheme.textMuted, fontSize: 12),
-                ),
-              ],
-            ],
+          child: Center(
+            child: SelectableText(
+              session.code,
+              style: TextStyle(color: accent.primary, fontSize: 48, fontWeight: FontWeight.w900, letterSpacing: 12),
+            ),
           ),
         ),
+        if (!session.discoverable) ...[
+          const SizedBox(height: 12),
+          const _Notice(
+            text: "Guests can't find this Jam by its code: another app is using the port Symphony looks on. Close other Symphony windows and start again.",
+          ),
+        ],
         if (isWindows) ...[
           const SizedBox(height: 12),
           const _Notice(

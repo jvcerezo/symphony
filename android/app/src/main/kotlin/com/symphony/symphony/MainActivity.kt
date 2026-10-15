@@ -1,6 +1,8 @@
 package com.symphony.symphony
 
+import android.content.Context
 import android.content.pm.PackageManager
+import android.net.wifi.WifiManager
 import android.os.Build
 import com.ryanheise.audioservice.AudioServiceActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -8,6 +10,9 @@ import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : AudioServiceActivity() {
     private var pendingPermissionResult: MethodChannel.Result? = null
+
+    /** Held while hosting a Jam so guests' discovery broadcasts arrive. */
+    private var multicastLock: WifiManager.MulticastLock? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -19,6 +24,28 @@ class MainActivity : AudioServiceActivity() {
                 }
             }
         YtDlpBridge.attach(this, flutterEngine.dartExecutor.binaryMessenger)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, JAM_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "acquireMulticastLock" -> {
+                        val lock = multicastLock ?: (applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager)
+                            .createMulticastLock("symphony-jam")
+                            .also { it.setReferenceCounted(false); multicastLock = it }
+                        lock.acquire()
+                        result.success(null)
+                    }
+                    "releaseMulticastLock" -> {
+                        multicastLock?.release()
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+    }
+
+    override fun onDestroy() {
+        multicastLock?.release()
+        super.onDestroy()
     }
 
     /**
@@ -56,6 +83,7 @@ class MainActivity : AudioServiceActivity() {
 
     companion object {
         private const val CHANNEL = "com.symphony.symphony/notifications"
+        private const val JAM_CHANNEL = "com.symphony.symphony/jam"
         private const val POST_NOTIFICATIONS = "android.permission.POST_NOTIFICATIONS"
         private const val REQUEST_CODE = 0x5359
     }
