@@ -69,6 +69,7 @@ class JamGuestService implements PlaybackRemote {
 
   final _statusController = StreamController<JamGuestStatus>.broadcast();
   final _membersController = StreamController<List<JamMember>>.broadcast();
+  final _permissionsController = StreamController<JamPermissions>.broadcast();
 
   JamGuestStatus _status = JamGuestStatus.connecting;
   String? _endReason;
@@ -102,6 +103,7 @@ class JamGuestService implements PlaybackRemote {
   List<JamMember> get members => _members;
   Stream<List<JamMember>> get membersStream => _membersController.stream;
   JamPermissions get permissions => _permissions;
+  Stream<JamPermissions> get permissionsStream => _permissionsController.stream;
   JamState get state => _state;
 
   /// Joins over [connection]. Throws [JamJoinException] when the host turns
@@ -183,6 +185,9 @@ class JamGuestService implements PlaybackRemote {
         if (_status == JamGuestStatus.joined) _applyState(state, previous: previous);
       case JamMembersUpdate(:final members):
         _setMembers(members);
+      case JamPermissionsUpdate(:final permissions):
+        _permissions = permissions;
+        if (!_permissionsController.isClosed) _permissionsController.add(permissions);
       case JamBye():
         unawaited(_end('host_ended'));
       default:
@@ -375,5 +380,6 @@ class JamGuestService implements PlaybackRemote {
     await _connection?.close();
     await _statusController.close();
     await _membersController.close();
+    await _permissionsController.close();
   }
 }

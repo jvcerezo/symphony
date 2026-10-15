@@ -265,6 +265,14 @@ void main() {
     expect(hostPlayer.isPlaying, isTrue);
   });
 
+  test('guests hear about a change of permissions at once', () async {
+    final (ana, _) = await joinGuest('Ana');
+    expect(ana.permissions.guestsControlPlayback, isTrue);
+
+    host.permissions = const JamPermissions(guestsControlPlayback: false);
+    await until(() => !ana.permissions.guestsControlPlayback);
+  });
+
   test('a wrong code is turned away', () async {
     await expectLater(
       joinGuest('Eve', code: '9999'),

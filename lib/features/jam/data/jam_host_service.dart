@@ -19,7 +19,7 @@ class JamHostService {
     required JamServer server,
     required this.hostName,
     String? code,
-    this.permissions = const JamPermissions(),
+    JamPermissions permissions = const JamPermissions(),
     int Function()? clock,
     Random? random,
     this.tick = const Duration(milliseconds: 500),
@@ -28,6 +28,7 @@ class JamHostService {
   })  : _player = player,
         _server = server,
         _clock = clock ?? _wallClock,
+        _permissions = permissions,
         code = code ?? _newCode(random ?? Random.secure());
 
   static int _wallClock() => DateTime.now().millisecondsSinceEpoch;
@@ -43,8 +44,14 @@ class JamHostService {
   /// The room code guests must give to join.
   final String code;
 
-  /// What guests may do; takes effect on their next request.
-  JamPermissions permissions;
+  JamPermissions _permissions;
+
+  /// What guests may do. Changing it tells every guest.
+  JamPermissions get permissions => _permissions;
+  set permissions(JamPermissions value) {
+    _permissions = value;
+    if (!_stopped) _sendAll(JamPermissionsUpdate(value).encode());
+  }
 
   /// How often the host checks whether guests need a new state.
   final Duration tick;

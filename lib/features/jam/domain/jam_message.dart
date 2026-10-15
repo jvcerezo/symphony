@@ -42,6 +42,7 @@ sealed class JamMessage {
             positionMs: m['positionMs'] as int?,
           ),
         'members' => JamMembersUpdate(_members(m['members'])),
+        'permissions' => JamPermissionsUpdate(JamPermissions.fromJson(_map(m['permissions']))),
         'bye' => JamBye(m['reason'] as String? ?? ''),
         _ => throw FormatException('Unknown Jam message type: ${m['type']}'),
       };
@@ -180,6 +181,16 @@ class JamMembersUpdate extends JamMessage {
   String get type => 'members';
   @override
   Map<String, Object?> get fields => {'members': [for (final m in members) m.toJson()]};
+}
+
+/// Host → guests: what guests may do changed.
+class JamPermissionsUpdate extends JamMessage {
+  final JamPermissions permissions;
+  const JamPermissionsUpdate(this.permissions);
+  @override
+  String get type => 'permissions';
+  @override
+  Map<String, Object?> get fields => {'permissions': permissions.toJson()};
 }
 
 /// Either side: leaving. From the host it ends the Jam.

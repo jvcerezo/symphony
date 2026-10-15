@@ -32,16 +32,28 @@ class JamConnecting extends JamSession {
 }
 
 class JamHosting extends JamSession {
-  const JamHosting({required this.code, required this.port, required this.addresses, required this.members});
+  const JamHosting({
+    required this.code,
+    required this.port,
+    required this.addresses,
+    required this.members,
+    this.permissions = const JamPermissions(),
+  });
   final String code;
   final int port;
 
   /// This device's local network addresses, most likely first.
   final List<String> addresses;
   final List<JamMember> members;
+  final JamPermissions permissions;
 
-  JamHosting withMembers(List<JamMember> members) =>
-      JamHosting(code: code, port: port, addresses: addresses, members: members);
+  JamHosting copyWith({List<JamMember>? members, JamPermissions? permissions}) => JamHosting(
+        code: code,
+        port: port,
+        addresses: addresses,
+        members: members ?? this.members,
+        permissions: permissions ?? this.permissions,
+      );
 }
 
 class JamJoined extends JamSession {
@@ -50,8 +62,11 @@ class JamJoined extends JamSession {
   final List<JamMember> members;
   final JamPermissions permissions;
 
-  JamJoined withMembers(List<JamMember> members) =>
-      JamJoined(hostName: hostName, members: members, permissions: permissions);
+  JamJoined copyWith({List<JamMember>? members, JamPermissions? permissions}) => JamJoined(
+        hostName: hostName,
+        members: members ?? this.members,
+        permissions: permissions ?? this.permissions,
+      );
 }
 
 /// Splits "192.168.1.5:41234" into host and port; null if it isn't one.
@@ -106,7 +121,7 @@ class JamController extends StateNotifier<JamSession> {
       host.start();
       _subs.add(host.membersStream.listen((members) {
         final s = state;
-        if (s is JamHosting) state = s.withMembers(members);
+        if (s is JamHosting) state = s.copyWith(members: members);
       }));
       state = JamHosting(code: host.code, port: host.port, addresses: await _addresses(), members: host.members);
     } catch (e) {
@@ -125,7 +140,11 @@ class JamController extends StateNotifier<JamSession> {
       final connection = await _connect(host, port);
       _subs.add(guest.membersStream.listen((members) {
         final s = state;
-        if (s is JamJoined) state = s.withMembers(members);
+        if (s is JamJoined) state = s.copyWith(members: members);
+      }));
+      _subs.add(guest.permissionsStream.listen((permissions) {
+        final s = state;
+        if (s is JamJoined) state = s.copyWith(permissions: permissions);
       }));
       _subs.add(guest.statusStream.listen((status) {
         if (status == JamGuestStatus.ended && identical(_guest, guest)) unawaited(_ended(guest.endReason));
@@ -141,6 +160,17 @@ class JamController extends StateNotifier<JamSession> {
       await _reset();
       state = const JamIdle(error: 'Could not reach that Jam. Check the address and that you are on the same Wi-Fi.');
     }
+  }
+
+  /// Host only: whether guests may play, pause, skip and edit the queue
+  /// (they can always add songs).
+  void setGuestsControlPlayback(bool allowed) {
+    final host = _host;
+    final s = state;
+    if (host == null || s is! JamHosting) return;
+    final permissions = JamPermissions(guestsControlPlayback: allowed);
+    host.permissions = permissions;
+    state = s.copyWith(permissions: permissions);
   }
 
   /// Ends the Jam when hosting, leaves it when a guest.
