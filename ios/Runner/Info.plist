@@ -75,5 +75,7 @@
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Symphony connects to devices on your Wi-Fi so you can listen together in a Jam.</string>
 </dict>
 </plist>

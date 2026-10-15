@@ -6,6 +6,7 @@ import '../../../../core/layout/breakpoints.dart';
 import '../../../../core/services/windows_tray.dart';
 import '../../../../core/theme/symphony_theme.dart';
 import '../../../../core/widgets/hover_widgets.dart';
+import '../../../jam/data/jam_transport.dart';
 import '../../domain/entities/track.dart';
 import '../controllers/audio_player_providers.dart';
 import '../controllers/now_playing_panel_provider.dart';
@@ -271,7 +272,7 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
           ),
         ),
 
-        // Right Column (flex 3): Lyrics + Queue + Offline Badge + Volume + Fullscreen
+        // Right Column (flex 3): Lyrics + Queue + Jam + Volume + Fullscreen
         Expanded(
           flex: 3,
           child: Row(
@@ -279,6 +280,7 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
             children: [
               _panelToggle(NowPlayingPanel.lyrics, Icons.mic_none_outlined, 'Lyrics', accent),
               _panelToggle(NowPlayingPanel.queue, Icons.queue_music_rounded, 'Queue', accent),
+              if (lanJamSupported) _panelToggle(NowPlayingPanel.jam, Icons.groups_rounded, 'Jam', accent),
               const SizedBox(width: 6),
               HoverIconButton(
                 iconSize: 20,

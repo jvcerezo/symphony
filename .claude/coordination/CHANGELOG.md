@@ -2,6 +2,41 @@
 
 Newest first. Note what changed in Shared code and how the other side should adapt.
 
+## 2026-10-15 — [core] Jam UI, Phase 2
+
+- `NowPlayingPanel.jam`: the desktop side panel has a Jam tab, and the player
+  bar a Jam toggle. Mobile Now Playing has a Jam button next to Lyrics/Queue.
+  The Home header has a `JamButton` (pill on desktop, icon on mobile), so a
+  guest can join before anything plays. All hidden on web.
+- `openJam(context, ref)` opens the right one for the layout;
+  `JamPanel` is the shared content (start, join form, hosting, joined).
+- `JamController.setGuestsControlPlayback(bool)`; guests get the change at
+  once (new `permissions` message). `JamHosting`/`JamJoined` carry
+  `permissions` and have `copyWith`.
+- Home header rows now shrink instead of overflowing: the desktop buttons
+  wrap, and the mobile title ellipsizes.
+- Side panel tabs scroll horizontally (three tabs didn't fit in 340px).
+
+## 2026-10-15 — [core] Jam (listen together on the same network), Phase 1
+
+- New `lib/features/jam/`: protocol (`domain/`), LAN WebSocket transport,
+  `JamHostService` / `JamGuestService`, and `jamProvider` (`JamController`:
+  `host()`, `join(host:, port:, code:)`, `leave()`; state is `JamIdle`,
+  `JamConnecting`, `JamHosting`, `JamJoined`). No UI yet; plan and UI split
+  are in `.claude/coordination/JAM_PLAN.md`.
+- `SymphonyAudioHandler`, additive: `remote` (`PlaybackRemote?`). While set
+  (a Jam guest), `play/pause/seek/skip*/skipToQueueItem/enqueue/playNext/
+  removeFromQueue/moveInQueue/playTrack/playQueue` go to the remote instead
+  of playing here, shuffle/repeat changes are ignored, and a song that ends
+  doesn't advance. Existing UI needs no change to work as a guest.
+  Guests drive playback with `followQueue`, `followLoadCurrent`,
+  `followPlaying`, `followSeek`. Also new: `resolvedVideoIdStream`,
+  `position`, `isPlayingHere`.
+- Audio interruptions and unplugging headphones now pause via an internal
+  path, so on a guest they pause that device only, not the whole Jam.
+- `AudioStreamResolverService.knownVideoId(track)`: the video a track plays
+  from if already known (its `yt_` id or a trusted match). Never searches.
+
 ## 2026-10-12 — [core] Queue, shuffle/repeat, lyrics, onboarding, no starter playlists
 
 - `CuratedPlaylists` is gone. `ImportedPlaylistsNotifier` starts empty and

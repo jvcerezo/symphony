@@ -522,6 +522,15 @@ class AudioStreamResolverService {
     return entry != null && entry.isTrusted && entry.videoId == videoId;
   }
 
+  /// The YouTube video [track] plays from on this device, if already known:
+  /// its own `yt_` id or a trusted remembered match. Never searches.
+  Future<String?> knownVideoId(Track track) async {
+    if (track.id.startsWith('yt_')) return track.id.substring(3);
+    if (_isWeb) return null;
+    final entry = await _matchIndex.lookup(_normKey(track));
+    return entry != null && entry.isTrusted ? entry.videoId : null;
+  }
+
   /// Drops every cached entry for [track] so the next resolve starts fresh
   /// (stream URLs expire, and a URL that failed to load should not be reused).
   /// The remembered video stays; only its link is dropped.

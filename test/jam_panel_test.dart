@@ -1,0 +1,154 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:symphony/features/audio_player/data/services/symphony_audio_handler.dart';
+import 'package:symphony/features/audio_player/presentation/controllers/audio_player_providers.dart';
+import 'package:symphony/features/audio_player/presentation/controllers/now_playing_panel_provider.dart';
+import 'package:symphony/features/audio_player/presentation/desktop/desktop_shell.dart';
+import 'package:symphony/features/jam/domain/jam_state.dart';
+import 'package:symphony/features/jam/presentation/jam_panel.dart';
+import 'package:symphony/features/jam/presentation/jam_providers.dart';
+import 'package:symphony/main.dart';
+
+/// Records what the panel asks for; tests set the state directly.
+class _FakeJam extends JamController {
+  _FakeJam(SymphonyAudioHandler handler) : super(handler: handler, displayName: () => 'Me');
+
+  final calls = <String>[];
+
+  void show(JamSession session) => state = session;
+
+  @override
+  Future<void> host() async => calls.add('host');
+
+  @override
+  Future<void> join({required String host, required int port, required String code}) async =>
+      calls.add('join $host $port $code');
+
+  @override
+  Future<void> leave() async => calls.add('leave');
+
+  @override
+  void setGuestsControlPlayback(bool allowed) => calls.add('control $allowed');
+}
+
+const _members = [
+  JamMember(id: 'host', name: 'Jet', isHost: true),
+  JamMember(id: 'g1', name: 'Ana'),
+];
+
+void main() {
+  late SymphonyAudioHandler handler;
+  late _FakeJam jam;
+
+  setUp(() {
+    handler = SymphonyAudioHandler();
+    jam = _FakeJam(handler);
+  });
+  tearDown(() => handler.release());
+
+  Future<ProviderContainer> pump(WidgetTester tester, Widget home, {Size size = const Size(1400, 900)}) async {
+    tester.view.physicalSize = size;
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final container = ProviderContainer(overrides: [
+      audioHandlerProvider.overrideWithValue(handler),
+      jamProvider.overrideWith((ref) => jam),
+    ]);
+    addTearDown(container.dispose);
+    await tester.pumpWidget(UncontrolledProviderScope(container: container, child: MaterialApp(home: home)));
+    await tester.pump();
+    return container;
+  }
+
+  testWidgets('desktop: the side panel has a Jam tab with start and join', (tester) async {
+    final container = await pump(tester, const DesktopShell(content: SizedBox.expand()));
+    container.read(nowPlayingPanelProvider.notifier).state = NowPlayingPanel.queue;
+    await tester.pump();
+
+    await tester.tap(find.text('Jam'));
+    await tester.pump();
+    expect(container.read(nowPlayingPanelProvider), NowPlayingPanel.jam);
+
+    await tester.tap(find.text('Start a Jam'));
+    expect(jam.calls, ['host']);
+  });
+
+  testWidgets('joining checks the address and code first', (tester) async {
+    await pump(tester, const Scaffold(body: JamPanel()));
+
+    await tester.enterText(find.widgetWithText(TextField, 'Host address'), '192.168.1.5');
+    await tester.tap(find.text('Join'));
+    await tester.pump();
+    expect(find.textContaining('like 192.168.1.5:41234'), findsOneWidget);
+
+    await tester.enterText(find.widgetWithText(TextField, 'Host address'), '192.168.1.5:41234');
+    await tester.enterText(find.widgetWithText(TextField, 'Jam code'), '12');
+    await tester.tap(find.text('Join'));
+    await tester.pump();
+    expect(find.text('The Jam code is 4 digits'), findsOneWidget);
+    expect(jam.calls, isEmpty);
+
+    await tester.enterText(find.widgetWithText(TextField, 'Jam code'), '0420');
+    await tester.tap(find.text('Join'));
+    await tester.pump();
+    expect(jam.calls, ['join 192.168.1.5 41234 0420']);
+  });
+
+  testWidgets('says why the last Jam ended', (tester) async {
+    jam.show(const JamIdle(endReason: 'host_ended'));
+    await pump(tester, const Scaffold(body: JamPanel()));
+    expect(find.text('The host ended the Jam.'), findsOneWidget);
+  });
+
+  testWidgets('hosting shows the code, address and guests', (tester) async {
+    jam.show(const JamHosting(code: '0420', port: 41234, addresses: ['192.168.1.5', '10.0.0.2'], members: _members));
+    await pump(tester, const Scaffold(body: JamPanel()));
+
+    expect(find.text('0420'), findsOneWidget);
+    expect(find.text('192.168.1.5:41234'), findsOneWidget);
+    expect(find.text('Other networks: 10.0.0.2:41234'), findsOneWidget);
+    expect(find.text('IN THIS JAM (2)'), findsOneWidget);
+    expect(find.text('Ana'), findsOneWidget);
+
+    await tester.tap(find.text('Guests can control playback'));
+    await tester.ensureVisible(find.text('End Jam'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('End Jam'));
+    expect(jam.calls, ['control false', 'leave']);
+  });
+
+  testWidgets('a guest sees who hosts and whether they can control playback', (tester) async {
+    jam.show(const JamJoined(
+      hostName: 'Jet',
+      members: _members,
+      permissions: JamPermissions(guestsControlPlayback: false),
+    ));
+    await pump(tester, const Scaffold(body: JamPanel()));
+
+    expect(find.text('Jamming with Jet'), findsOneWidget);
+    expect(find.text('Only Jet controls playback. You can still add songs to the queue.'), findsOneWidget);
+    await tester.tap(find.text('Leave Jam'));
+    expect(jam.calls, ['leave']);
+  });
+
+  testWidgets('phone: the Jam button opens a sheet and lights up in a Jam', (tester) async {
+    await pump(tester, const Scaffold(body: Center(child: JamButton(compact: true))), size: const Size(400, 860));
+
+    await tester.tap(find.byTooltip('Jam'));
+    await tester.pumpAndSettle();
+    expect(find.text('Start a Jam'), findsOneWidget);
+
+    jam.show(const JamJoined(hostName: 'Jet', members: _members, permissions: JamPermissions()));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('In a Jam'), findsOneWidget);
+    expect(find.text('Jamming with Jet'), findsOneWidget);
+  });
+
+  // A layout overflow fails this on its own. (Phone widths aren't checked
+  // here: other Home rows already overflow in the test font.)
+  testWidgets('desktop Home header fits the Jam button at the 850px breakpoint', (tester) async {
+    await pump(tester, const SymphonyApp(), size: const Size(850, 700));
+    expect(find.byType(JamButton), findsOneWidget);
+  });
+}

@@ -11,6 +11,7 @@ import '../../../../core/services/notification_permission_service.dart';
 import '../../domain/entities/resolved_audio_stream.dart';
 import '../../domain/entities/track.dart';
 import '../../domain/play_queue.dart';
+import '../../domain/playback_remote.dart';
 import '../../../metadata_search/data/services/artwork_resolver_service.dart';
 import 'audio_stream_resolver_service.dart';
 import 'offline/playback_cache.dart';
@@ -27,6 +28,10 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   final PlayQueue _queue;
   final BehaviorSubject<int> _currentIndexSubject = BehaviorSubject<int>.seeded(-1);
   final BehaviorSubject<List<Track>> _queueSubject = BehaviorSubject<List<Track>>.seeded([]);
+  final BehaviorSubject<String?> _resolvedVideoIdSubject = BehaviorSubject<String?>.seeded(null);
+
+  /// Set while this device follows a Jam host; see [remote].
+  PlaybackRemote? _remote;
 
   StreamSubscription<PlaybackEvent>? _playbackEventSub;
   StreamSubscription<PlayerState>? _playerStateSub;
@@ -82,6 +87,29 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   QueueRepeatMode get repeatMode => _queue.repeatMode;
 
   AudioStreamResolverService get streamResolver => _streamResolver;
+
+  /// The YouTube video the current song plays from, once it has loaded
+  /// (null while loading).
+  ValueStream<String?> get resolvedVideoIdStream => _resolvedVideoIdSubject.stream;
+
+  /// Where the current song is right now.
+  Duration get position => _player.position;
+
+  /// Whether audio is playing on this device right now.
+  bool get isPlayingHere => _player.playing;
+
+  /// While set (a Jam guest), the user's playback actions and queue edits
+  /// go to [remote] instead of playing here, and a song that ends doesn't
+  /// move the queue on; the guest drives playback with the `follow*`
+  /// methods. Shuffle and repeat go off: the host's order is the play order.
+  PlaybackRemote? get remote => _remote;
+  set remote(PlaybackRemote? remote) {
+    _remote = remote;
+    if (remote == null) return;
+    _queue.setShuffle(false);
+    _queue.repeatMode = QueueRepeatMode.off;
+    _afterQueueEdit();
+  }
 
   NetworkStatus get network => _network;
 
@@ -166,7 +194,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
               break;
             case AudioInterruptionType.pause:
             case AudioInterruptionType.unknown:
-              pause();
+              _pauseHere();
               break;
           }
         } else {
@@ -175,7 +203,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
               _player.setVolume(1.0);
               break;
             case AudioInterruptionType.pause:
-              play();
+              _playHere();
               break;
             case AudioInterruptionType.unknown:
               break;
@@ -185,7 +213,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
 
       _noisySub = session.becomingNoisyEventStream.listen((_) {
         developer.log('Audio output unplugged. Pausing playback.', name: 'AudioHandler');
-        pause();
+        _pauseHere();
       });
     } catch (e) {
       developer.log('AudioSession init error: $e', name: 'AudioHandler');
@@ -310,6 +338,15 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
 
   Future<void> _handleTrackCompleted([String reason = '']) async {
     if (_isAutoSkipping || _loading || _queue.isEmpty) return;
+    if (_remote != null) {
+      // Following a Jam host: it decides what plays next. Pausing emits
+      // another completed state, so only pause once.
+      _completionWatchdogTimer?.cancel();
+      if (!_player.playing) return;
+      await _player.pause();
+      _updatePlaybackState();
+      return;
+    }
     _isAutoSkipping = true;
     _completionWatchdogTimer?.cancel();
     developer.log('Track completed ($reason). Moving on...', name: 'AudioHandler');
@@ -465,6 +502,10 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
 
   /// Leaves a song that can't go on for the next one that can play.
   void _moveOn() {
+    if (_remote != null) {
+      unawaited(_stopAtEnd());
+      return;
+    }
     final next = _indexAfter(currentIndex, wrap: _queue.repeatMode == QueueRepeatMode.all);
     unawaited(next == null ? _stopAtEnd() : _playOnFrom(next));
   }
@@ -488,6 +529,13 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   /// With shuffle on, that song plays first and the rest are shuffled.
   Future<void> playQueue(List<Track> tracks, {int startIndex = 0}) async {
     if (tracks.isEmpty) return;
+    final remote = _remote;
+    if (remote != null) {
+      // In a Jam, picking a song puts it on next and skips to it.
+      remote.playNext(tracks[startIndex.clamp(0, tracks.length - 1)]);
+      remote.next();
+      return;
+    }
     _queue.load(tracks, startIndex: startIndex);
     // Offline, start at the first song from there that's on this device.
     await _playAt(await _playableFrom(_queue.index, wrap: true) ?? _queue.index);
@@ -495,6 +543,12 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
 
   /// Plays a single [Track], updating the current queue.
   Future<void> playTrack(Track track) async {
+    final remote = _remote;
+    if (remote != null) {
+      remote.playNext(track);
+      remote.next();
+      return;
+    }
     _queue.load([track]);
     await _playAt(0);
   }
@@ -517,6 +571,8 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   /// Queue edits from the UI. Indexes are positions in play order, as
   /// listed by [playlistQueueStream].
   void playNext(Track track) {
+    final remote = _remote;
+    if (remote != null) return remote.playNext(track);
     final wasEmpty = _queue.isEmpty;
     _queue.playNext(track);
     _afterQueueEdit();
@@ -524,6 +580,8 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   }
 
   void enqueue(Track track) {
+    final remote = _remote;
+    if (remote != null) return remote.add(track);
     final wasEmpty = _queue.isEmpty;
     _queue.add(track);
     _afterQueueEdit();
@@ -531,10 +589,14 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   }
 
   void removeFromQueue(int index) {
+    final remote = _remote;
+    if (remote != null) return remote.remove(index);
     if (_queue.removeAt(index)) _afterQueueEdit();
   }
 
   void moveInQueue(int from, int to) {
+    final remote = _remote;
+    if (remote != null) return remote.move(from, to);
     if (_queue.move(from, to)) _afterQueueEdit();
   }
 
@@ -545,16 +607,22 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   }
 
   @override
-  Future<void> skipToQueueItem(int index) => _playAt(index);
+  Future<void> skipToQueueItem(int index) async {
+    final remote = _remote;
+    if (remote != null) return remote.jumpTo(index);
+    await _playAt(index);
+  }
 
   @override
   Future<void> setShuffleMode(AudioServiceShuffleMode shuffleMode) async {
+    if (_remote != null) return;
     _queue.setShuffle(shuffleMode != AudioServiceShuffleMode.none);
     _afterQueueEdit();
   }
 
   @override
   Future<void> setRepeatMode(AudioServiceRepeatMode repeatMode) async {
+    if (_remote != null) return;
     _queue.repeatMode = switch (repeatMode) {
       AudioServiceRepeatMode.none => QueueRepeatMode.off,
       AudioServiceRepeatMode.one => QueueRepeatMode.one,
@@ -565,10 +633,12 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   }
 
   /// Plays [track] from [startAt] (the start unless a broken stream is
-  /// being picked up again).
-  Future<void> _loadAndPlayTrack(Track track, {Duration startAt = Duration.zero}) async {
+  /// being picked up again, or a Jam guest joins mid-song). With [autoplay]
+  /// false it is left loaded and paused there.
+  Future<void> _loadAndPlayTrack(Track track, {Duration startAt = Duration.zero, bool autoplay = true}) async {
     final requestId = ++_playRequestId;
     _loading = true;
+    _resolvedVideoIdSubject.add(null);
 
     // Android 13+: ask for POST_NOTIFICATIONS on first playback so the media
     // notification is visible. Memoized and non-blocking; no-op elsewhere.
@@ -613,6 +683,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
       }
       final streamInfo = onDevice ?? await _streamResolver.resolveBestAudioStream(track);
       if (requestId != _playRequestId) return;
+      _resolvedVideoIdSubject.add(streamInfo.sourceVideoId);
 
       // Resolve artwork if track doesn't have one yet, ensuring rich lock-screen and bottom bar.
       // A song on the device doesn't wait for it (it may be offline).
@@ -734,6 +805,11 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
       if (requestId != _playRequestId) return;
 
       _loading = false;
+      if (!autoplay) {
+        _updatePlaybackState();
+        _preloadUpcomingTracks();
+        return;
+      }
       // Not awaited: just_audio's play() completes only when playback stops,
       // which would hold up the watchdog, the next-track preload and auto-skip.
       unawaited(_player.play().catchError((Object e) {
@@ -773,8 +849,14 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> play() async {
+    final remote = _remote;
+    if (remote != null) return remote.play();
+    await _playHere();
+  }
+
+  Future<void> _playHere() async {
     if (_player.processingState == ProcessingState.completed) {
-      await seek(Duration.zero);
+      await _seekHere(Duration.zero);
     }
     // Not awaited: the future only completes when playback stops.
     unawaited(_player.play().catchError((Object e) {
@@ -785,6 +867,12 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> pause() async {
+    final remote = _remote;
+    if (remote != null) return remote.pause();
+    await _pauseHere();
+  }
+
+  Future<void> _pauseHere() async {
     if (_loading) {
       // Pausing while a track loads cancels that load.
       _playRequestId++;
@@ -803,12 +891,20 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> seek(Duration position) async {
+    final remote = _remote;
+    if (remote != null) return remote.seek(position);
+    await _seekHere(position);
+  }
+
+  Future<void> _seekHere(Duration position) async {
     await _player.seek(position);
     _updatePlaybackState();
   }
 
   @override
   Future<void> skipToNext() async {
+    final remote = _remote;
+    if (remote != null) return remote.next();
     final next = _queue.nextIndex(auto: false);
     if (next == null) return;
     // Offline, go to the next song that's on this device.
@@ -817,15 +913,41 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> skipToPrevious() async {
+    final remote = _remote;
+    if (remote != null) return remote.previous();
     if (_queue.isEmpty) return;
     final prev = _queue.previousIndex();
     if (_player.position.inSeconds > 3 || prev == null || prev == currentIndex) {
-      await seek(Duration.zero);
+      await _seekHere(Duration.zero);
     } else {
       final wrap = _queue.repeatMode == QueueRepeatMode.all;
       await _playAt(await _playableFrom(prev, wrap: wrap, step: -1) ?? prev);
     }
   }
+
+  // Jam guest: follows the host, bypassing [remote].
+
+  /// Shows [tracks] as the queue with [index] current, playing nothing.
+  void followQueue(List<Track> tracks, int index) {
+    _queue.setShuffle(false);
+    _queue.load(tracks, startIndex: index < 0 ? 0 : index);
+    _emitQueue();
+    _preloadUpcomingTracks();
+    _updatePlaybackState();
+  }
+
+  /// Loads the current song at [startAt] and plays it, or leaves it paused
+  /// there when [play] is false.
+  Future<void> followLoadCurrent({required Duration startAt, required bool play}) async {
+    final track = currentTrack;
+    if (track == null) return;
+    _recoveredTrack = null;
+    await _loadAndPlayTrack(track, startAt: startAt, autoplay: play);
+  }
+
+  Future<void> followPlaying(bool playing) => playing ? _playHere() : _pauseHere();
+
+  Future<void> followSeek(Duration position) => _seekHere(position);
 
   Future<void> setVolume(double volume) => _player.setVolume(volume);
 
@@ -837,6 +959,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
     await _noisySub?.cancel();
     await _currentIndexSubject.close();
     await _queueSubject.close();
+    await _resolvedVideoIdSubject.close();
     _streamResolver.dispose();
     _playbackCache.dispose();
     await _player.dispose();
