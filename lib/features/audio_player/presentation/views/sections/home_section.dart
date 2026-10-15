@@ -5,6 +5,7 @@ import '../../../../../core/theme/symphony_theme.dart';
 import '../../../../../core/widgets/hover_widgets.dart';
 import '../../../../browse/data/genre_catalog.dart';
 import '../../../../browse/presentation/genre_providers.dart';
+import '../../../../jam/presentation/jam_panel.dart';
 import '../../../../../core/widgets/symphony_brand_logo.dart';
 import '../../../../settings/presentation/controllers/personalization_provider.dart';
 import '../../controllers/audio_player_providers.dart';
@@ -295,12 +296,18 @@ class HomeSection extends ConsumerWidget {
                     const NavHistoryControls(),
                   ],
                 ),
-                Row(
-                  children: [
-                    PersonalizeButton(personalization: personalization, accent: accent),
-                    const SizedBox(width: 12),
-                    const ImportPlaylistButton(),
-                  ],
+                Flexible(
+                  child: Wrap(
+                    alignment: WrapAlignment.end,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 12,
+                    runSpacing: 8,
+                    children: [
+                      const JamButton(),
+                      PersonalizeButton(personalization: personalization, accent: accent),
+                      const ImportPlaylistButton(),
+                    ],
+                  ),
                 ),
               ],
             )
@@ -308,35 +315,45 @@ class HomeSection extends ConsumerWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    if (Navigator.of(context).canPop())
-                      Padding(
-                        padding: const EdgeInsets.only(right: 8.0),
-                        child: IconButton(
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                          icon: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 20),
-                          onPressed: () => Navigator.of(context).pop(),
-                          tooltip: 'Back to Showcase',
+                Expanded(
+                  child: Row(
+                    children: [
+                      if (Navigator.of(context).canPop())
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8.0),
+                          child: IconButton(
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                            icon: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 20),
+                            onPressed: () => Navigator.of(context).pop(),
+                            tooltip: 'Back to Showcase',
+                          ),
+                        ),
+                      const SymphonyBrandLogo(size: 32),
+                      const SizedBox(width: 10),
+                      Flexible(
+                        child: Text(
+                          personalization.displayTitle.toUpperCase(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.2,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
-                    const SymphonyBrandLogo(size: 32),
-                    const SizedBox(width: 10),
-                    Text(
-                      personalization.displayTitle.toUpperCase(),
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1.2,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
                 Row(
                   children: [
-                    PersonalizeButton(personalization: personalization, accent: accent),
+                    const JamButton(compact: true),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 120),
+                      child: PersonalizeButton(personalization: personalization, accent: accent),
+                    ),
                     const SizedBox(width: 8),
                     IconButton(
                       onPressed: () => showDialog(

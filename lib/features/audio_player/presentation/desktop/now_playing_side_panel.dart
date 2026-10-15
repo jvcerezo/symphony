@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/symphony_theme.dart';
+import '../../../jam/data/jam_transport.dart';
+import '../../../jam/presentation/jam_panel.dart';
 import '../../../lyrics/presentation/lyrics_panel.dart';
 import '../controllers/now_playing_panel_provider.dart';
 import '../widgets/queue_panel.dart';
 
-/// Right-hand panel on wide windows showing the queue or lyrics, opened
-/// from the player bar.
+/// Right-hand panel on wide windows showing the queue, lyrics or the Jam,
+/// opened from the player bar (the Jam also from the Home header).
 class NowPlayingSidePanel extends ConsumerWidget {
   final NowPlayingPanel panel;
 
@@ -49,9 +51,18 @@ class NowPlayingSidePanel extends ConsumerWidget {
               padding: const EdgeInsets.fromLTRB(12, 10, 4, 4),
               child: Row(
                 children: [
-                  tab('Queue', NowPlayingPanel.queue),
-                  tab('Lyrics', NowPlayingPanel.lyrics),
-                  const Spacer(),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          tab('Queue', NowPlayingPanel.queue),
+                          tab('Lyrics', NowPlayingPanel.lyrics),
+                          if (lanJamSupported) tab('Jam', NowPlayingPanel.jam),
+                        ],
+                      ),
+                    ),
+                  ),
                   IconButton(
                     tooltip: 'Close',
                     icon: const Icon(Icons.close_rounded, size: 20, color: SymphonyTheme.textSecondary),
@@ -61,7 +72,11 @@ class NowPlayingSidePanel extends ConsumerWidget {
               ),
             ),
             Expanded(
-              child: panel == NowPlayingPanel.queue ? const QueuePanel() : const LyricsPanel(),
+              child: switch (panel) {
+                NowPlayingPanel.queue => const QueuePanel(),
+                NowPlayingPanel.lyrics => const LyricsPanel(),
+                NowPlayingPanel.jam => const JamPanel(),
+              },
             ),
           ],
         ),
