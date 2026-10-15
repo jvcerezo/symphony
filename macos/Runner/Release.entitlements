@@ -8,5 +8,8 @@
 	<false/>
 	<key>com.apple.security.network.client</key>
 	<true/>
+	<!-- Hosting a Jam: guests on the local network connect to this app. -->
+	<key>com.apple.security.network.server</key>
+	<true/>
 </dict>
 </plist>
