@@ -4,7 +4,6 @@ import 'package:symphony/features/jam/domain/clock_sync.dart';
 import 'package:symphony/features/jam/domain/drift_policy.dart';
 import 'package:symphony/features/jam/domain/jam_message.dart';
 import 'package:symphony/features/jam/domain/jam_state.dart';
-import 'package:symphony/features/jam/presentation/jam_providers.dart';
 
 const _song = JamTrack(
   entry: 3,
@@ -162,17 +161,6 @@ void main() {
       expect(policy.correction(actual: s * 60, expected: s * 62, now: now, lastSeekAt: justSeeked), isNull);
       final longAgo = now.subtract(s * 4);
       expect(policy.correction(actual: s * 60, expected: s * 62, now: now, lastSeekAt: longAgo), s * 62);
-    });
-  });
-
-  group('parseJamAddress', () {
-    test('host and port', () {
-      expect(parseJamAddress(' 192.168.1.5:41234 '), (host: '192.168.1.5', port: 41234));
-    });
-    test('rejects junk', () {
-      for (final bad in ['', '192.168.1.5', ':80', '192.168.1.5:', 'a:b', 'h:70000']) {
-        expect(parseJamAddress(bad), isNull, reason: bad);
-      }
     });
   });
 }

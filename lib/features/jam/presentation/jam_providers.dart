@@ -8,6 +8,7 @@ import '../../audio_player/presentation/controllers/audio_player_providers.dart'
 import '../../settings/presentation/controllers/personalization_provider.dart';
 import '../data/handler_jam_players.dart';
 import '../data/jam_guest_service.dart';
+import '../data/jam_discovery.dart';
 import '../data/jam_host_service.dart';
 import '../data/jam_transport.dart';
 import '../domain/jam_state.dart';
@@ -34,25 +35,25 @@ class JamConnecting extends JamSession {
 class JamHosting extends JamSession {
   const JamHosting({
     required this.code,
-    required this.port,
-    required this.addresses,
     required this.members,
     this.permissions = const JamPermissions(),
+    this.discoverable = true,
   });
-  final String code;
-  final int port;
 
-  /// This device's local network addresses, most likely first.
-  final List<String> addresses;
+  /// What guests type to join.
+  final String code;
   final List<JamMember> members;
   final JamPermissions permissions;
 
+  /// False when guests can't find this Jam by its code (the discovery port
+  /// was taken), so the panel can say so.
+  final bool discoverable;
+
   JamHosting copyWith({List<JamMember>? members, JamPermissions? permissions}) => JamHosting(
         code: code,
-        port: port,
-        addresses: addresses,
         members: members ?? this.members,
         permissions: permissions ?? this.permissions,
+        discoverable: discoverable,
       );
 }
 
@@ -69,17 +70,6 @@ class JamJoined extends JamSession {
       );
 }
 
-/// Splits "192.168.1.5:41234" into host and port; null if it isn't one.
-({String host, int port})? parseJamAddress(String input) {
-  final text = input.trim();
-  final colon = text.lastIndexOf(':');
-  if (colon <= 0 || colon == text.length - 1) return null;
-  final host = text.substring(0, colon).trim();
-  final port = int.tryParse(text.substring(colon + 1).trim());
-  if (host.isEmpty || port == null || port <= 0 || port > 65535) return null;
-  return (host: host, port: port);
-}
-
 /// Starts, joins and leaves Jams on the local network.
 class JamController extends StateNotifier<JamSession> {
   JamController({
@@ -87,21 +77,25 @@ class JamController extends StateNotifier<JamSession> {
     required String Function() displayName,
     Future<JamServer> Function()? bind,
     Future<JamConnection> Function(String host, int port)? connect,
-    Future<List<String>> Function()? addresses,
+    Future<JamBeacon?> Function({required String code, required int port, required String hostName})? beacon,
+    Future<FoundJam?> Function(String code)? find,
   })  : _handler = handler,
         _displayName = displayName,
         _bind = bind ?? bindLanJamServer,
         _connect = connect ?? connectLanJam,
-        _addresses = addresses ?? localNetworkAddresses,
+        _beacon = beacon ?? startJamBeacon,
+        _find = find ?? findLanJam,
         super(const JamIdle());
 
   final SymphonyAudioHandler _handler;
   final String Function() _displayName;
   final Future<JamServer> Function() _bind;
   final Future<JamConnection> Function(String host, int port) _connect;
-  final Future<List<String>> Function() _addresses;
+  final Future<JamBeacon?> Function({required String code, required int port, required String hostName}) _beacon;
+  final Future<FoundJam?> Function(String code) _find;
 
   JamHostService? _host;
+  JamBeacon? _hostBeacon;
   JamGuestService? _guest;
   final _subs = <StreamSubscription<Object?>>[];
 
@@ -123,7 +117,8 @@ class JamController extends StateNotifier<JamSession> {
         final s = state;
         if (s is JamHosting) state = s.copyWith(members: members);
       }));
-      state = JamHosting(code: host.code, port: host.port, addresses: await _addresses(), members: host.members);
+      _hostBeacon = await _beacon(code: host.code, port: host.port, hostName: host.hostName);
+      state = JamHosting(code: host.code, members: host.members, discoverable: _hostBeacon != null);
     } catch (e) {
       developer.log('Could not start a Jam: $e', name: 'Jam');
       await _reset();
@@ -131,13 +126,27 @@ class JamController extends StateNotifier<JamSession> {
     }
   }
 
-  Future<void> join({required String host, required int port, required String code}) async {
+  /// Finds the Jam with [code] on this network and joins it.
+  Future<void> join({required String code}) async {
     if (state is! JamIdle) return;
+    final trimmed = code.trim();
     state = const JamConnecting(hosting: false);
-    final guest = JamGuestService(player: HandlerJamGuestPlayer(_handler), name: _displayName(), code: code.trim());
+    final FoundJam? found;
+    try {
+      found = await _find(trimmed);
+    } catch (e) {
+      developer.log('Jam discovery failed: $e', name: 'Jam');
+      state = const JamIdle(error: 'Could not search this network for Jams.');
+      return;
+    }
+    if (found == null) {
+      state = JamIdle(error: "No Jam with code $trimmed on this Wi-Fi. Check the code, and that you're on the same network as the host.");
+      return;
+    }
+    final guest = JamGuestService(player: HandlerJamGuestPlayer(_handler), name: _displayName(), code: trimmed);
     _guest = guest;
     try {
-      final connection = await _connect(host, port);
+      final connection = await _connect(found.host, found.port);
       _subs.add(guest.membersStream.listen((members) {
         final s = state;
         if (s is JamJoined) state = s.copyWith(members: members);
@@ -158,7 +167,7 @@ class JamController extends StateNotifier<JamSession> {
     } catch (e) {
       developer.log('Could not join the Jam: $e', name: 'Jam');
       await _reset();
-      state = const JamIdle(error: 'Could not reach that Jam. Check the address and that you are on the same Wi-Fi.');
+      state = const JamIdle(error: "Found the Jam but could not connect. The host's firewall may be blocking it.");
     }
   }
 
@@ -193,6 +202,9 @@ class JamController extends StateNotifier<JamSession> {
       await s.cancel();
     }
     _subs.clear();
+    final beacon = _hostBeacon;
+    _hostBeacon = null;
+    await beacon?.close();
     final host = _host;
     _host = null;
     await host?.stop();

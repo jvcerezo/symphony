@@ -22,8 +22,7 @@ class _FakeJam extends JamController {
   Future<void> host() async => calls.add('host');
 
   @override
-  Future<void> join({required String host, required int port, required String code}) async =>
-      calls.add('join $host $port $code');
+  Future<void> join({required String code}) async => calls.add('join $code');
 
   @override
   Future<void> leave() async => calls.add('leave');
@@ -74,15 +73,10 @@ void main() {
     expect(jam.calls, ['host']);
   });
 
-  testWidgets('joining checks the address and code first', (tester) async {
+  testWidgets('joining needs only the 4-digit code', (tester) async {
     await pump(tester, const Scaffold(body: JamPanel()));
+    expect(find.widgetWithText(TextField, 'Host address'), findsNothing);
 
-    await tester.enterText(find.widgetWithText(TextField, 'Host address'), '192.168.1.5');
-    await tester.tap(find.text('Join'));
-    await tester.pump();
-    expect(find.textContaining('like 192.168.1.5:41234'), findsOneWidget);
-
-    await tester.enterText(find.widgetWithText(TextField, 'Host address'), '192.168.1.5:41234');
     await tester.enterText(find.widgetWithText(TextField, 'Jam code'), '12');
     await tester.tap(find.text('Join'));
     await tester.pump();
@@ -92,7 +86,7 @@ void main() {
     await tester.enterText(find.widgetWithText(TextField, 'Jam code'), '0420');
     await tester.tap(find.text('Join'));
     await tester.pump();
-    expect(jam.calls, ['join 192.168.1.5 41234 0420']);
+    expect(jam.calls, ['join 0420']);
   });
 
   testWidgets('says why the last Jam ended', (tester) async {
@@ -101,13 +95,13 @@ void main() {
     expect(find.text('The host ended the Jam.'), findsOneWidget);
   });
 
-  testWidgets('hosting shows the code, address and guests', (tester) async {
-    jam.show(const JamHosting(code: '0420', port: 41234, addresses: ['192.168.1.5', '10.0.0.2'], members: _members));
+  testWidgets('hosting shows just the code and the guests', (tester) async {
+    jam.show(const JamHosting(code: '0420', members: _members));
     await pump(tester, const Scaffold(body: JamPanel()));
 
     expect(find.text('0420'), findsOneWidget);
-    expect(find.text('192.168.1.5:41234'), findsOneWidget);
-    expect(find.text('Other networks: 10.0.0.2:41234'), findsOneWidget);
+    expect(find.textContaining('192.168'), findsNothing);
+    expect(find.textContaining("can't find this Jam"), findsNothing);
     expect(find.text('IN THIS JAM (2)'), findsOneWidget);
     expect(find.text('Ana'), findsOneWidget);
 
