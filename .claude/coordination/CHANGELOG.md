@@ -2,6 +2,26 @@
 
 Newest first. Note what changed in Shared code and how the other side should adapt.
 
+## 2026-10-15 — [core] Jam (listen together on the same network), Phase 1
+
+- New `lib/features/jam/`: protocol (`domain/`), LAN WebSocket transport,
+  `JamHostService` / `JamGuestService`, and `jamProvider` (`JamController`:
+  `host()`, `join(host:, port:, code:)`, `leave()`; state is `JamIdle`,
+  `JamConnecting`, `JamHosting`, `JamJoined`). No UI yet; plan and UI split
+  are in `.claude/coordination/JAM_PLAN.md`.
+- `SymphonyAudioHandler`, additive: `remote` (`PlaybackRemote?`). While set
+  (a Jam guest), `play/pause/seek/skip*/skipToQueueItem/enqueue/playNext/
+  removeFromQueue/moveInQueue/playTrack/playQueue` go to the remote instead
+  of playing here, shuffle/repeat changes are ignored, and a song that ends
+  doesn't advance. Existing UI needs no change to work as a guest.
+  Guests drive playback with `followQueue`, `followLoadCurrent`,
+  `followPlaying`, `followSeek`. Also new: `resolvedVideoIdStream`,
+  `position`, `isPlayingHere`.
+- Audio interruptions and unplugging headphones now pause via an internal
+  path, so on a guest they pause that device only, not the whole Jam.
+- `AudioStreamResolverService.knownVideoId(track)`: the video a track plays
+  from if already known (its `yt_` id or a trusted match). Never searches.
+
 ## 2026-10-12 — [core] Queue, shuffle/repeat, lyrics, onboarding, no starter playlists
 
 - `CuratedPlaylists` is gone. `ImportedPlaylistsNotifier` starts empty and
