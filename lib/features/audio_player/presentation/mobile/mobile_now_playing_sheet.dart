@@ -2,6 +2,8 @@ import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/symphony_theme.dart';
+import '../../../jam/data/jam_transport.dart';
+import '../../../jam/presentation/jam_panel.dart';
 import '../../../lyrics/presentation/lyrics_panel.dart';
 import '../../domain/entities/track.dart';
 import '../controllers/audio_player_providers.dart';
@@ -21,7 +23,8 @@ Future<void> showMobileNowPlaying(BuildContext context) {
   );
 }
 
-/// Large artwork, scrubber and full controls, with Lyrics and Queue below.
+/// Large artwork, scrubber and full controls, with Lyrics, Queue and Jam
+/// below.
 /// Swipe down (or the chevron) to close.
 class MobileNowPlayingSheet extends ConsumerWidget {
   const MobileNowPlayingSheet({super.key});
@@ -198,6 +201,16 @@ class MobileNowPlayingSheet extends ConsumerWidget {
                   onPressed: () => _openPanel(context, 'Queue', const QueuePanel()),
                 ),
               ),
+              if (lanJamSupported) ...[
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _SheetButton(
+                    icon: Icons.groups_rounded,
+                    label: 'Jam',
+                    onPressed: () => openJam(context, ref),
+                  ),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 24),
@@ -262,6 +275,8 @@ class _SheetButton extends StatelessWidget {
       label: Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
       style: OutlinedButton.styleFrom(
         minimumSize: const Size(0, 48),
+        // Three share a row on narrow phones.
+        padding: const EdgeInsets.symmetric(horizontal: 8),
         side: const BorderSide(color: SymphonyTheme.cardActive),
         shape: const StadiumBorder(),
       ),
