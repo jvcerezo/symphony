@@ -2,6 +2,19 @@
 
 Newest first. Note what changed in Shared code and how the other side should adapt.
 
+## 2026-10-15 — [core] Join a Jam with just the code
+
+- Guests type only the 4-digit code. `findLanJam(code)` broadcasts a UDP
+  question on port 47853 (`jamDiscoveryPort`); the host's `JamBeacon` answers
+  only for its own code with its TCP port. `JamController.join({code})`.
+- `JamHosting` drops `port`/`addresses` and gains `discoverable` (false when
+  the discovery port couldn't be opened). `parseJamAddress` is gone.
+- Android: `CHANGE_WIFI_MULTICAST_STATE` and a `com.symphony.symphony/jam`
+  channel in `MainActivity` that holds a Wi-Fi multicast lock while hosting,
+  since some phones drop broadcasts otherwise.
+- iOS can't find Jams by code: sending broadcasts needs Apple's restricted
+  multicast entitlement.
+
 ## 2026-10-15 — [core] Jam UI, Phase 2
 
 - `NowPlayingPanel.jam`: the desktop side panel has a Jam tab, and the player
