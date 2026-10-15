@@ -2,6 +2,21 @@
 
 Newest first. Note what changed in Shared code and how the other side should adapt.
 
+## 2026-10-15 — [core] Jam UI, Phase 2
+
+- `NowPlayingPanel.jam`: the desktop side panel has a Jam tab, and the player
+  bar a Jam toggle. Mobile Now Playing has a Jam button next to Lyrics/Queue.
+  The Home header has a `JamButton` (pill on desktop, icon on mobile), so a
+  guest can join before anything plays. All hidden on web.
+- `openJam(context, ref)` opens the right one for the layout;
+  `JamPanel` is the shared content (start, join form, hosting, joined).
+- `JamController.setGuestsControlPlayback(bool)`; guests get the change at
+  once (new `permissions` message). `JamHosting`/`JamJoined` carry
+  `permissions` and have `copyWith`.
+- Home header rows now shrink instead of overflowing: the desktop buttons
+  wrap, and the mobile title ellipsizes.
+- Side panel tabs scroll horizontally (three tabs didn't fit in 340px).
+
 ## 2026-10-15 — [core] Jam (listen together on the same network), Phase 1
 
 - New `lib/features/jam/`: protocol (`domain/`), LAN WebSocket transport,

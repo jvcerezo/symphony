@@ -1,6 +1,6 @@
 # Jam: listen together on the same network
 
-Status: Phase 1 core built on `shared/jam-core` (2026-10-15); UI not started. Read `symphony-core` first; this plan follows its
+Status: Phase 1 core on `shared/jam-core`, Phase 2 UI on `shared/jam-ui` (2026-10-15). Not yet tried on two real devices (Phase 3). Read `symphony-core` first; this plan follows its
 ownership map and coordination protocol.
 
 ## What it is
@@ -138,7 +138,11 @@ Tests (`test/jam_*_test.dart`):
 - host service with a fake handler: each `request` kind -> correct handler call, `rev` increments, bad code rejected
 - **loopback**: real `HttpServer` on `127.0.0.1:0`, host + 2 guests, add/skip/pause round trip, guest `remoteControlled` set/cleared on join/leave
 
-**2. UI (parallel, after 1 merges)**
+**2. UI**: done on `shared/jam-ui` as one shared `JamPanel` used by both layouts
+(instead of separate desktop/mobile widgets), plus entry points in the Home
+header, desktop player bar/side panel and mobile Now Playing. macOS release
+entitlement and iOS local-network text added; Android needs nothing for
+manual join.
 - Desktop `desktop/jam-ui`: "Start a Jam" / "Join" in the now-playing panel;
   member list, code, IP:port; guest view shows "Jamming with <host>" and
   routes transport buttons through requests. macOS entitlement, firewall hint.
