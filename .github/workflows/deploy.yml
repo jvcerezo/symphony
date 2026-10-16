@@ -16,6 +16,8 @@ env:
   # Every CI build gets a unique, increasing version; the apps compare it with
   # the release title to offer updates.
   SYMPHONY_VERSION: 1.0.${{ github.run_number }}
+  # Public fingerprint of the Android release key (android/key.properties).
+  SYMPHONY_APK_CERT_SHA256: 16aaf1c1d0fc9269f522aa74d6874599eb85828ab0d4c125b26861306e5f9670
 
 jobs:
   test-and-build-web-and-android:
@@ -50,12 +52,41 @@ jobs:
       - name: Build Flutter Web
         run: flutter build web --release --dart-define=SYMPHONY_VERSION=${{ env.SYMPHONY_VERSION }}
 
+      # Every release is signed with the same key so phones can update in
+      # place. Branch builds without the secrets fall back to debug signing;
+      # main refuses to ship an APK signed with anything else.
+      - name: Set Up Android Release Signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+              echo "::error::ANDROID_KEYSTORE_BASE64 secret is missing; refusing to release a debug-signed APK."
+              exit 1
+            fi
+            echo "::warning::No signing secrets: this branch APK is debug-signed."
+            exit 0
+          fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/symphony-release.jks"
+          {
+            echo "storeFile=$RUNNER_TEMP/symphony-release.jks"
+            echo "storePassword=$ANDROID_KEYSTORE_PASSWORD"
+            echo "keyPassword=$ANDROID_KEYSTORE_PASSWORD"
+            echo "keyAlias=symphony"
+          } > android/key.properties
+
       - name: Build Android APK
         run: flutter build apk --release --build-name=${{ env.SYMPHONY_VERSION }} --build-number=${{ github.run_number }} --dart-define=SYMPHONY_VERSION=${{ env.SYMPHONY_VERSION }}
 
       - name: Prepare Android Binary
         run: |
           cp build/app/outputs/flutter-apk/app-release.apk build/symphony.apk
+          if [ -f android/key.properties ]; then
+            apksigner=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+            "$apksigner" verify --print-certs build/symphony.apk | tee /tmp/certs.txt
+            grep -qi "SHA-256 digest: $SYMPHONY_APK_CERT_SHA256" /tmp/certs.txt || { echo "::error::APK is not signed with the Symphony release key."; exit 1; }
+          fi
 
       - name: Upload Web Artifact
         uses: actions/upload-artifact@v4
