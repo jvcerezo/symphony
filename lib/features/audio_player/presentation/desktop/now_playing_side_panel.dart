@@ -44,7 +44,7 @@ class NowPlayingSidePanel extends ConsumerWidget {
       borderRadius: BorderRadius.circular(8),
       child: Container(
         width: 340,
-        color: SymphonyTheme.panel,
+        color: SymphonyTheme.glassPanel,
         child: Column(
           children: [
             Padding(
