@@ -31,6 +31,12 @@ class SymphonyTheme {
   static const Color divider = Color(0xFF242424);
   static const Color dividerLight = Color(0xFF2A2A2A);
 
+  // Frosted glass: see-through surfaces over the ambient glow / content.
+  static const Color glassPanel = Color(0xB3121212);
+  static const Color glassBar = Color(0xA6000000);
+  static const Color glassMini = Color(0xB3242424);
+  static const Color glassEdge = Color(0x1FFFFFFF);
+
   // Symphony Minimalist Monochrome Accent (Portfolio Inspired)
   static const SymphonyAccent monochrome = SymphonyAccent(
     id: 'monochrome',
