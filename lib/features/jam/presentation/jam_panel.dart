@@ -113,9 +113,13 @@ class JamPanel extends ConsumerWidget {
     final session = ref.watch(jamProvider);
     return switch (session) {
       JamIdle() => _IdleView(session: session),
-      JamConnecting(:final hosting) => _Message(
+      JamConnecting(:final hosting, :final online) => _Message(
           icon: Icons.groups_rounded,
-          text: hosting ? 'Starting a Jam…' : 'Looking for the Jam on this Wi-Fi…',
+          text: hosting
+              ? 'Starting a Jam…'
+              : online
+                  ? 'Joining the online Jam…'
+                  : 'Looking for the Jam on this Wi-Fi…',
           busy: true,
         ),
       JamHosting() => _HostingView(session: session),
@@ -175,9 +179,9 @@ class _IdleViewState extends ConsumerState<_IdleView> {
   }
 
   void _join() {
-    final code = _code.text.trim();
-    if (!RegExp(r'^\d{4}$').hasMatch(code)) {
-      setState(() => _formError = 'The Jam code is 4 digits');
+    final code = _code.text.trim().toUpperCase();
+    if (!RegExp(r'^\d{4}$').hasMatch(code) && !isOnlineJamCode(code)) {
+      setState(() => _formError = 'Jam codes are 4 digits (same Wi-Fi) or 6 letters and numbers (online)');
       return;
     }
     setState(() => _formError = null);
@@ -187,6 +191,7 @@ class _IdleViewState extends ConsumerState<_IdleView> {
   static String? _endMessage(String? reason) => switch (reason) {
         null => null,
         'host_ended' => 'The host ended the Jam.',
+        'relay_lost' => 'Lost the connection to the online Jam service, so the Jam ended. The music keeps playing here.',
         _ => 'Lost the connection to the host. The music keeps playing here.',
       };
 
@@ -197,7 +202,7 @@ class _IdleViewState extends ConsumerState<_IdleView> {
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
       children: [
         const Text(
-          'Listen together with people on the same Wi-Fi. Everyone hears the same song at the same time, and guests can add to the queue.',
+          'Listen together: everyone hears the same song at the same time, and guests can add to the queue. Start one for people on your Wi-Fi, or online for friends anywhere.',
           style: _bodyStyle,
         ),
         if (notice != null) ...[
@@ -216,17 +221,36 @@ class _IdleViewState extends ConsumerState<_IdleView> {
             textStyle: const TextStyle(fontWeight: FontWeight.w700),
           ),
         ),
+        const SizedBox(height: 6),
+        const Text('On this Wi-Fi', textAlign: TextAlign.center, style: TextStyle(color: SymphonyTheme.textMuted, fontSize: 12)),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: () => ref.read(jamProvider.notifier).host(online: true),
+          icon: const Icon(Icons.public_rounded),
+          label: const Text('Start an online Jam'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Colors.white,
+            minimumSize: const Size.fromHeight(48),
+            side: const BorderSide(color: SymphonyTheme.cardActive),
+            textStyle: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+        ),
+        const SizedBox(height: 6),
+        const Text('Friends join from anywhere', textAlign: TextAlign.center, style: TextStyle(color: SymphonyTheme.textMuted, fontSize: 12)),
         const SizedBox(height: 28),
         const Text('JOIN A JAM', style: _sectionStyle),
         const SizedBox(height: 10),
-        const Text('Ask the host for their code. You need to be on the same Wi-Fi.', style: _bodyStyle),
+        const Text(
+          'Ask the host for their code: 4 digits for a Jam on your Wi-Fi, 6 letters and numbers for an online one.',
+          style: _bodyStyle,
+        ),
         const SizedBox(height: 10),
         _Field(
           controller: _code,
           label: 'Jam code',
-          hint: '4 digits',
-          keyboardType: TextInputType.number,
-          maxLength: 4,
+          hint: '1234 or K7P2QX',
+          keyboardType: TextInputType.visiblePassword,
+          maxLength: 6,
           onSubmitted: (_) => _join(),
         ),
         if (_formError != null) ...[
@@ -272,6 +296,9 @@ class _Field extends StatelessWidget {
       keyboardType: keyboardType,
       maxLength: maxLength,
       onSubmitted: onSubmitted,
+      textCapitalization: TextCapitalization.characters,
+      autocorrect: false,
+      enableSuggestions: false,
       style: const TextStyle(color: Colors.white),
       decoration: InputDecoration(
         labelText: label,
@@ -323,7 +350,12 @@ class _HostingView extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
       children: [
-        const Text('Guests on the same Wi-Fi join with this code:', style: _bodyStyle),
+        Text(
+          session.online
+              ? 'Friends anywhere join with this code. Share it with them:'
+              : 'Guests on the same Wi-Fi join with this code:',
+          style: _bodyStyle,
+        ),
         const SizedBox(height: 14),
         Container(
           padding: const EdgeInsets.symmetric(vertical: 20),
@@ -331,7 +363,12 @@ class _HostingView extends ConsumerWidget {
           child: Center(
             child: SelectableText(
               session.code,
-              style: TextStyle(color: accent.primary, fontSize: 48, fontWeight: FontWeight.w900, letterSpacing: 12),
+              style: TextStyle(
+                color: accent.primary,
+                fontSize: session.online ? 40 : 48,
+                fontWeight: FontWeight.w900,
+                letterSpacing: session.online ? 8 : 12,
+              ),
             ),
           ),
         ),
@@ -341,7 +378,13 @@ class _HostingView extends ConsumerWidget {
             text: "Guests can't find this Jam by its code: another app is using the port Symphony looks on. Close other Symphony windows and start again.",
           ),
         ],
-        if (isWindows) ...[
+        if (session.online) ...[
+          const SizedBox(height: 12),
+          const _Notice(
+            text: "Online Jams go through Symphony's relay, which only passes along what's playing: never audio. Each guest's app streams the song itself.",
+          ),
+        ],
+        if (isWindows && !session.online) ...[
           const SizedBox(height: 12),
           const _Notice(
             text: 'If Windows asks about the firewall, allow Symphony on private networks, or guests won\'t be able to connect.',

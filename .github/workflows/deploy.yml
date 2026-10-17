@@ -357,6 +357,26 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  jam-relay:
+    name: Test Jam Relay
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: jam_relay
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # The relay is deployed to Cloudflare by hand (npm run deploy); CI
+      # only checks it.
+      - name: Test
+        run: npm test
+
   discord-bot:
     name: Test & Publish Discord Bot
     runs-on: ubuntu-latest

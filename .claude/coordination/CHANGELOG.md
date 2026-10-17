@@ -2,6 +2,21 @@
 
 Newest first. Note what changed in Shared code and how the other side should adapt.
 
+## 2026-10-17 — [core] Online Jams through a relay
+
+- Owner-approved exception to "no server on native": online Jams pass Jam
+  messages (never audio) through `jam_relay/`, a Cloudflare Worker with one
+  Durable Object per room. Wi-Fi Jams are unchanged and need no server.
+- `jam_transport.dart`: `jamRelayUrl` (`--dart-define=SYMPHONY_JAM_RELAY`),
+  `newOnlineJamCode()`, `isOnlineJamCode()`, `onlineJamExists()`,
+  `hostOnlineJam(code, onLost:)`, `joinOnlineJam(code)`. Online codes are 6
+  characters from `onlineJamCodeAlphabet`; Wi-Fi codes stay 4 digits.
+- `JamController.host({online})`; `join(code:)` picks the transport by the
+  code's shape and upper-cases it. `JamHosting.online`, `JamConnecting.online`,
+  end reason `relay_lost`.
+- Tests: `test/fake_jam_relay.dart` speaks the relay protocol on loopback;
+  `jam_session_test.dart` runs every scenario over both transports.
+
 ## 2026-10-15 — [core] Join a Jam with just the code
 
 - Guests type only the 4-digit code. `findLanJam(code)` broadcasts a UDP
