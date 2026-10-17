@@ -6,10 +6,12 @@ import '../../../../core/layout/breakpoints.dart';
 import '../../../../core/services/windows_tray.dart';
 import '../../../../core/theme/symphony_theme.dart';
 import '../../../../core/widgets/hover_widgets.dart';
+import '../../../../core/widgets/motion.dart';
 import '../../../jam/data/jam_transport.dart';
 import '../../domain/entities/track.dart';
 import '../controllers/audio_player_providers.dart';
 import '../controllers/now_playing_panel_provider.dart';
+import '../controllers/now_playing_tint_provider.dart';
 import '../desktop/desktop_volume_provider.dart';
 import '../mobile/mobile_now_playing_sheet.dart';
 import 'playback_mode_buttons.dart';
@@ -43,28 +45,42 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
     }
 
     final isMobile = Breakpoints.isMobile(context);
+    final tint = ref.watch(nowPlayingTintProvider).valueOrNull;
 
-    return Container(
-      height: isMobile ? 68 : 76,
-      margin: isMobile ? const EdgeInsets.fromLTRB(8, 0, 8, 6) : EdgeInsets.zero,
-      padding: EdgeInsets.symmetric(horizontal: isMobile ? 10 : 16, vertical: isMobile ? 6 : 0),
-      decoration: BoxDecoration(
-        color: isMobile ? const Color(0xFF242424) : SymphonyTheme.obsidian,
-        borderRadius: isMobile ? BorderRadius.circular(8) : BorderRadius.zero,
-        border: isMobile
-            ? null
-            : const Border(
-                top: BorderSide(color: Color(0xFF282828), width: 1),
-              ),
-        boxShadow: isMobile
-            ? [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.45),
-                  blurRadius: 10,
-                  offset: const Offset(0, 3),
+    // Glass tinted with the cover's color, which fades over on song change.
+    return TweenAnimationBuilder<Color?>(
+      tween: ColorTween(end: tint ?? (isMobile ? SymphonyTheme.glassMini : SymphonyTheme.glassBar)),
+      duration: const Duration(milliseconds: 700),
+      curve: Curves.easeInOut,
+      builder: (context, color, child) => Container(
+        height: isMobile ? 68 : 76,
+        margin: isMobile ? const EdgeInsets.fromLTRB(8, 0, 8, 6) : EdgeInsets.zero,
+        padding: EdgeInsets.symmetric(horizontal: isMobile ? 10 : 16, vertical: isMobile ? 6 : 0),
+        decoration: BoxDecoration(
+          color: isMobile ? SymphonyTheme.glassMini : SymphonyTheme.glassBar,
+          gradient: color == null
+              ? null
+              : LinearGradient(
+                  colors: isMobile
+                      ? [color.withValues(alpha: 0.85), SymphonyTheme.glassMini]
+                      : [color.withValues(alpha: 0.4), SymphonyTheme.glassBar],
+                  stops: isMobile ? const [0.0, 1.0] : const [0.0, 0.5],
                 ),
-              ]
-            : null,
+          borderRadius: isMobile ? BorderRadius.circular(10) : BorderRadius.zero,
+          border: isMobile
+              ? Border.all(color: SymphonyTheme.glassEdge, width: 0.5)
+              : const Border(top: BorderSide(color: SymphonyTheme.glassEdge, width: 1)),
+          boxShadow: isMobile
+              ? [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.35),
+                    blurRadius: 14,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : null,
+        ),
+        child: child,
       ),
       child: isMobile
           ? _buildMobileLayout(mediaItem, isPlaying, isBuffering)
@@ -178,10 +194,7 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
                               height: 14,
                               child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2),
                             )
-                          : Icon(
-                              isPlaying ? Icons.pause : Icons.play_arrow,
-                              color: Colors.black,
-                            ),
+                          : PlayPauseIcon(isPlaying: isPlaying, size: 20),
                       onPressed: () async {
                         if (isPlaying) {
                           await handler.pause();
@@ -360,8 +373,9 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
       children: [
         Row(
           children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
+            // Flies up into the Now Playing view when it opens.
+            Hero(
+              tag: nowPlayingArtworkHeroTag,
               child: SymphonyArtwork(
                 artworkUri: mediaItem.artUri,
                 track: Track(
@@ -426,7 +440,7 @@ class _BottomPlayerBarState extends ConsumerState<BottomPlayerBar> {
                         height: 16,
                         child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2),
                       )
-                    : Icon(isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.black),
+                    : PlayPauseIcon(isPlaying: isPlaying, size: 22),
                 onPressed: () async {
                   if (isPlaying) {
                     await handler.pause();

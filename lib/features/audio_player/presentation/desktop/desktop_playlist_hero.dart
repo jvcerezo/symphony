@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/theme/artwork_colors.dart';
 import '../../../../core/theme/symphony_theme.dart';
 import '../../../../core/widgets/hover_widgets.dart';
 import '../../../playlist_import/domain/entities/spotify_playlist.dart';
@@ -37,10 +38,15 @@ class DesktopPlaylistHero extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return Container(
+    // The header takes on the cover's color once it is known.
+    final cover = playlist.coverUrl;
+    final coverColor = cover == null ? null : ref.watch(artworkColorProvider(cover)).valueOrNull;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 600),
+      curve: Curves.easeInOut,
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [const Color(0xFF5038A0), SymphonyTheme.panel],
+          colors: [coverColor ?? const Color(0xFF5038A0), SymphonyTheme.panel],
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
         ),

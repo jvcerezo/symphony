@@ -64,7 +64,7 @@ class _SidebarNavState extends ConsumerState<SidebarNav> {
           // 1. Top Card: Brand & Primary Navigation
           Container(
             decoration: BoxDecoration(
-              color: SymphonyTheme.panel,
+              color: SymphonyTheme.glassPanel,
               borderRadius: BorderRadius.circular(8),
             ),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -145,7 +145,7 @@ class _SidebarNavState extends ConsumerState<SidebarNav> {
           Expanded(
             child: Container(
               decoration: BoxDecoration(
-                color: SymphonyTheme.panel,
+                color: SymphonyTheme.glassPanel,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Column(

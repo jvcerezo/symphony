@@ -8,6 +8,7 @@ import '../../controllers/offline_provider.dart';
 import '../../desktop/desktop_playlist_hero.dart';
 import '../../mobile/mobile_playlist_hero.dart';
 import '../../widgets/spotify_track_row.dart';
+import '../../../../../core/widgets/motion.dart';
 
 /// Playlist detail: hero header (desktop or mobile variant) + track list.
 class PlaylistSection extends ConsumerWidget {
@@ -131,7 +132,7 @@ class PlaylistSection extends ConsumerWidget {
                 final isDownloaded = offlineState.isTrackDownloaded(track);
                 final isDownloading = offlineState.isTrackDownloading(track.id);
 
-                return SpotifyTrackRow(
+                return StaggeredEntrance(index: index, child: SpotifyTrackRow(
                   index: index,
                   track: track,
                   isPlaying: isPlaying && !isBuffering,
@@ -181,7 +182,7 @@ class PlaylistSection extends ConsumerWidget {
                       }
                     }
                   },
-                );
+                ));
               },
               childCount: playlist.tracks.length,
             ),
@@ -189,7 +190,7 @@ class PlaylistSection extends ConsumerWidget {
         ),
 
         SliverToBoxAdapter(
-          child: SizedBox(height: isDesktop ? 40 : 110),
+          child: SizedBox(height: isDesktop ? 40 : 24 + MediaQuery.paddingOf(context).bottom),
         ),
       ],
     );

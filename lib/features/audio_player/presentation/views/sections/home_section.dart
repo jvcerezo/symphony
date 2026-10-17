@@ -16,6 +16,7 @@ import '../../widgets/nav_history_controls.dart';
 import '../../widgets/spotify_playlist_card.dart';
 import '../../widgets/spotify_quick_tile.dart';
 import 'section_header_buttons.dart';
+import '../../../../../core/widgets/motion.dart';
 
 /// Home dashboard: greeting, filter chips, quick tiles, featured playlists,
 /// popular tracks, genre grid and the import banner.
@@ -419,7 +420,7 @@ class HomeSection extends ConsumerWidget {
                     );
                     final isThisPlaying = isPlaylistActive && isPlaying;
 
-                    return SpotifyQuickTile(
+                    return StaggeredEntrance(index: index, child: PressLift(borderRadius: 6, child: SpotifyQuickTile(
                       playlist: playlist,
                       accent: accent,
                       isPlaying: isThisPlaying,
@@ -437,7 +438,7 @@ class HomeSection extends ConsumerWidget {
                           await handler.playQueue(playlist.tracks, startIndex: 0);
                         }
                       },
-                    );
+                    )));
                   },
                 );
               },
@@ -483,7 +484,7 @@ class HomeSection extends ConsumerWidget {
 
                   return SizedBox(
                     width: 185,
-                    child: SpotifyPlaylistCard(
+                    child: StaggeredEntrance(index: index, child: PressLift(child: SpotifyPlaylistCard(
                       playlist: playlist,
                       accent: accent,
                       isDownloaded: isDownloaded,
@@ -522,7 +523,7 @@ class HomeSection extends ConsumerWidget {
                           );
                         }
                       },
-                    ),
+                    ))),
                   );
                 },
               ),
@@ -560,7 +561,7 @@ class HomeSection extends ConsumerWidget {
                 itemCount: GenreCatalog.all.length,
                 itemBuilder: (context, index) {
                   final card = GenreCatalog.all[index];
-                  return _buildGenreCard(ref, card);
+                  return StaggeredEntrance(index: index, child: _buildGenreCard(ref, card));
                 },
               );
             },
@@ -571,7 +572,7 @@ class HomeSection extends ConsumerWidget {
           // 7. Import Playlist Action Banner
           _buildImportBanner(context, accent, !isDesktop),
 
-          SizedBox(height: isDesktop ? 40 : 120),
+          SizedBox(height: isDesktop ? 40 : 24 + MediaQuery.paddingOf(context).bottom),
         ],
       ),
     );

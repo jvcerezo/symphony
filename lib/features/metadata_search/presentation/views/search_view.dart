@@ -11,6 +11,7 @@ import '../../../audio_player/presentation/widgets/nav_history_controls.dart';
 import '../../../audio_player/presentation/widgets/symphony_artwork.dart';
 import '../../../audio_player/presentation/widgets/spotify_track_row.dart';
 import '../controllers/search_focus_provider.dart';
+import '../../../../core/widgets/motion.dart';
 
 class SearchView extends ConsumerStatefulWidget {
   const SearchView({super.key});
@@ -144,7 +145,7 @@ class _SearchViewState extends ConsumerState<SearchView> {
 
   Widget _buildGenreBrowser() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      padding: EdgeInsets.fromLTRB(24, 16, 24, 16 + MediaQuery.paddingOf(context).bottom),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -165,7 +166,7 @@ class _SearchViewState extends ConsumerState<SearchView> {
             itemCount: _genres.length,
             itemBuilder: (context, index) {
               final g = _genres[index];
-              return InkWell(
+              return StaggeredEntrance(index: index, child: PressLift(child: InkWell(
                 onTap: () {
                   _searchController.text = g.title;
                   _onSearchChanged(g.title);
@@ -209,7 +210,7 @@ class _SearchViewState extends ConsumerState<SearchView> {
                     ],
                   ),
                 ),
-              );
+              )));
             },
           ),
         ],
@@ -277,7 +278,7 @@ class _SearchViewState extends ConsumerState<SearchView> {
         final isTopCurrent = mediaItem?.title == topTrack.title && mediaItem?.artist == topTrack.artist;
 
         return ListView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          padding: EdgeInsets.fromLTRB(24, 16, 24, 16 + MediaQuery.paddingOf(context).bottom),
           children: [
             // Top Result Card (Spotify benchmark)
             const Text(

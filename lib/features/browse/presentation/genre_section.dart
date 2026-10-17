@@ -7,6 +7,7 @@ import '../../audio_player/presentation/controllers/navigation_history_provider.
 import '../../playlist_import/domain/entities/playlist_summary.dart';
 import '../data/genre_catalog.dart';
 import 'genre_providers.dart';
+import '../../../core/widgets/motion.dart';
 
 /// A genre's page: current playlists for it from Spotify, Apple Music and
 /// YouTube, each loading on its own. Tapping one opens it (without adding
@@ -21,7 +22,7 @@ class GenreSection extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final pad = isDesktop ? 32.0 : 16.0;
     return ListView(
-      padding: EdgeInsets.fromLTRB(0, 0, 0, isDesktop ? 40 : 120),
+      padding: EdgeInsets.fromLTRB(0, 0, 0, isDesktop ? 40 : 24 + MediaQuery.paddingOf(context).bottom),
       children: [
         Container(
           padding: EdgeInsets.fromLTRB(pad, isDesktop ? 20 : 12, pad, 28),
@@ -133,7 +134,7 @@ class _SourceShelf extends ConsumerWidget {
                       padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
                       itemCount: playlists.length,
                       separatorBuilder: (_, __) => const SizedBox(width: 14),
-                      itemBuilder: (_, i) => _SummaryCard(summary: playlists[i]),
+                      itemBuilder: (_, i) => StaggeredEntrance(index: i, child: PressLift(child: _SummaryCard(summary: playlists[i]))),
                     ),
                   ),
           ),

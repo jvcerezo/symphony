@@ -7,6 +7,7 @@ import '../../controllers/offline_provider.dart';
 import '../../widgets/nav_history_controls.dart';
 import '../../widgets/spotify_playlist_card.dart';
 import 'section_header_buttons.dart';
+import '../../../../../core/widgets/motion.dart';
 
 /// "Your Library" tab: imported playlists grid.
 class LibrarySection extends ConsumerWidget {
@@ -129,7 +130,7 @@ class LibrarySection extends ConsumerWidget {
                 itemBuilder: (context, index) {
                   final playlist = importedPlaylists[index];
                   final isDownloaded = offlineState.isPlaylistDownloaded(playlist);
-                  return SpotifyPlaylistCard(
+                  return StaggeredEntrance(index: index, child: PressLift(child: SpotifyPlaylistCard(
                     playlist: playlist,
                     accent: accent,
                     isDownloaded: isDownloaded,
@@ -173,7 +174,7 @@ class LibrarySection extends ConsumerWidget {
                         );
                       }
                     },
-                  );
+                  )));
                 },
               ),
             ),

@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/services/app_update_service.dart';
 import '../../../../core/theme/symphony_theme.dart';
+import '../../../../core/widgets/ambient_glow.dart';
 import '../../../../core/widgets/app_update_dialog.dart';
 import '../controllers/navigation_history_provider.dart';
 import '../controllers/now_playing_panel_provider.dart';
+import '../controllers/now_playing_tint_provider.dart';
 import '../widgets/bottom_player_bar.dart';
 import '../widgets/realtime_download_toast.dart';
 import '../widgets/sidebar_nav.dart';
@@ -13,7 +15,7 @@ import 'desktop_shortcuts.dart';
 import 'now_playing_side_panel.dart';
 
 /// Wide-window chrome: sidebar navigation, rounded content panel and the
-/// full-width player bar, with desktop keyboard shortcuts installed
+/// full-width player bar over a glow in the current cover's color, with desktop keyboard shortcuts installed
 /// ([DesktopShortcuts]). [content] is the active tab's view.
 class DesktopShell extends ConsumerWidget {
   final Widget content;
@@ -34,7 +36,11 @@ class DesktopShell extends ConsumerWidget {
       child: DesktopShortcuts(
       child: Scaffold(
         backgroundColor: SymphonyTheme.obsidian,
-        body: SafeArea(
+        body: Stack(
+          children: [
+            // The sidebar, side panel and player bar are glass over this.
+            Positioned.fill(child: AmbientGlow(tint: ref.watch(nowPlayingTintProvider).valueOrNull)),
+            SafeArea(
           bottom: false,
           child: Column(
             children: [
@@ -84,6 +90,8 @@ class DesktopShell extends ConsumerWidget {
               const BottomPlayerBar(),
             ],
           ),
+        ),
+          ],
         ),
       ),
     ),
