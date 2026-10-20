@@ -17,6 +17,7 @@ import 'features/audio_player/data/services/symphony_audio_handler.dart';
 import 'features/audio_player/presentation/controllers/audio_player_providers.dart';
 import 'features/audio_player/presentation/controllers/offline_provider.dart';
 import 'features/audio_player/presentation/views/symphony_player_screen.dart';
+import 'features/for_you/presentation/for_you_providers.dart';
 import 'features/landing/presentation/views/symphony_landing_page.dart';
 import 'features/onboarding/presentation/onboarding_screen.dart';
 import 'features/settings/presentation/controllers/desktop_settings_provider.dart';
@@ -56,6 +57,7 @@ Future<void> main() async {
       closeToTrayProvider.overrideWith((ref) => startup.closeToTray),
       discordPresenceProvider.overrideWith((ref) => startup.discordPresence),
       autoDownloadPlaylistsProvider.overrideWith((ref) => startup.autoDownloadPlaylists),
+      autoplayProvider.overrideWith((ref) => startup.autoplay),
       // The walkthrough is for the installed apps; web opens as before.
       onboardingCompleteProvider.overrideWith((ref) => kIsWeb || startup.onboardingDone),
     ],
@@ -66,6 +68,8 @@ Future<void> main() async {
   scheduleDownloadRecheck(container);
   // Playlists being played are saved for offline in the background.
   startQueueAutoDownload(container);
+  // Plays are remembered for mixes and recaps; autoplay carries on after a queue.
+  startForYou(container);
 
   // Keep the bundled yt-dlp current (YouTube changes often). Background,
   // at most once a day; playback never waits on it.
@@ -102,6 +106,7 @@ class SymphonyApp extends ConsumerWidget {
       AppPrefs.saveDiscordPresence(next);
     });
     ref.listen(autoDownloadPlaylistsProvider, (prev, next) => AppPrefs.saveAutoDownloadPlaylists(next));
+    ref.listen(autoplayProvider, (prev, next) => AppPrefs.saveAutoplay(next));
 
     Widget initialHome;
     if (kIsWeb) {

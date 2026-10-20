@@ -55,6 +55,19 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   /// break moves on instead of retrying forever.
   Track? _recoveredTrack;
 
+  /// Another app took the audio for a moment (a video, a voice note, a
+  /// call) while this one was playing; playback picks up when it hands
+  /// the audio back. Cleared when the user plays or pauses meanwhile.
+  bool _resumeWhenFocusReturns = false;
+
+  /// The song loading when another app took the audio: it finishes
+  /// loading but waits, paused, for the audio to come back.
+  int? _loadHeldForFocus;
+
+  /// Autoplay: when the queue runs out (repeat off, not in a Jam, online),
+  /// asked for songs to carry on with after [last]. None: stop as before.
+  Future<List<Track>> Function(Track last, List<Track> queue)? autoplay;
+
   SymphonyAudioHandler({
     AudioPlayer? player,
     AudioStreamResolverService? streamResolver,
@@ -63,7 +76,9 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
     PlaybackCache? playbackCache,
     PlayQueue? queue,
     NetworkStatus? network,
-  })  : _player = player ?? AudioPlayer(),
+  })  : // Interruptions are handled here; just_audio's own handling would
+        // pause and resume the player a second time.
+        _player = player ?? AudioPlayer(handleInterruptions: false),
         _queue = queue ?? PlayQueue(),
         _playbackCache = playbackCache ?? PlaybackCache(),
         _streamResolver = streamResolver ?? AudioStreamResolverService(),
@@ -186,30 +201,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
       final session = await AudioSession.instance;
       await session.configure(const AudioSessionConfiguration.music());
 
-      _interruptionSub = session.interruptionEventStream.listen((event) {
-        if (event.begin) {
-          switch (event.type) {
-            case AudioInterruptionType.duck:
-              _player.setVolume(0.5);
-              break;
-            case AudioInterruptionType.pause:
-            case AudioInterruptionType.unknown:
-              _pauseHere();
-              break;
-          }
-        } else {
-          switch (event.type) {
-            case AudioInterruptionType.duck:
-              _player.setVolume(1.0);
-              break;
-            case AudioInterruptionType.pause:
-              _playHere();
-              break;
-            case AudioInterruptionType.unknown:
-              break;
-          }
-        }
-      });
+      _interruptionSub = session.interruptionEventStream.listen(handleInterruption);
 
       _noisySub = session.becomingNoisyEventStream.listen((_) {
         developer.log('Audio output unplugged. Pausing playback.', name: 'AudioHandler');
@@ -217,6 +209,41 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
       });
     } catch (e) {
       developer.log('AudioSession init error: $e', name: 'AudioHandler');
+    }
+  }
+
+  /// Another app taking or handing back the audio (on Android, audio
+  /// focus). A short loss pauses and resumes only if this was playing; a
+  /// lasting one (another player started) just pauses. A song loading
+  /// meanwhile still loads, so the one shown is the one that resumes.
+  @visibleForTesting
+  void handleInterruption(AudioInterruptionEvent event) {
+    if (event.begin) {
+      switch (event.type) {
+        case AudioInterruptionType.duck:
+          _player.setVolume(0.5);
+        case AudioInterruptionType.pause:
+        case AudioInterruptionType.unknown:
+          final wasPlaying = _loading || _player.playing;
+          _resumeWhenFocusReturns = event.type == AudioInterruptionType.pause && wasPlaying;
+          if (_loading) _loadHeldForFocus = _playRequestId;
+          unawaited(_player.pause());
+          _updatePlaybackState();
+      }
+      return;
+    }
+    switch (event.type) {
+      case AudioInterruptionType.duck:
+        _player.setVolume(1.0);
+      case AudioInterruptionType.pause:
+      case AudioInterruptionType.unknown:
+        final held = _loadHeldForFocus;
+        _loadHeldForFocus = null;
+        if (!_resumeWhenFocusReturns) return;
+        _resumeWhenFocusReturns = false;
+        // Still loading: it plays when it's ready.
+        if (_loading && held == _playRequestId) return;
+        unawaited(_playHere());
     }
   }
 
@@ -351,7 +378,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
     _completionWatchdogTimer?.cancel();
     developer.log('Track completed ($reason). Moving on...', name: 'AudioHandler');
     try {
-      final next = _queue.nextIndex(auto: true);
+      final next = _queue.nextIndex(auto: true) ?? (await _extendQueue() ? _queue.nextIndex(auto: true) : null);
       if (next == null) {
         await _stopAtEnd();
       } else if (next == currentIndex) {
@@ -371,6 +398,29 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
     } finally {
       await Future.delayed(const Duration(milliseconds: 600));
       _isAutoSkipping = false;
+    }
+  }
+
+  /// Adds [autoplay]'s songs after the last one. True when any were added.
+  Future<bool> _extendQueue() async {
+    final source = autoplay;
+    final last = _queue.tracks.isEmpty ? null : _queue.tracks.last;
+    if (source == null || last == null || _remote != null || _queue.repeatMode != QueueRepeatMode.off) return false;
+    if (_usesPlaybackCache && !await _network.isOnline()) return false;
+    final requestId = _playRequestId;
+    try {
+      final more = await source(last, _queue.tracks).timeout(const Duration(seconds: 20));
+      // The user started something else meanwhile.
+      if (requestId != _playRequestId || more.isEmpty) return false;
+      for (final t in more) {
+        _queue.add(t);
+      }
+      _emitQueue();
+      developer.log('Autoplay added ${more.length} songs after "${last.title}"', name: 'AudioHandler');
+      return true;
+    } catch (e) {
+      developer.log('Autoplay failed: $e', name: 'AudioHandler');
+      return false;
     }
   }
 
@@ -805,7 +855,8 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
       if (requestId != _playRequestId) return;
 
       _loading = false;
-      if (!autoplay) {
+      // Another app has the audio: wait, loaded, until it hands it back.
+      if (!autoplay || _loadHeldForFocus == requestId) {
         _updatePlaybackState();
         _preloadUpcomingTracks();
         return;
@@ -851,7 +902,15 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   Future<void> play() async {
     final remote = _remote;
     if (remote != null) return remote.play();
+    _forgetInterruption();
     await _playHere();
+  }
+
+  /// The user chose to play or pause while another app had the audio;
+  /// that choice stands when the audio comes back.
+  void _forgetInterruption() {
+    _resumeWhenFocusReturns = false;
+    _loadHeldForFocus = null;
   }
 
   Future<void> _playHere() async {
@@ -869,6 +928,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   Future<void> pause() async {
     final remote = _remote;
     if (remote != null) return remote.pause();
+    _forgetInterruption();
     await _pauseHere();
   }
 
@@ -905,6 +965,9 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   Future<void> skipToNext() async {
     final remote = _remote;
     if (remote != null) return remote.next();
+    // On the last song a skip carries on with autoplay, else wraps around.
+    final atEnd = _queue.index == _queue.length - 1 && _queue.repeatMode == QueueRepeatMode.off;
+    if (atEnd) await _extendQueue();
     final next = _queue.nextIndex(auto: false);
     if (next == null) return;
     // Offline, go to the next song that's on this device.

@@ -7,6 +7,7 @@ import '../../../../core/widgets/app_update_dialog.dart';
 import '../../../../core/widgets/symphony_brand_logo.dart';
 import '../../../audio_player/presentation/controllers/audio_player_providers.dart';
 import '../../../audio_player/presentation/controllers/offline_provider.dart';
+import '../../../for_you/presentation/for_you_providers.dart';
 import '../controllers/desktop_settings_provider.dart';
 import '../controllers/personalization_provider.dart';
 
@@ -31,6 +32,32 @@ class _PersonalizationDialogState extends ConsumerState<PersonalizationDialog> {
   void dispose() {
     _nameController.dispose();
     super.dispose();
+  }
+
+  Future<void> _confirmClearHistory(BuildContext context) async {
+    final clear = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: SymphonyTheme.surfaceElevated,
+        title: const Text('Clear listening history?', style: TextStyle(color: Colors.white)),
+        content: const Text(
+          'Your recaps and the mixes made from your plays start over. This cannot be undone.',
+          style: TextStyle(color: SymphonyTheme.textSecondary),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Clear')),
+        ],
+      ),
+    );
+    if (clear != true) return;
+    await ref.read(listeningHistoryProvider.notifier).clear();
+    await ref.read(madeForYouProvider.notifier).refresh(force: true);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Listening history cleared'), duration: Duration(seconds: 2)),
+      );
+    }
   }
 
   /// Redraws the avatar initial as the name is typed.
@@ -180,6 +207,35 @@ class _PersonalizationDialogState extends ConsumerState<PersonalizationDialog> {
                     style: TextStyle(color: SymphonyTheme.textSecondary, fontSize: 12),
                   ),
                 ),
+              if (!kIsWeb)
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: ref.watch(autoplayProvider),
+                  onChanged: (v) => ref.read(autoplayProvider.notifier).state = v,
+                  activeThumbColor: accent.primary,
+                  title: const Text(
+                    'Autoplay similar songs',
+                    style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: const Text(
+                    'When your queue ends, keep listening with songs like the last one.',
+                    style: TextStyle(color: SymphonyTheme.textSecondary, fontSize: 12),
+                  ),
+                ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                minTileHeight: 56,
+                title: const Text(
+                  'Clear listening history',
+                  style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
+                ),
+                subtitle: const Text(
+                  'Your mixes and recaps are made from what you play, kept only on this device.',
+                  style: TextStyle(color: SymphonyTheme.textSecondary, fontSize: 12),
+                ),
+                trailing: const Icon(Icons.delete_outline_rounded, color: SymphonyTheme.textSecondary),
+                onTap: () => _confirmClearHistory(context),
+              ),
               if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) ...[
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
