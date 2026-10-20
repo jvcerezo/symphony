@@ -2,6 +2,23 @@
 
 Newest first. Note what changed in Shared code and how the other side should adapt.
 
+## 2026-10-20 — [mobile] Made for you, recaps, autoplay, audio focus
+
+- New feature folder `lib/features/for_you/`: play history kept on the device
+  (`ListeningHistory`, SharedPreferences keys `symphony_listening_log`,
+  `symphony_listening_now`, `symphony_made_for_you`), mixes built from it and
+  Deezer's public API (`MixBuilder`, `DeezerCatalog`), and the recap screen.
+  Started from `main.dart` with `startForYou(container)`.
+- `SymphonyAudioHandler.autoplay` (new, nullable): asked for songs when the
+  queue runs out with repeat off, outside a Jam, online. A skip on the last
+  song now tries autoplay before wrapping to the first song.
+- `SymphonyAudioHandler.handleInterruption` handles audio focus; the default
+  `AudioPlayer` is built with `handleInterruptions: false`. Don't re-enable it.
+- Home (`home_section.dart`) shows `RecapBanner` and `MadeForYouShelf` above
+  "Your Playlists"; both are their own widgets, usable on desktop as is.
+- `SymphonyTheme.recapGradients`, `AppPrefs.autoplay` / `saveAutoplay`.
+- Tests share audio fakes in `test/support/fake_audio.dart`.
+
 ## 2026-10-15 — [core] Join a Jam with just the code
 
 - Guests type only the 4-digit code. `findLanJam(code)` broadcasts a UDP

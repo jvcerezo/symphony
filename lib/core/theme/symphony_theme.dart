@@ -153,6 +153,16 @@ class SymphonyTheme {
   static const Color textSecondary = Color(0xFFA1A1AA);
   static const Color textMuted = Color(0xFF71717A);
 
+  // Recap slides, one per slide in turn: loud, high contrast with white text.
+  static const List<LinearGradient> recapGradients = [
+    LinearGradient(colors: [Color(0xFF4A1FB8), Color(0xFFE1306C)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+    LinearGradient(colors: [Color(0xFF0E7C61), Color(0xFF1E3264)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+    LinearGradient(colors: [Color(0xFFB4235A), Color(0xFFF59E0B)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+    LinearGradient(colors: [Color(0xFF1E3A8A), Color(0xFF7C3AED)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+    LinearGradient(colors: [Color(0xFF7F1D1D), Color(0xFF4A1FB8)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+    LinearGradient(colors: [Color(0xFF111827), Color(0xFF0E7C61)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+  ];
+
   // Gradients
   static const LinearGradient brandGradient = LinearGradient(
     colors: [Color(0xFFFFFFFF), Color(0xFFD4D4D8)],
