@@ -1,10 +1,13 @@
 import '../../../../core/config/feature_flags.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/services/app_update_service.dart';
 import '../../../../core/widgets/symphony_brand_logo.dart';
 import '../../../audio_player/presentation/views/symphony_player_screen.dart';
 import '../../../audio_player/presentation/widgets/animated_equalizer.dart';
+import '../../../jam/domain/jam_invite.dart';
+import '../widgets/jam_invite_card.dart';
 import '../widgets/wave_background.dart';
 
 /// The official public showcase & distribution landing page for Symphony.
@@ -58,6 +61,8 @@ class SymphonyLandingPage extends ConsumerWidget {
 
     final screenWidth = MediaQuery.of(context).size.width;
     final isDesktop = screenWidth >= 860;
+    // Opened from a Jam invite link.
+    final inviteCode = JamInvite.codeFrom(Uri.base);
 
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
@@ -86,6 +91,17 @@ class SymphonyLandingPage extends ConsumerWidget {
                       children: [
                         // 1. Navigation Header
                         _buildNavBar(context, isDesktop, versionTag),
+
+                        if (inviteCode != null) ...[
+                          SizedBox(height: isDesktop ? 40 : 24),
+                          JamInviteCard(
+                            code: inviteCode,
+                            onDownload: () => defaultTargetPlatform == TargetPlatform.android
+                                ? _openExternal(apkDownloadUrl, isDownload: true)
+                                : _openExternal(hasDirectWindowsAsset ? winDownloadUrl : repoUrl,
+                                    isDownload: hasDirectWindowsAsset),
+                          ),
+                        ],
 
                         SizedBox(height: isDesktop ? 64 : 40),
 

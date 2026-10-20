@@ -18,6 +18,7 @@ import 'features/audio_player/presentation/controllers/audio_player_providers.da
 import 'features/audio_player/presentation/controllers/offline_provider.dart';
 import 'features/audio_player/presentation/views/symphony_player_screen.dart';
 import 'features/for_you/presentation/for_you_providers.dart';
+import 'features/jam/presentation/jam_invite_prompt.dart';
 import 'features/landing/presentation/views/symphony_landing_page.dart';
 import 'features/onboarding/presentation/onboarding_screen.dart';
 import 'features/settings/presentation/controllers/desktop_settings_provider.dart';
@@ -70,6 +71,8 @@ Future<void> main() async {
   startQueueAutoDownload(container);
   // Plays are remembered for mixes and recaps; autoplay carries on after a queue.
   startForYou(container);
+  // Jam invite links (Android) offer to join.
+  startJamLinks(container);
 
   // Keep the bundled yt-dlp current (YouTube changes often). Background,
   // at most once a day; playback never waits on it.
@@ -87,6 +90,9 @@ Future<void> main() async {
     YtDlpUpdateScheduler(isAvailable: ytDlp.isAvailable, update: ytDlp.update).scheduleAfterStart();
   }
 }
+
+/// For dialogs raised from outside any screen (a Jam invite link).
+final _navigatorKey = GlobalKey<NavigatorState>();
 
 class SymphonyApp extends ConsumerWidget {
   const SymphonyApp({super.key});
@@ -107,6 +113,22 @@ class SymphonyApp extends ConsumerWidget {
     });
     ref.listen(autoDownloadPlaylistsProvider, (prev, next) => AppPrefs.saveAutoDownloadPlaylists(next));
     ref.listen(autoplayProvider, (prev, next) => AppPrefs.saveAutoplay(next));
+    // An invite waits until the walkthrough is done (a friend who just
+    // installed from an invite sees that first).
+    void offerInvite() {
+      final code = ref.read(pendingJamInviteProvider);
+      final context = _navigatorKey.currentContext;
+      if (code == null || !ref.read(onboardingCompleteProvider)) return;
+      if (context == null) {
+        // Opened by the link: the app isn't on screen yet.
+        WidgetsBinding.instance.addPostFrameCallback((_) => offerInvite());
+        return;
+      }
+      ref.read(pendingJamInviteProvider.notifier).state = null;
+      offerJamInvite(context, ref, code);
+    }
+    ref.listen(pendingJamInviteProvider, (_, __) => offerInvite());
+    ref.listen(onboardingCompleteProvider, (_, __) => offerInvite());
 
     Widget initialHome;
     if (kIsWeb) {
@@ -126,6 +148,7 @@ class SymphonyApp extends ConsumerWidget {
     }
 
     return MaterialApp(
+      navigatorKey: _navigatorKey,
       title: 'Symphony — Minimalist Offline Music',
       debugShowCheckedModeBanner: false,
       themeMode: ThemeMode.dark,

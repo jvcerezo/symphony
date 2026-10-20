@@ -1,12 +1,15 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../core/layout/breakpoints.dart';
 import '../../../core/theme/symphony_theme.dart';
 import '../../audio_player/presentation/controllers/audio_player_providers.dart';
 import '../../audio_player/presentation/controllers/now_playing_panel_provider.dart';
+import '../../settings/presentation/controllers/personalization_provider.dart';
 import '../data/jam_transport.dart';
+import '../domain/jam_invite.dart';
 import '../domain/jam_state.dart';
 import 'jam_providers.dart';
 
@@ -370,6 +373,28 @@ class _HostingView extends ConsumerWidget {
                 letterSpacing: session.online ? 8 : 12,
               ),
             ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: () => SharePlus.instance.share(ShareParams(
+              subject: 'Join my Jam on Symphony',
+              text: JamInvite.message(
+                session.code,
+                online: session.online,
+                hostName: ref.read(personalizationProvider).userName,
+              ),
+            )),
+            style: FilledButton.styleFrom(
+              backgroundColor: accent.primary,
+              foregroundColor: SymphonyTheme.obsidian,
+              minimumSize: const Size(0, 48),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(500)),
+            ),
+            icon: const Icon(Icons.person_add_alt_1_rounded),
+            label: const Text('Invite friends', style: TextStyle(fontWeight: FontWeight.bold)),
           ),
         ),
         if (!session.discoverable) ...[
