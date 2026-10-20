@@ -37,6 +37,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          startupSplashProvider.overrideWithValue(false),
           audioHandlerProvider.overrideWithValue(handler),
           activePlaylistProvider.overrideWith((ref) => samplePlaylist),
         ],

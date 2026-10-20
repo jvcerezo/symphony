@@ -53,6 +53,7 @@ void main() {
       handler.release();
     });
     final container = ProviderContainer(overrides: [
+      startupSplashProvider.overrideWithValue(false),
       audioHandlerProvider.overrideWithValue(handler),
       onboardingCompleteProvider.overrideWith((ref) => false),
     ]);
@@ -96,6 +97,7 @@ void main() {
     });
     await tester.pumpWidget(ProviderScope(
       overrides: [
+        startupSplashProvider.overrideWithValue(false),
         audioHandlerProvider.overrideWithValue(handler),
         onboardingCompleteProvider.overrideWith((ref) => false),
       ],

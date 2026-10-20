@@ -51,6 +51,7 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
     final container = ProviderContainer(overrides: [
+      startupSplashProvider.overrideWithValue(false),
       audioHandlerProvider.overrideWithValue(handler),
       jamProvider.overrideWith((ref) => jam),
     ]);
