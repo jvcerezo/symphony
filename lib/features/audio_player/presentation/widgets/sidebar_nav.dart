@@ -11,6 +11,7 @@ import '../controllers/audio_player_providers.dart';
 import '../controllers/navigation_history_provider.dart';
 import '../controllers/offline_provider.dart';
 import 'import_playlist_dialog.dart';
+import '../../../../core/widgets/sized_network_image.dart';
 
 class SidebarNav extends ConsumerStatefulWidget {
   const SidebarNav({super.key});
@@ -500,11 +501,10 @@ class _SidebarPlaylistItemState extends ConsumerState<_SidebarPlaylistItem> {
               ClipRRect(
                 borderRadius: BorderRadius.circular(4),
                 child: playlist.coverUrl != null
-                    ? Image.network(
+                    ? SizedNetworkImage(
                         playlist.coverUrl!,
                         width: 48,
                         height: 48,
-                        fit: BoxFit.cover,
                         errorBuilder: (context, error, stackTrace) => _buildFallbackCover(),
                       )
                     : _buildFallbackCover(),
