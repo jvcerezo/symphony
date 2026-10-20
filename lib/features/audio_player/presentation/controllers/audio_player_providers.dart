@@ -29,6 +29,18 @@ final playbackStateStreamProvider = StreamProvider<PlaybackState>((ref) {
   return handler.playbackState;
 });
 
+/// Just whether a song is playing, and whether it is loading. Screens that
+/// need no more than that watch these: [playbackStateStreamProvider] also
+/// changes every time the player reports how much it has downloaded.
+final isPlayingProvider = Provider<bool>(
+  (ref) => ref.watch(playbackStateStreamProvider.select((s) => s.asData?.value.playing ?? false)),
+);
+
+final isBufferingProvider = Provider<bool>((ref) {
+  final state = ref.watch(playbackStateStreamProvider.select((s) => s.asData?.value.processingState));
+  return state == AudioProcessingState.buffering || state == AudioProcessingState.loading;
+});
+
 /// Stream provider for current active media item (title, artist, artwork)
 final currentMediaItemStreamProvider = StreamProvider<MediaItem?>((ref) {
   final handler = ref.watch(audioHandlerProvider);

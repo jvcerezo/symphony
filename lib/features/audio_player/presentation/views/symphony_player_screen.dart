@@ -72,13 +72,10 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
     final activePlaylist = ref.watch(activePlaylistProvider);
     final activeTab = ref.watch(activeNavTabProvider);
     final mediaItemAsync = ref.watch(currentMediaItemStreamProvider);
-    final playbackStateAsync = ref.watch(playbackStateStreamProvider);
 
     final mediaItem = mediaItemAsync.asData?.value;
-    final playbackState = playbackStateAsync.asData?.value;
-    final isPlaying = playbackState?.playing ?? false;
-    final isBuffering = playbackState?.processingState == AudioProcessingState.buffering ||
-        playbackState?.processingState == AudioProcessingState.loading;
+    final isPlaying = ref.watch(isPlayingProvider);
+    final isBuffering = ref.watch(isBufferingProvider);
 
     final isDesktop = Breakpoints.isDesktop(context);
     final content = _buildCurrentTabContent(activeTab, activePlaylist, mediaItem, isPlaying, isBuffering, isDesktop);

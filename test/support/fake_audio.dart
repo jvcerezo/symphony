@@ -26,7 +26,21 @@ class FakePlayer implements AudioPlayer {
   double volumeSet = 1;
   Duration _position = Duration.zero;
 
+  Duration _buffered = Duration.zero;
+
   void _emit() => _states.add(PlayerState(_playing, _state));
+
+  /// The player reports how much of the song it has downloaded.
+  void reportBuffered(Duration buffered) {
+    _buffered = buffered;
+    _events.add(PlaybackEvent(bufferedPosition: buffered, updatePosition: _position));
+  }
+
+  /// The position jumps, as on a seek, and the player reports it.
+  void jumpTo(Duration position) {
+    _position = position;
+    _events.add(PlaybackEvent(bufferedPosition: _buffered, updatePosition: position));
+  }
 
   /// The song plays to its end.
   void finishSong() {
@@ -79,7 +93,7 @@ class FakePlayer implements AudioPlayer {
   @override
   Duration? get duration => const Duration(seconds: 200);
   @override
-  Duration get bufferedPosition => Duration.zero;
+  Duration get bufferedPosition => _buffered;
   @override
   double get speed => 1;
   @override

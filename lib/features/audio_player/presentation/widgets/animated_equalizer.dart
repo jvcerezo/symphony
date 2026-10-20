@@ -80,28 +80,39 @@ class _AnimatedEqualizerState extends State<AnimatedEqualizer> with TickerProvid
   Widget build(BuildContext context) {
     final barColor = widget.color ?? SymphonyTheme.primaryLight;
 
-    return SizedBox(
-      height: widget.height,
-      width: 18,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: List.generate(4, (i) {
-          return AnimatedBuilder(
-            animation: _animations[i],
-            builder: (context, child) {
-              return Container(
-                width: 3,
-                height: widget.height * _animations[i].value,
-                decoration: BoxDecoration(
-                  color: barColor,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              );
-            },
-          );
-        }),
+    // Painted straight from the animations: each frame repaints these few
+    // pixels only, with no rebuild or layout.
+    return RepaintBoundary(
+      child: CustomPaint(
+        size: Size(18, widget.height),
+        painter: _BarsPainter(_animations, barColor),
       ),
     );
   }
+}
+
+class _BarsPainter extends CustomPainter {
+  final List<Animation<double>> bars;
+  final Color color;
+
+  _BarsPainter(this.bars, this.color) : super(repaint: Listenable.merge(bars));
+
+  static const _barWidth = 3.0;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = color;
+    final gap = (size.width - _barWidth * bars.length) / (bars.length - 1);
+    for (var i = 0; i < bars.length; i++) {
+      final h = size.height * bars[i].value;
+      final left = i * (_barWidth + gap);
+      canvas.drawRRect(
+        RRect.fromLTRBR(left, size.height - h, left + _barWidth, size.height, const Radius.circular(2)),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_BarsPainter old) => old.color != color || old.bars != bars;
 }
