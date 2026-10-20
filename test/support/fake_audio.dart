@@ -135,8 +135,11 @@ Track song(String id) => Track(id: 'yt_$id', title: 'Song $id', artist: 'Artist'
     expectedDuration: const Duration(seconds: 200), artworkUri: Uri.parse('https://art.example/$id.jpg'));
 
 /// A handler around [player] that finds every song online at once, while
-/// [isOnline] (default: always).
-SymphonyAudioHandler handlerFor(FakePlayer player, {bool Function()? isOnline}) => SymphonyAudioHandler(
+/// [isOnline] (default: always), on a connection that is [metered] or not
+/// (default: not). Local copies are saved to [cacheStore].
+SymphonyAudioHandler handlerFor(FakePlayer player,
+        {bool Function()? isOnline, bool metered = false, LocalTrackStore? cacheStore}) =>
+    SymphonyAudioHandler(
       player: player,
       streamResolver: AudioStreamResolverService(
         extractor: FakeExtractor(),
@@ -144,7 +147,12 @@ SymphonyAudioHandler handlerFor(FakePlayer player, {bool Function()? isOnline}) 
         matchIndex: MemoryMatchIndex(),
         isWeb: false,
       ),
-      playbackCache: PlaybackCache(store: NoStore(), httpClient: MockClient((_) async => http.Response('', 404))),
+      playbackCache: PlaybackCache(
+          store: cacheStore ?? NoStore(), httpClient: MockClient((_) async => http.Response('', 404))),
       notificationPermission: NotificationPermissionService(isAndroid: () => false),
-      network: NetworkStatus(probe: () async => isOnline?.call() ?? true, maxAge: Duration.zero),
+      network: NetworkStatus(
+        probe: () async => isOnline?.call() ?? true,
+        meteredProbe: () async => metered,
+        maxAge: Duration.zero,
+      ),
     );

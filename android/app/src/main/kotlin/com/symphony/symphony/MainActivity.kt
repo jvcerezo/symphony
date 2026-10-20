@@ -2,6 +2,7 @@ package com.symphony.symphony
 
 import android.content.Context
 import android.content.pm.PackageManager
+import android.net.ConnectivityManager
 import android.net.wifi.WifiManager
 import android.os.Build
 import com.ryanheise.audioservice.AudioServiceActivity
@@ -24,6 +25,17 @@ class MainActivity : AudioServiceActivity() {
                 }
             }
         YtDlpBridge.attach(this, flutterEngine.dartExecutor.binaryMessenger)
+        // Mobile data or a metered hotspot: background downloads hold back.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, NETWORK_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "isMetered" -> result.success(
+                        (applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager)
+                            .isActiveNetworkMetered
+                    )
+                    else -> result.notImplemented()
+                }
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, JAM_CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -84,6 +96,7 @@ class MainActivity : AudioServiceActivity() {
     companion object {
         private const val CHANNEL = "com.symphony.symphony/notifications"
         private const val JAM_CHANNEL = "com.symphony.symphony/jam"
+        private const val NETWORK_CHANNEL = "com.symphony.symphony/network"
         private const val POST_NOTIFICATIONS = "android.permission.POST_NOTIFICATIONS"
         private const val REQUEST_CODE = 0x5359
     }
