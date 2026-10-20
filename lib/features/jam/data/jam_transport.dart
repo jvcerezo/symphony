@@ -51,7 +51,7 @@ Future<List<String>> localNetworkAddresses() => impl.localNetworkAddresses();
 /// never audio. Override with `--dart-define=SYMPHONY_JAM_RELAY=wss://…`.
 const jamRelayUrl = String.fromEnvironment(
   'SYMPHONY_JAM_RELAY',
-  defaultValue: 'wss://symphony-jam.workers.dev',
+  defaultValue: 'wss://symphony-jam.symphony-jam-relay.workers.dev',
 );
 
 /// Online Jam codes: 6 characters with no look-alikes (no 0/O, 1/I/L), so
