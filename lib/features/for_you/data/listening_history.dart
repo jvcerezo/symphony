@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../domain/listening_log.dart';
 import '../domain/play_event.dart';
+import '../../../core/utils/background_json.dart';
 
 /// Where the listening log is kept. Swapped out in tests.
 abstract class ListeningLogStore {
@@ -56,7 +57,8 @@ class ListeningHistory extends StateNotifier<ListeningLog> {
   Future<void> _load() async {
     try {
       final raw = await _store.read(logKey);
-      final saved = raw == null ? ListeningLog() : ListeningLog.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+      final saved =
+          raw == null ? ListeningLog() : ListeningLog.fromJson(await decodeJsonInBackground(raw) as Map<String, dynamic>);
       // Plays recorded before the saved log was read go on top.
       for (final e in state.recent) {
         saved.add(e);

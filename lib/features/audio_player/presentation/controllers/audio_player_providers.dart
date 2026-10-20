@@ -14,6 +14,7 @@ import '../../../settings/presentation/controllers/personalization_provider.dart
 import '../../data/services/symphony_audio_handler.dart';
 import '../../domain/entities/track.dart';
 import '../../../../core/config/server_config.dart';
+import '../../../../core/utils/background_json.dart';
 
 /// Symphony Brand & User Accent Theme Provider (Defaults to clean Obsidian Monochrome)
 final accentThemeProvider = StateProvider<SymphonyAccent>((ref) => SymphonyTheme.monochrome);
@@ -133,7 +134,7 @@ class ImportedPlaylistsNotifier extends StateNotifier<List<SpotifyPlaylist>> {
       final prefs = await SharedPreferences.getInstance();
       final jsonStr = prefs.getString(_localPlaylistsKey);
       if (jsonStr != null && jsonStr.isNotEmpty) {
-        final list = jsonDecode(jsonStr);
+        final list = await decodeJsonInBackground(jsonStr);
         if (list is List) {
           final loaded = <SpotifyPlaylist>[];
           for (final item in list) {

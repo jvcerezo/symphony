@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 
 import 'match_index.dart';
+import '../../../../../core/utils/background_json.dart';
 
 MatchIndex createPlatformMatchIndex() => FileMatchIndex();
 
@@ -28,7 +29,7 @@ class FileMatchIndex implements MatchIndex {
         try {
           final f = await _file();
           if (await f.exists()) {
-            final decoded = jsonDecode(await f.readAsString());
+            final decoded = await decodeJsonInBackground(await f.readAsString());
             if (decoded is Map) {
               final map = <String, MatchEntry>{};
               decoded.forEach((k, v) {
