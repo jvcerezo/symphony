@@ -427,7 +427,9 @@ class SymphonyLandingPage extends ConsumerWidget {
                   badge: 'Native APK',
                   spec: 'Android 8.0+ (Oreo+)',
                   description:
-                      'Lockscreen media session, background playback service, offline track management, and touch-optimized navigation.',
+                      'Lockscreen media session, background playback service, offline track management, and touch-optimized navigation.\n\n'
+                      // Builds before 2026-10-17 were signed with a key that changed every build.
+                      'Installed Symphony before October 17, 2026? If Android says the package conflicts, uninstall Symphony once and install this. Updates after that install normally.',
                   buttonText: 'Download .apk',
                   isPrimary: false,
                   onTap: () => _openExternal(apkDownloadUrl, isDownload: true),
