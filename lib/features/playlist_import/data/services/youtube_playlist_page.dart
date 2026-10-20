@@ -22,11 +22,14 @@ class YouTubePlaylistPage {
           .get(Uri.parse('https://www.youtube.com/playlist?list=$playlistId'), headers: _headers)
           .timeout(const Duration(seconds: 12));
       if (res.statusCode != 200) return null;
-      return parse(utf8.decode(res.bodyBytes), playlistId: playlistId);
+      // A playlist page is a megabyte or more: read it off the UI isolate.
+      return compute(_parseMessage, (utf8.decode(res.bodyBytes), playlistId));
     } finally {
       if (client == null) c.close();
     }
   }
+
+  static SpotifyPlaylist? _parseMessage((String, String) page) => parse(page.$1, playlistId: page.$2);
 
   @visibleForTesting
   static SpotifyPlaylist? parse(String html, {required String playlistId}) {

@@ -12,6 +12,7 @@ import 'for_you_providers.dart';
 import 'recap_format.dart';
 import 'recap_share_card.dart';
 import 'recap_sharing.dart';
+import '../../../core/widgets/sized_network_image.dart';
 
 /// A look back at a year or a month of listening, as full-screen slides
 /// (tap the right side or swipe for the next, the left side to go back).
@@ -294,7 +295,7 @@ class _Art extends StatelessWidget {
     );
     final image = url == null
         ? fallback
-        : Image.network(url!, width: size, height: size, fit: BoxFit.cover, errorBuilder: (_, __, ___) => fallback);
+        : SizedNetworkImage(url!, width: size, height: size, errorBuilder: (_, __, ___) => fallback);
     return ClipRRect(borderRadius: BorderRadius.circular(round ? size / 2 : 8), child: image);
   }
 }

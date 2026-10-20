@@ -34,6 +34,8 @@ class SymphonyTheme {
   // Frosted glass: see-through surfaces over the ambient glow / content.
   static const Color glassPanel = Color(0xB3121212);
   static const Color glassBar = Color(0xA6000000);
+  /// The phone's bottom bar: all but opaque, as it isn't blurred.
+  static const Color navBar = Color(0xF2000000);
   static const Color glassMini = Color(0xB3242424);
   static const Color glassEdge = Color(0x1FFFFFFF);
 

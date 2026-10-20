@@ -74,11 +74,9 @@ class SpotifyEmbedScraperService {
 
     // 3. If HTML was successfully extracted, parse __NEXT_DATA__
     if (htmlBody != null && htmlBody.contains('__NEXT_DATA__')) {
-      final document = html_parser.parse(htmlBody);
-      final scriptTag = document.getElementById('__NEXT_DATA__');
+      final jsonData = await compute(_nextData, htmlBody);
 
-      if (scriptTag != null && scriptTag.text.trim().isNotEmpty) {
-        final Map<String, dynamic> jsonData = jsonDecode(scriptTag.text) as Map<String, dynamic>;
+      if (jsonData is Map<String, dynamic>) {
         final entity = jsonData['props']?['pageProps']?['state']?['data']?['entity'];
 
         if (entity != null) {
@@ -193,14 +191,25 @@ class SpotifyEmbedScraperService {
     return htmlBody;
   }
 
+  /// The page's __NEXT_DATA__, decoded; null when it has none. Run on a
+  /// background isolate: the page is large to parse.
+  static Object? _nextData(String html) {
+    final text = html_parser.parse(html).getElementById('__NEXT_DATA__')?.text;
+    if (text == null || text.trim().isEmpty) return null;
+    try {
+      return jsonDecode(text);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Name, owner and cover of a Spotify playlist, without loading its
   /// songs: for browse cards. Null when the playlist can't be read.
   Future<PlaylistSummary?> fetchSummary(String playlistId) async {
     final html = await _fetchEmbedHtml(playlistId);
     if (html == null || !html.contains('__NEXT_DATA__')) return null;
     try {
-      final script = html_parser.parse(html).getElementById('__NEXT_DATA__');
-      final entity = (jsonDecode(script!.text) as Map<String, dynamic>)['props']?['pageProps']?['state']?['data']?['entity'];
+      final entity = (await compute(_nextData, html) as Map<String, dynamic>)['props']?['pageProps']?['state']?['data']?['entity'];
       if (entity is! Map) return null;
       final images = entity['coverArt']?['sources'];
       String? cover;

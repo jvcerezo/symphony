@@ -25,7 +25,8 @@ class AppleMusicWebService {
   /// Playlists matching [term], Apple's own editorial ones first.
   Future<List<PlaylistSummary>> searchPlaylists(String term, {int limit = 6}) async {
     final html = await _get('$_base/search?term=${Uri.encodeQueryComponent(term)}');
-    return parseSearchPlaylists(html, limit: limit);
+    // Pages are large: read them off the UI isolate.
+    return compute(_searchMessage, (html, limit));
   }
 
   /// Loads a playlist from a music.apple.com playlist link.
@@ -34,7 +35,7 @@ class AppleMusicWebService {
       throw const FormatException('That Apple Music link is not a playlist. Copy the link from a playlist page.');
     }
     final html = await _get(url.trim());
-    final playlist = parsePlaylist(html, url: url.trim());
+    final playlist = await compute(_playlistMessage, (html, url.trim()));
     if (playlist == null || playlist.tracks.isEmpty) {
       throw const FormatException("Couldn't read that Apple Music playlist. Make sure it's public.");
     }
@@ -90,6 +91,10 @@ class AppleMusicWebService {
       }
     }
   }
+
+  static List<PlaylistSummary> _searchMessage((String, int) page) => parseSearchPlaylists(page.$1, limit: page.$2);
+
+  static SpotifyPlaylist? _playlistMessage((String, String) page) => parsePlaylist(page.$1, url: page.$2);
 
   @visibleForTesting
   static List<PlaylistSummary> parseSearchPlaylists(String html, {int limit = 6}) {

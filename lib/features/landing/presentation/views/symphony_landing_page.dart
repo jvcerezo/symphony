@@ -417,13 +417,11 @@ class SymphonyLandingPage extends ConsumerWidget {
             const columns = 2;
             final cardWidth = isDesktop ? (constraints.maxWidth - 16 * (columns - 1)) / columns : constraints.maxWidth;
 
-            return Wrap(
-              spacing: 16,
-              runSpacing: 16,
-              children: [
+            final cards = <Widget>[
                 // 1. Windows Desktop Card
                 _buildPlatformCard(
                   width: cardWidth,
+                  fillHeight: isDesktop,
                   icon: Icons.desktop_windows_rounded,
                   title: 'Windows Desktop',
                   badge: hasDirectWindowsAsset ? 'Portable .zip' : 'GitHub Releases',
@@ -438,12 +436,15 @@ class SymphonyLandingPage extends ConsumerWidget {
                 // 2. Android Mobile Card
                 _buildPlatformCard(
                   width: cardWidth,
+                  fillHeight: isDesktop,
                   icon: Icons.android_rounded,
                   title: 'Android Mobile',
                   badge: 'Native APK',
                   spec: 'Android 8.0+ (Oreo+)',
                   description:
-                      'Lockscreen media session, background playback service, offline track management, and touch-optimized navigation.',
+                      'Lockscreen media session, background playback service, offline track management, and touch-optimized navigation.\n\n'
+                      // Builds before 2026-10-17 were signed with a key that changed every build.
+                      'Installed Symphony before October 17, 2026? If Android says the package conflicts, uninstall Symphony once and install this. Updates after that install normally.',
                   buttonText: 'Download .apk',
                   isPrimary: false,
                   onTap: () => _openExternal(apkDownloadUrl, isDownload: true),
@@ -452,6 +453,7 @@ class SymphonyLandingPage extends ConsumerWidget {
                 // 3. macOS Card
                 _buildPlatformCard(
                   width: cardWidth,
+                  fillHeight: isDesktop,
                   icon: Icons.laptop_mac_rounded,
                   title: 'macOS',
                   badge: 'Universal .zip',
@@ -467,6 +469,7 @@ class SymphonyLandingPage extends ConsumerWidget {
                 // 4. iPhone / iPad Card
                 _buildPlatformCard(
                   width: cardWidth,
+                  fillHeight: isDesktop,
                   icon: Icons.phone_iphone_rounded,
                   title: 'iPhone & iPad',
                   badge: 'Sideload .ipa',
@@ -483,6 +486,7 @@ class SymphonyLandingPage extends ConsumerWidget {
                 if (FeatureFlags.webDemoEnabled)
                   _buildPlatformCard(
                   width: cardWidth,
+                  fillHeight: isDesktop,
                   icon: Icons.language_rounded,
                   title: 'Web Player Demo',
                   badge: 'Browser',
@@ -493,6 +497,29 @@ class SymphonyLandingPage extends ConsumerWidget {
                   isPrimary: false,
                   onTap: () => _launchWebPlayer(context),
                 ),
+            ];
+
+            if (!isDesktop) {
+              return Wrap(spacing: 16, runSpacing: 16, children: cards);
+            }
+            // Rows of equal-height cards, so the buttons line up whatever the
+            // length of each description.
+            return Column(
+              children: [
+                for (var i = 0; i < cards.length; i += columns) ...[
+                  if (i > 0) const SizedBox(height: 16),
+                  IntrinsicHeight(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        for (var j = i; j < i + columns; j++) ...[
+                          if (j > i) const SizedBox(width: 16),
+                          Expanded(child: j < cards.length ? cards[j] : const SizedBox.shrink()),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
               ],
             );
           },
@@ -511,6 +538,7 @@ class SymphonyLandingPage extends ConsumerWidget {
     required String buttonText,
     required bool isPrimary,
     required VoidCallback onTap,
+    bool fillHeight = false,
   }) {
     return Container(
       width: width,
@@ -579,6 +607,8 @@ class SymphonyLandingPage extends ConsumerWidget {
               height: 1.5,
             ),
           ),
+          // Push the button to the bottom when the card is stretched to its row.
+          if (fillHeight) const Spacer(),
           const SizedBox(height: 24),
           SizedBox(
             width: double.infinity,

@@ -11,6 +11,7 @@ import 'core/services/legacy_data_migration.dart';
 import 'core/services/windows_shortcuts.dart';
 import 'core/services/windows_tray.dart';
 import 'core/theme/symphony_theme.dart';
+import 'core/widgets/startup_splash.dart';
 import 'features/audio_player/data/services/extraction/desktop_ytdlp_extractor.dart';
 import 'features/audio_player/data/services/extraction/ytdlp_update_scheduler.dart';
 import 'features/audio_player/data/services/symphony_audio_handler.dart';
@@ -94,6 +95,10 @@ Future<void> main() async {
 /// For dialogs raised from outside any screen (a Jam invite link).
 final _navigatorKey = GlobalKey<NavigatorState>();
 
+/// Whether the app opens on the sound-wave screen (phones). Off in tests
+/// that drive the app from its first frame.
+final startupSplashProvider = Provider<bool>((ref) => StartupSplash.shows);
+
 class SymphonyApp extends ConsumerWidget {
   const SymphonyApp({super.key});
 
@@ -155,6 +160,9 @@ class SymphonyApp extends ConsumerWidget {
       theme: SymphonyTheme.darkTheme,
       darkTheme: SymphonyTheme.darkTheme,
       home: initialHome,
+      // Phones open on the moving sound waves.
+      builder: (context, child) =>
+          ref.watch(startupSplashProvider) ? StartupSplash(child: child!) : child!,
     );
   }
 }

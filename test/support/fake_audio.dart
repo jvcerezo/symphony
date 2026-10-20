@@ -26,7 +26,21 @@ class FakePlayer implements AudioPlayer {
   double volumeSet = 1;
   Duration _position = Duration.zero;
 
+  Duration _buffered = Duration.zero;
+
   void _emit() => _states.add(PlayerState(_playing, _state));
+
+  /// The player reports how much of the song it has downloaded.
+  void reportBuffered(Duration buffered) {
+    _buffered = buffered;
+    _events.add(PlaybackEvent(bufferedPosition: buffered, updatePosition: _position));
+  }
+
+  /// The position jumps, as on a seek, and the player reports it.
+  void jumpTo(Duration position) {
+    _position = position;
+    _events.add(PlaybackEvent(bufferedPosition: _buffered, updatePosition: position));
+  }
 
   /// The song plays to its end.
   void finishSong() {
@@ -79,7 +93,7 @@ class FakePlayer implements AudioPlayer {
   @override
   Duration? get duration => const Duration(seconds: 200);
   @override
-  Duration get bufferedPosition => Duration.zero;
+  Duration get bufferedPosition => _buffered;
   @override
   double get speed => 1;
   @override
@@ -121,8 +135,11 @@ Track song(String id) => Track(id: 'yt_$id', title: 'Song $id', artist: 'Artist'
     expectedDuration: const Duration(seconds: 200), artworkUri: Uri.parse('https://art.example/$id.jpg'));
 
 /// A handler around [player] that finds every song online at once, while
-/// [isOnline] (default: always).
-SymphonyAudioHandler handlerFor(FakePlayer player, {bool Function()? isOnline}) => SymphonyAudioHandler(
+/// [isOnline] (default: always), on a connection that is [metered] or not
+/// (default: not). Local copies are saved to [cacheStore].
+SymphonyAudioHandler handlerFor(FakePlayer player,
+        {bool Function()? isOnline, bool metered = false, LocalTrackStore? cacheStore}) =>
+    SymphonyAudioHandler(
       player: player,
       streamResolver: AudioStreamResolverService(
         extractor: FakeExtractor(),
@@ -130,7 +147,12 @@ SymphonyAudioHandler handlerFor(FakePlayer player, {bool Function()? isOnline}) 
         matchIndex: MemoryMatchIndex(),
         isWeb: false,
       ),
-      playbackCache: PlaybackCache(store: NoStore(), httpClient: MockClient((_) async => http.Response('', 404))),
+      playbackCache: PlaybackCache(
+          store: cacheStore ?? NoStore(), httpClient: MockClient((_) async => http.Response('', 404))),
       notificationPermission: NotificationPermissionService(isAndroid: () => false),
-      network: NetworkStatus(probe: () async => isOnline?.call() ?? true, maxAge: Duration.zero),
+      network: NetworkStatus(
+        probe: () async => isOnline?.call() ?? true,
+        meteredProbe: () async => metered,
+        maxAge: Duration.zero,
+      ),
     );

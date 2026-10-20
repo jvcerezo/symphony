@@ -3,6 +3,7 @@ import '../../../../core/layout/breakpoints.dart';
 import '../../../../core/theme/symphony_theme.dart';
 import '../../../../core/widgets/hover_widgets.dart';
 import '../../../playlist_import/domain/entities/spotify_playlist.dart';
+import '../../../../core/widgets/sized_network_image.dart';
 
 /// Compact quick-access playlist tile used on the Home dashboard.
 class SpotifyQuickTile extends StatefulWidget {
@@ -58,10 +59,8 @@ class _SpotifyQuickTileState extends State<SpotifyQuickTile> {
                   width: 58,
                   height: 58,
                   child: widget.playlist.coverUrl != null
-                      ? Image.network(
+                      ? SizedNetworkImage(
                           widget.playlist.coverUrl!,
-                          fit: BoxFit.cover,
-                          filterQuality: FilterQuality.medium,
                           errorBuilder: (_, __, ___) => Container(
                             color: const Color(0xFF282828),
                             child: const Icon(Icons.music_note, color: Colors.white54, size: 28),

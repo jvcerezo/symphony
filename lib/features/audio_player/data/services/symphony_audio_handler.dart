@@ -171,13 +171,19 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
     final upcoming = _queue.upcoming(ahead);
     if (upcoming.isNotEmpty) {
       if (_usesPlaybackCache) {
-        // Prepare stream links for the few after that, so skipping ahead
+        // Prepare stream links for the two after that, so skipping ahead
         // also starts at once. Background, one at a time, yields to taps.
-        final later = _queue.upcoming(ahead + 4).skip(ahead).toList();
+        final later = _queue.upcoming(ahead + 2).skip(ahead).toList();
         unawaited(() async {
           // Offline every lookup would fail, and a failed one forgets the
           // song's remembered match.
           if (!await _network.isOnline()) return;
+          // On mobile data the next song isn't downloaded ahead, only its
+          // link found: it would cost data the user may never play.
+          if (await _network.isMetered()) {
+            _streamResolver.prefetch(upcoming, replace: true);
+            return;
+          }
           for (final t in upcoming) {
             unawaited(_warmTrack(t));
           }
@@ -252,35 +258,50 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
     final processingState =
         _loading ? AudioProcessingState.buffering : _transformProcessingState(_player.processingState);
 
-    playbackState.add(
-      PlaybackState(
-        controls: [
-          MediaControl.skipToPrevious,
-          if (isPlaying) MediaControl.pause else MediaControl.play,
-          MediaControl.stop,
-          MediaControl.skipToNext,
-        ],
-        systemActions: const {
-          MediaAction.seek,
-          MediaAction.seekForward,
-          MediaAction.seekBackward,
-        },
-        androidCompactActionIndices: const [0, 1, 3],
-        processingState: processingState,
-        playing: isPlaying,
-        updatePosition: _player.position,
-        bufferedPosition: _player.bufferedPosition,
-        speed: _player.speed,
-        queueIndex: currentIndex >= 0 ? currentIndex : null,
-        shuffleMode: _queue.isShuffled ? AudioServiceShuffleMode.all : AudioServiceShuffleMode.none,
-        repeatMode: switch (_queue.repeatMode) {
-          QueueRepeatMode.off => AudioServiceRepeatMode.none,
-          QueueRepeatMode.all => AudioServiceRepeatMode.all,
-          QueueRepeatMode.one => AudioServiceRepeatMode.one,
-        },
-      ),
+    final next = PlaybackState(
+      controls: [
+        MediaControl.skipToPrevious,
+        if (isPlaying) MediaControl.pause else MediaControl.play,
+        MediaControl.stop,
+        MediaControl.skipToNext,
+      ],
+      systemActions: const {
+        MediaAction.seek,
+        MediaAction.seekForward,
+        MediaAction.seekBackward,
+      },
+      androidCompactActionIndices: const [0, 1, 3],
+      processingState: processingState,
+      playing: isPlaying,
+      updatePosition: _player.position,
+      bufferedPosition: _player.bufferedPosition,
+      speed: _player.speed,
+      queueIndex: currentIndex >= 0 ? currentIndex : null,
+      shuffleMode: _queue.isShuffled ? AudioServiceShuffleMode.all : AudioServiceShuffleMode.none,
+      repeatMode: switch (_queue.repeatMode) {
+        QueueRepeatMode.off => AudioServiceRepeatMode.none,
+        QueueRepeatMode.all => AudioServiceRepeatMode.all,
+        QueueRepeatMode.one => AudioServiceRepeatMode.one,
+      },
     );
+    if (_onlyBufferMoved(playbackState.value, next)) return;
+    playbackState.add(next);
   }
+
+  /// While a song downloads the player reports progress every half second.
+  /// Passing those on would refresh the notification and every screen that
+  /// shows the player, with nothing visible changed: listeners work out the
+  /// position from the last state, and nothing shows the buffered amount.
+  static bool _onlyBufferMoved(PlaybackState last, PlaybackState next) =>
+      last.playing == next.playing &&
+      last.processingState == next.processingState &&
+      last.queueIndex == next.queueIndex &&
+      last.shuffleMode == next.shuffleMode &&
+      last.repeatMode == next.repeatMode &&
+      last.speed == next.speed &&
+      last.errorCode == next.errorCode &&
+      // Where the last state says the song is now, give or take.
+      (next.updatePosition - last.position).abs() < const Duration(milliseconds: 750);
 
   void _broadcastPlaybackState() {
     _playbackEventSub = _player.playbackEventStream.listen(
@@ -774,6 +795,10 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
       // header proxy, which runs on the UI isolate) out of the player.
       // The local copy being saved in the background for the current stream.
       Future<Uri>? backgroundCopy;
+      // On mobile data the copy would download every song twice: there it
+      // is made only if streaming fails.
+      final metered = _usesPlaybackCache && await _network.isMetered();
+      if (requestId != _playRequestId) return;
 
       // Native, first play: start streaming at once (no wait for a download)
       // and save a local copy in the background for replays and instant seeks.
@@ -781,8 +806,10 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
       // through its proxy. Recently played tracks already resolved to a file.
       Future<AudioSource> sourceFor(ResolvedAudioStream stream) async {
         if (_usesPlaybackCache && PlaybackCache.shouldCache(stream)) {
-          backgroundCopy = _playbackCache.fileFor(track, stream);
-          backgroundCopy!.ignore();
+          if (!metered) {
+            backgroundCopy = _playbackCache.fileFor(track, stream);
+            backgroundCopy!.ignore();
+          }
           return AudioSource.uri(stream.streamUri, tag: item);
         }
         return AudioSource.uri(
@@ -808,7 +835,8 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
 
         // Streaming failed (e.g. the CDN wanted headers): play the local copy,
         // which downloads with the extractor's headers in ranged chunks.
-        final copy = backgroundCopy;
+        final copy = backgroundCopy ??
+            (metered && PlaybackCache.shouldCache(activeStream) ? _playbackCache.fileFor(track, activeStream) : null);
         if (copy != null) {
           try {
             final file = await copy.timeout(const Duration(seconds: 45));

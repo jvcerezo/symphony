@@ -14,6 +14,7 @@ import '../../../settings/presentation/controllers/personalization_provider.dart
 import '../../data/services/symphony_audio_handler.dart';
 import '../../domain/entities/track.dart';
 import '../../../../core/config/server_config.dart';
+import '../../../../core/utils/background_json.dart';
 
 /// Symphony Brand & User Accent Theme Provider (Defaults to clean Obsidian Monochrome)
 final accentThemeProvider = StateProvider<SymphonyAccent>((ref) => SymphonyTheme.monochrome);
@@ -27,6 +28,18 @@ final audioHandlerProvider = Provider<SymphonyAudioHandler>((ref) {
 final playbackStateStreamProvider = StreamProvider<PlaybackState>((ref) {
   final handler = ref.watch(audioHandlerProvider);
   return handler.playbackState;
+});
+
+/// Just whether a song is playing, and whether it is loading. Screens that
+/// need no more than that watch these: [playbackStateStreamProvider] also
+/// changes every time the player reports how much it has downloaded.
+final isPlayingProvider = Provider<bool>(
+  (ref) => ref.watch(playbackStateStreamProvider.select((s) => s.asData?.value.playing ?? false)),
+);
+
+final isBufferingProvider = Provider<bool>((ref) {
+  final state = ref.watch(playbackStateStreamProvider.select((s) => s.asData?.value.processingState));
+  return state == AudioProcessingState.buffering || state == AudioProcessingState.loading;
 });
 
 /// Stream provider for current active media item (title, artist, artwork)
@@ -121,7 +134,7 @@ class ImportedPlaylistsNotifier extends StateNotifier<List<SpotifyPlaylist>> {
       final prefs = await SharedPreferences.getInstance();
       final jsonStr = prefs.getString(_localPlaylistsKey);
       if (jsonStr != null && jsonStr.isNotEmpty) {
-        final list = jsonDecode(jsonStr);
+        final list = await decodeJsonInBackground(jsonStr);
         if (list is List) {
           final loaded = <SpotifyPlaylist>[];
           for (final item in list) {

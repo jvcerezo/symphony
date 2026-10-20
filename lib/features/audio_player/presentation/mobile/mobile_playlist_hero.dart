@@ -9,6 +9,7 @@ import '../controllers/navigation_history_provider.dart';
 import '../controllers/offline_provider.dart';
 import '../widgets/import_playlist_dialog.dart';
 import '../widgets/playlist_fallback_cover.dart';
+import '../../../../core/widgets/sized_network_image.dart';
 
 /// Mobile playlist header: centered cover, title, and action row.
 class MobilePlaylistHero extends ConsumerWidget {
@@ -115,10 +116,8 @@ class MobilePlaylistHero extends ConsumerWidget {
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(8),
                   child: playlist.coverUrl != null
-                      ? Image.network(
+                      ? SizedNetworkImage(
                           playlist.coverUrl!,
-                          fit: BoxFit.cover,
-                          filterQuality: FilterQuality.high,
                           errorBuilder: (context, error, stackTrace) => const PlaylistFallbackCover(),
                         )
                       : const PlaylistFallbackCover(),
