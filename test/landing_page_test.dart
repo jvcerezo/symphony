@@ -38,4 +38,22 @@ void main() {
     expect(find.text('Offline-First Architecture'), findsOneWidget);
     expect(find.text('Tri-Platform Importer'), findsOneWidget);
   });
+  testWidgets('cards side by side are the same height, buttons lined up', (tester) async {
+    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    await tester.pumpWidget(const ProviderScope(child: MaterialApp(home: SymphonyLandingPage())));
+
+    // The Android card's reinstall note makes its description much longer.
+    Rect cardOf(String title) => tester.getRect(find
+        .ancestor(of: find.text(title), matching: find.byType(Container))
+        .first);
+    expect(cardOf('Windows Desktop').height, cardOf('Android Mobile').height);
+    expect(cardOf('macOS').height, cardOf('iPhone & iPad').height);
+    expect(tester.getRect(find.text('Download .zip').first).bottom,
+        tester.getRect(find.text('Download .apk')).bottom);
+  });
 }
