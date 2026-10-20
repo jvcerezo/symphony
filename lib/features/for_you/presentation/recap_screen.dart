@@ -9,13 +9,19 @@ import '../../audio_player/presentation/controllers/audio_player_providers.dart'
 import '../domain/listening_log.dart';
 import '../domain/recap.dart';
 import 'for_you_providers.dart';
+import 'recap_format.dart';
+import 'recap_share_card.dart';
+import 'recap_sharing.dart';
 
 /// A look back at a year or a month of listening, as full-screen slides
 /// (tap the right side or swipe for the next, the left side to go back).
 class RecapScreen extends ConsumerStatefulWidget {
   final int initialYear;
 
-  const RecapScreen({super.key, required this.initialYear});
+  /// Where finished share cards go; the system share sheet by default.
+  final ShareImage share;
+
+  const RecapScreen({super.key, required this.initialYear, this.share = shareWithSystem});
 
   @override
   ConsumerState<RecapScreen> createState() => _RecapScreenState();
@@ -28,6 +34,7 @@ class _RecapScreenState extends ConsumerState<RecapScreen> {
   /// Null: the whole year.
   int? _month;
   int _page = 0;
+  bool _sharing = false;
 
   @override
   void dispose() {
@@ -57,7 +64,8 @@ class _RecapScreenState extends ConsumerState<RecapScreen> {
   Widget build(BuildContext context) {
     final log = ref.watch(listeningHistoryProvider);
     final recap = _month == null ? Recap.year(log, _year) : Recap.month(log, _year, _month!);
-    final slides = recap.isEmpty ? [_EmptySlide(recap: recap)] : _slidesFor(recap);
+    final slides = recap.isEmpty ? [(kind: null, widget: _EmptySlide(recap: recap))] : _slidesFor(recap);
+    final shareKind = slides[_page.clamp(0, slides.length - 1)].kind;
 
     return Scaffold(
       backgroundColor: SymphonyTheme.obsidian,
@@ -80,6 +88,15 @@ class _RecapScreenState extends ConsumerState<RecapScreen> {
                       ),
                     ),
                   const SizedBox(width: 4),
+                  if (shareKind != null)
+                    IconButton(
+                      tooltip: 'Share',
+                      onPressed: _sharing ? null : () => _share(recap, shareKind),
+                      icon: _sharing
+                          ? const SizedBox.square(
+                              dimension: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                          : const Icon(Icons.ios_share_rounded, color: Colors.white),
+                    ),
                   IconButton(
                     tooltip: 'Close',
                     onPressed: () => Navigator.of(context).maybePop(),
@@ -111,7 +128,7 @@ class _RecapScreenState extends ConsumerState<RecapScreen> {
                       for (var i = 0; i < slides.length; i++)
                         _SlideFrame(
                             gradient: SymphonyTheme.recapGradients[i % SymphonyTheme.recapGradients.length],
-                            child: slides[i]),
+                            child: slides[i].widget),
                     ],
                   ),
                 ),
@@ -123,14 +140,37 @@ class _RecapScreenState extends ConsumerState<RecapScreen> {
     );
   }
 
-  List<Widget> _slidesFor(Recap recap) => [
-        _MinutesSlide(recap: recap),
-        if (recap.topArtists.isNotEmpty) _TopArtistSlide(recap: recap),
-        if (recap.topSongs.isNotEmpty) _TopSongsSlide(recap: recap),
-        if (recap.topArtists.length > 1) _TopArtistsSlide(recap: recap),
-        _HabitsSlide(recap: recap, isYear: _month == null),
-        _SummarySlide(recap: recap, onPlay: recap.topSongs.isEmpty ? null : () => _playTopSongs(recap)),
+  /// Each slide, and the share card that goes with it.
+  List<({RecapCardKind? kind, Widget widget})> _slidesFor(Recap recap) => [
+        (kind: RecapCardKind.minutes, widget: _MinutesSlide(recap: recap)),
+        if (recap.topArtists.isNotEmpty) (kind: RecapCardKind.topArtist, widget: _TopArtistSlide(recap: recap)),
+        if (recap.topSongs.isNotEmpty) (kind: RecapCardKind.topSongs, widget: _TopSongsSlide(recap: recap)),
+        if (recap.topArtists.length > 1) (kind: RecapCardKind.topArtists, widget: _TopArtistsSlide(recap: recap)),
+        (kind: RecapCardKind.habits, widget: _HabitsSlide(recap: recap, isYear: _month == null)),
+        (
+          kind: RecapCardKind.summary,
+          widget: _SummarySlide(
+            recap: recap,
+            onPlay: recap.topSongs.isEmpty ? null : () => _playTopSongs(recap),
+            onShare: _sharing ? null : () => _share(recap, RecapCardKind.summary),
+          ),
+        ),
       ];
+
+  Future<void> _share(Recap recap, RecapCardKind kind) async {
+    setState(() => _sharing = true);
+    try {
+      await shareRecapCard(recap, kind, view: View.of(context), share: widget.share);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Sharing that picture did not work. Try again.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _sharing = false);
+    }
+  }
 
   Future<void> _playTopSongs(Recap recap) async {
     final tracks = recap.topSongs
@@ -236,26 +276,6 @@ class _SlideFrame extends StatelessWidget {
 const _kicker = TextStyle(color: Colors.white70, fontSize: 16, fontWeight: FontWeight.w600);
 const _headline =
     TextStyle(color: Colors.white, fontSize: 34, fontWeight: FontWeight.w900, height: 1.1, letterSpacing: -0.8);
-
-String formatCount(int n) {
-  final s = n.toString();
-  final out = StringBuffer();
-  for (var i = 0; i < s.length; i++) {
-    if (i > 0 && (s.length - i) % 3 == 0) out.write(',');
-    out.write(s[i]);
-  }
-  return out.toString();
-}
-
-String formatHour(int h) => '${h % 12 == 0 ? 12 : h % 12} ${h < 12 ? 'AM' : 'PM'}';
-
-/// What kind of listener someone is, from the hour they listen most.
-String listenerKind(int hour) {
-  if (hour >= 5 && hour < 12) return 'an early riser';
-  if (hour >= 12 && hour < 18) return 'an afternoon listener';
-  if (hour >= 18 && hour < 23) return 'an evening listener';
-  return 'a night owl';
-}
 
 class _Art extends StatelessWidget {
   final String? url;
@@ -548,8 +568,9 @@ class _MonthBars extends StatelessWidget {
 class _SummarySlide extends StatelessWidget {
   final Recap recap;
   final VoidCallback? onPlay;
+  final VoidCallback? onShare;
 
-  const _SummarySlide({required this.recap, required this.onPlay});
+  const _SummarySlide({required this.recap, required this.onPlay, required this.onShare});
 
   @override
   Widget build(BuildContext context) {
@@ -589,6 +610,20 @@ class _SummarySlide extends StatelessWidget {
             ),
           ),
         ],
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: onShare,
+            icon: const Icon(Icons.ios_share_rounded, color: Colors.white),
+            label: const Text('Share your recap', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(0, 56),
+              side: const BorderSide(color: Colors.white70),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(500)),
+            ),
+          ),
+        ),
       ],
     );
   }
