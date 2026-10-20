@@ -5,6 +5,7 @@ import '../../../../../core/theme/symphony_theme.dart';
 import '../../../../../core/widgets/hover_widgets.dart';
 import '../../../../browse/data/genre_catalog.dart';
 import '../../../../browse/presentation/genre_providers.dart';
+import '../../../../for_you/presentation/for_you_section.dart';
 import '../../../../jam/presentation/jam_panel.dart';
 import '../../../../../core/widgets/symphony_brand_logo.dart';
 import '../../../../settings/presentation/controllers/personalization_provider.dart';
@@ -446,7 +447,14 @@ class HomeSection extends ConsumerWidget {
             const SizedBox(height: 36),
           ],
 
-          // 4. Featured Playlists Shelf
+          // 4. Made for you: the recap and mixes from what the user plays.
+          if (homeFilter != 'downloaded') ...[
+            const RecapBanner(),
+            const MadeForYouShelf(),
+            const SizedBox(height: 36),
+          ],
+
+          // 5. Featured Playlists Shelf
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [

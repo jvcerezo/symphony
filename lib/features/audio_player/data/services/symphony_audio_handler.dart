@@ -64,6 +64,10 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   /// loading but waits, paused, for the audio to come back.
   int? _loadHeldForFocus;
 
+  /// Autoplay: when the queue runs out (repeat off, not in a Jam, online),
+  /// asked for songs to carry on with after [last]. None: stop as before.
+  Future<List<Track>> Function(Track last, List<Track> queue)? autoplay;
+
   SymphonyAudioHandler({
     AudioPlayer? player,
     AudioStreamResolverService? streamResolver,
@@ -374,7 +378,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
     _completionWatchdogTimer?.cancel();
     developer.log('Track completed ($reason). Moving on...', name: 'AudioHandler');
     try {
-      final next = _queue.nextIndex(auto: true);
+      final next = _queue.nextIndex(auto: true) ?? (await _extendQueue() ? _queue.nextIndex(auto: true) : null);
       if (next == null) {
         await _stopAtEnd();
       } else if (next == currentIndex) {
@@ -394,6 +398,29 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
     } finally {
       await Future.delayed(const Duration(milliseconds: 600));
       _isAutoSkipping = false;
+    }
+  }
+
+  /// Adds [autoplay]'s songs after the last one. True when any were added.
+  Future<bool> _extendQueue() async {
+    final source = autoplay;
+    final last = _queue.tracks.isEmpty ? null : _queue.tracks.last;
+    if (source == null || last == null || _remote != null || _queue.repeatMode != QueueRepeatMode.off) return false;
+    if (_usesPlaybackCache && !await _network.isOnline()) return false;
+    final requestId = _playRequestId;
+    try {
+      final more = await source(last, _queue.tracks).timeout(const Duration(seconds: 20));
+      // The user started something else meanwhile.
+      if (requestId != _playRequestId || more.isEmpty) return false;
+      for (final t in more) {
+        _queue.add(t);
+      }
+      _emitQueue();
+      developer.log('Autoplay added ${more.length} songs after "${last.title}"', name: 'AudioHandler');
+      return true;
+    } catch (e) {
+      developer.log('Autoplay failed: $e', name: 'AudioHandler');
+      return false;
     }
   }
 
@@ -938,6 +965,9 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   Future<void> skipToNext() async {
     final remote = _remote;
     if (remote != null) return remote.next();
+    // On the last song a skip carries on with autoplay, else wraps around.
+    final atEnd = _queue.index == _queue.length - 1 && _queue.repeatMode == QueueRepeatMode.off;
+    if (atEnd) await _extendQueue();
     final next = _queue.nextIndex(auto: false);
     if (next == null) return;
     // Offline, go to the next song that's on this device.
