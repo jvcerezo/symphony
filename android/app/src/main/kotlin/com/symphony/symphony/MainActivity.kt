@@ -1,6 +1,7 @@
 package com.symphony.symphony
 
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.wifi.WifiManager
@@ -15,6 +16,12 @@ class MainActivity : AudioServiceActivity() {
     /** Held while hosting a Jam so guests' discovery broadcasts arrive. */
     private var multicastLock: WifiManager.MulticastLock? = null
 
+    /** Delivers symphony:// links (Jam invites) to Dart. */
+    private var linksChannel: MethodChannel? = null
+
+    /** The link the app was opened with, until Dart asks for it. */
+    private var initialLink: String? = null
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
@@ -25,6 +32,21 @@ class MainActivity : AudioServiceActivity() {
                 }
             }
         YtDlpBridge.attach(this, flutterEngine.dartExecutor.binaryMessenger)
+        initialLink = linkFrom(intent)
+        linksChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, LINKS_CHANNEL).also {
+            it.setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "initialLink" -> {
+                        result.success(initialLink)
+                        initialLink = null
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+        }
+        // The audio service keeps the engine (and Dart) running when this
+        // activity closes; a new activity opened by a link tells it directly.
+        initialLink?.let { linksChannel?.invokeMethod("link", it) }
         // Mobile data or a metered hotspot: background downloads hold back.
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, NETWORK_CHANNEL)
             .setMethodCallHandler { call, result ->
@@ -54,6 +76,15 @@ class MainActivity : AudioServiceActivity() {
                 }
             }
     }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        linkFrom(intent)?.let { linksChannel?.invokeMethod("link", it) }
+    }
+
+    private fun linkFrom(intent: Intent?): String? =
+        intent?.takeIf { it.action == Intent.ACTION_VIEW }?.dataString?.takeIf { it.startsWith("symphony:") }
 
     override fun onDestroy() {
         multicastLock?.release()
@@ -96,6 +127,7 @@ class MainActivity : AudioServiceActivity() {
     companion object {
         private const val CHANNEL = "com.symphony.symphony/notifications"
         private const val JAM_CHANNEL = "com.symphony.symphony/jam"
+        private const val LINKS_CHANNEL = "com.symphony.symphony/links"
         private const val NETWORK_CHANNEL = "com.symphony.symphony/network"
         private const val POST_NOTIFICATIONS = "android.permission.POST_NOTIFICATIONS"
         private const val REQUEST_CODE = 0x5359

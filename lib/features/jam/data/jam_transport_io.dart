@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:io';
 
@@ -108,4 +109,147 @@ class _IoJamConnection implements JamConnection {
 
   @override
   Future<void> close() => _socket.close();
+}
+
+/// Relay sockets carry little traffic between Jam heartbeats; pings keep
+/// them (and any proxy in between) awake.
+const _relayPingInterval = Duration(seconds: 20);
+
+Uri _relayUri(String relay, String path, {bool http = false}) {
+  final base = Uri.parse(relay);
+  final scheme = http ? (base.scheme == 'ws' ? 'http' : 'https') : base.scheme;
+  return base.replace(scheme: scheme, path: '${base.path}/rooms/$path');
+}
+
+Future<bool> onlineJamExists(String code, {required String relay}) async {
+  final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
+  try {
+    final request = await client.getUrl(_relayUri(relay, code, http: true));
+    final response = await request.close().timeout(const Duration(seconds: 8));
+    await response.drain<void>();
+    return response.statusCode == HttpStatus.ok;
+  } finally {
+    client.close(force: true);
+  }
+}
+
+Future<JamServer> hostOnlineJam(String code, {required String relay, void Function()? onLost}) async {
+  final socket = await WebSocket.connect(_relayUri(relay, '$code/host').toString()).timeout(const Duration(seconds: 10));
+  socket.pingInterval = _relayPingInterval;
+  return _RelayJamServer(socket, onLost);
+}
+
+Future<JamConnection> joinOnlineJam(String code, {required String relay}) async {
+  final socket = await WebSocket.connect(_relayUri(relay, '$code/guest').toString()).timeout(const Duration(seconds: 10));
+  socket.pingInterval = _relayPingInterval;
+  return _IoJamConnection(socket);
+}
+
+/// The host's single socket to the relay, split into one [JamConnection]
+/// per guest. The relay announces guests with `{e: open|msg|close, id, d}`
+/// and takes `{to, d}` or `{to, close: true}` back.
+class _RelayJamServer implements JamServer {
+  _RelayJamServer(this._socket, this._onLost) {
+    _socket.listen(
+      _onFrame,
+      onDone: _onDone,
+      onError: (Object e) => developer.log('Jam relay error: $e', name: 'Jam'),
+      cancelOnError: false,
+    );
+  }
+
+  final WebSocket _socket;
+  final void Function()? _onLost;
+  final _guests = <String, _RelayGuestConnection>{};
+  final _connections = StreamController<JamConnection>.broadcast();
+  bool _closing = false;
+
+  void _onFrame(dynamic raw) {
+    if (raw is! String) return;
+    final Object? frame;
+    try {
+      frame = jsonDecode(raw);
+    } on FormatException {
+      return;
+    }
+    if (frame is! Map || frame['id'] is! String) return;
+    final id = frame['id'] as String;
+    switch (frame['e']) {
+      case 'open':
+        final guest = _RelayGuestConnection(this, id);
+        _guests[id] = guest;
+        _connections.add(guest);
+      case 'msg':
+        final data = frame['d'];
+        if (data is String) _guests[id]?._receive(data);
+      case 'close':
+        _guests.remove(id)?._end();
+    }
+  }
+
+  void _onDone() {
+    for (final guest in _guests.values) {
+      guest._end();
+    }
+    _guests.clear();
+    if (!_closing) {
+      developer.log('Lost the Jam relay (${_socket.closeCode})', name: 'Jam');
+      _onLost?.call();
+    }
+  }
+
+  void _send(Map<String, Object> envelope) {
+    if (_socket.readyState != WebSocket.open) return;
+    try {
+      _socket.add(jsonEncode(envelope));
+    } on StateError {
+      // Closing; onDone follows.
+    }
+  }
+
+  @override
+  Stream<JamConnection> get connections => _connections.stream;
+
+  /// Online Jams have no local port.
+  @override
+  int get port => 0;
+
+  @override
+  Future<void> close() async {
+    _closing = true;
+    await _socket.close();
+    await _connections.close();
+  }
+}
+
+class _RelayGuestConnection implements JamConnection {
+  _RelayGuestConnection(this._server, this._id);
+
+  final _RelayJamServer _server;
+  final String _id;
+  final _incoming = StreamController<String>();
+
+  void _receive(String message) {
+    if (!_incoming.isClosed) _incoming.add(message);
+  }
+
+  void _end() {
+    if (!_incoming.isClosed) _incoming.close();
+  }
+
+  @override
+  Stream<String> get messages => _incoming.stream;
+
+  @override
+  void send(String message) {
+    if (!_incoming.isClosed) _server._send({'to': _id, 'd': message});
+  }
+
+  @override
+  Future<void> close() async {
+    if (_incoming.isClosed) return;
+    _server._send({'to': _id, 'close': true});
+    _server._guests.remove(_id);
+    _end();
+  }
 }

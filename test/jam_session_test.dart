@@ -10,6 +10,8 @@ import 'package:symphony/features/jam/data/jam_transport.dart';
 import 'package:symphony/features/jam/domain/jam_message.dart';
 import 'package:symphony/features/jam/domain/jam_state.dart';
 
+import 'fake_jam_relay.dart';
+
 Track _song(String id) => Track(id: id, title: 'Song $id', artist: 'Artist', expectedDuration: const Duration(minutes: 3));
 
 /// The host's player: a plain queue that does what it is told.
@@ -163,13 +165,36 @@ Future<void> until(bool Function() done, {String? reason}) async {
 }
 
 void main() {
+  group('on the local network', () => _suite(online: false));
+  group('online through the relay', () => _suite(online: true));
+}
+
+/// The same Jam over either transport: a LAN socket, or the relay protocol
+/// (against a local stand-in for the Cloudflare relay).
+void _suite({required bool online}) {
+  const onlineCode = 'ABC234';
   late JamServer server;
+  FakeJamRelay? relay;
+
+  Future<JamServer> bind() async {
+    if (!online) return bindLanJamServer(loopbackOnly: true);
+    relay ??= await FakeJamRelay.start();
+    final server = await hostOnlineJam(onlineCode, relay: relay!.url);
+    // Guests are turned away until the relay has seen the host.
+    for (var i = 0; i < 100 && !relay!.hasHost(onlineCode); i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+    return server;
+  }
+
+  Future<JamConnection> connect() =>
+      online ? joinOnlineJam(onlineCode, relay: relay!.url) : connectLanJam('127.0.0.1', server.port);
   late _HostPlayer hostPlayer;
   late JamHostService host;
   final guests = <JamGuestService>[];
 
   setUp(() async {
-    server = await bindLanJamServer(loopbackOnly: true);
+    server = await bind();
     hostPlayer = _HostPlayer([_song('a'), _song('b')])..videoIds['a'] = 'aaaaaaaaaaa';
     host = JamHostService(player: hostPlayer, server: server, hostName: 'Host', code: '1234')..start();
   });
@@ -180,13 +205,15 @@ void main() {
     }
     guests.clear();
     await host.stop();
+    await relay?.close();
+    relay = null;
   });
 
   Future<(JamGuestService, _GuestPlayer)> joinGuest(String name, {String code = '1234'}) async {
     final player = _GuestPlayer();
     final guest = JamGuestService(player: player, name: name, code: code, pings: 3);
     guests.add(guest);
-    await guest.join(await connectLanJam('127.0.0.1', server.port));
+    await guest.join(await connect());
     return (guest, player);
   }
 
@@ -246,7 +273,7 @@ void main() {
       driftInterval: const Duration(milliseconds: 100),
     );
     guests.add(guest);
-    await guest.join(await connectLanJam('127.0.0.1', server.port));
+    await guest.join(await connect());
     await until(() => player.loads.isNotEmpty);
 
     // The guest's audio stalls and falls 2 s behind.
@@ -310,7 +337,7 @@ void main() {
 
   test('a silent connection is closed if it never says hello', () async {
     await host.stop();
-    server = await bindLanJamServer(loopbackOnly: true);
+    server = await bind();
     host = JamHostService(
       player: hostPlayer,
       server: server,
@@ -319,7 +346,7 @@ void main() {
       helloTimeout: const Duration(milliseconds: 100),
     )..start();
 
-    final lurker = await connectLanJam('127.0.0.1', server.port);
+    final lurker = await connect();
     final closed = Completer<void>();
     lurker.messages.listen((_) {}, onDone: closed.complete);
     await closed.future.timeout(const Duration(seconds: 3));

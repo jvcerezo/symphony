@@ -26,10 +26,12 @@ class JamIdle extends JamSession {
   final String? error;
 }
 
-/// Starting to host, or connecting to a host.
+/// Starting to host, or connecting to a host. [online] when through the
+/// relay rather than this network.
 class JamConnecting extends JamSession {
-  const JamConnecting({required this.hosting});
+  const JamConnecting({required this.hosting, this.online = false});
   final bool hosting;
+  final bool online;
 }
 
 class JamHosting extends JamSession {
@@ -38,10 +40,14 @@ class JamHosting extends JamSession {
     required this.members,
     this.permissions = const JamPermissions(),
     this.discoverable = true,
+    this.online = false,
   });
 
   /// What guests type to join.
   final String code;
+
+  /// Hosted through the relay, so guests can join from anywhere.
+  final bool online;
   final List<JamMember> members;
   final JamPermissions permissions;
 
@@ -54,6 +60,7 @@ class JamHosting extends JamSession {
         members: members ?? this.members,
         permissions: permissions ?? this.permissions,
         discoverable: discoverable,
+        online: online,
       );
 }
 
@@ -70,7 +77,8 @@ class JamJoined extends JamSession {
       );
 }
 
-/// Starts, joins and leaves Jams on the local network.
+/// Starts, joins and leaves Jams, on the local network or online through
+/// the relay (see [jamRelayUrl]).
 class JamController extends StateNotifier<JamSession> {
   JamController({
     required SymphonyAudioHandler handler,
@@ -79,12 +87,20 @@ class JamController extends StateNotifier<JamSession> {
     Future<JamConnection> Function(String host, int port)? connect,
     Future<JamBeacon?> Function({required String code, required int port, required String hostName})? beacon,
     Future<FoundJam?> Function(String code)? find,
+    Future<JamServer> Function(String code, void Function() onLost)? hostOnline,
+    Future<JamConnection> Function(String code)? joinOnline,
+    Future<bool> Function(String code)? onlineExists,
+    String Function()? newOnlineCode,
   })  : _handler = handler,
         _displayName = displayName,
         _bind = bind ?? bindLanJamServer,
         _connect = connect ?? connectLanJam,
         _beacon = beacon ?? startJamBeacon,
         _find = find ?? findLanJam,
+        _hostOnline = hostOnline ?? ((code, onLost) => hostOnlineJam(code, onLost: onLost)),
+        _joinOnline = joinOnline ?? joinOnlineJam,
+        _onlineExists = onlineExists ?? onlineJamExists,
+        _newOnlineCode = newOnlineCode ?? newOnlineJamCode,
         super(const JamIdle());
 
   final SymphonyAudioHandler _handler;
@@ -93,6 +109,10 @@ class JamController extends StateNotifier<JamSession> {
   final Future<JamConnection> Function(String host, int port) _connect;
   final Future<JamBeacon?> Function({required String code, required int port, required String hostName}) _beacon;
   final Future<FoundJam?> Function(String code) _find;
+  final Future<JamServer> Function(String code, void Function() onLost) _hostOnline;
+  final Future<JamConnection> Function(String code) _joinOnline;
+  final Future<bool> Function(String code) _onlineExists;
+  final String Function() _newOnlineCode;
 
   JamHostService? _host;
   JamBeacon? _hostBeacon;
@@ -101,15 +121,25 @@ class JamController extends StateNotifier<JamSession> {
 
   bool get isSupported => lanJamSupported;
 
-  Future<void> host() async {
+  /// Starts hosting: on this network, or [online] through the relay so
+  /// guests can join from anywhere.
+  Future<void> host({bool online = false}) async {
     if (state is! JamIdle) return;
-    state = const JamConnecting(hosting: true);
+    state = JamConnecting(hosting: true, online: online);
     try {
-      final server = await _bind();
+      String? code;
+      final JamServer server;
+      if (online) {
+        code = await _freeOnlineCode();
+        server = await _hostOnline(code, _lostRelay);
+      } else {
+        server = await _bind();
+      }
       final host = JamHostService(
         player: HandlerJamHostPlayer(_handler),
         server: server,
         hostName: _displayName(),
+        code: code,
       );
       _host = host;
       host.start();
@@ -117,19 +147,43 @@ class JamController extends StateNotifier<JamSession> {
         final s = state;
         if (s is JamHosting) state = s.copyWith(members: members);
       }));
+      if (online) {
+        state = JamHosting(code: host.code, members: host.members, online: true);
+        return;
+      }
       _hostBeacon = await _beacon(code: host.code, port: host.port, hostName: host.hostName);
       state = JamHosting(code: host.code, members: host.members, discoverable: _hostBeacon != null);
     } catch (e) {
       developer.log('Could not start a Jam: $e', name: 'Jam');
       await _reset();
-      state = const JamIdle(error: 'Could not start a Jam on this network');
+      state = JamIdle(
+        error: online
+            ? "Could not start an online Jam. Check that you're connected to the internet."
+            : 'Could not start a Jam on this network',
+      );
     }
   }
 
-  /// Finds the Jam with [code] on this network and joins it.
+  /// A code no running online Jam uses (a clash is about one in 900 million,
+  /// but a stale host would refuse us).
+  Future<String> _freeOnlineCode() async {
+    for (var attempt = 0; attempt < 3; attempt++) {
+      final code = _newOnlineCode();
+      if (!await _onlineExists(code)) return code;
+    }
+    throw StateError('No free online Jam code');
+  }
+
+  void _lostRelay() {
+    if (state is JamHosting) unawaited(_ended('relay_lost'));
+  }
+
+  /// Joins the Jam with [code]: a 6-character code online through the
+  /// relay, a 4-digit one by finding it on this network.
   Future<void> join({required String code}) async {
     if (state is! JamIdle) return;
-    final trimmed = code.trim();
+    final trimmed = code.trim().toUpperCase();
+    if (isOnlineJamCode(trimmed)) return _joinOnlineJam(trimmed);
     state = const JamConnecting(hosting: false);
     final FoundJam? found;
     try {
@@ -143,10 +197,33 @@ class JamController extends StateNotifier<JamSession> {
       state = JamIdle(error: "No Jam with code $trimmed on this Wi-Fi. Check the code, and that you're on the same network as the host.");
       return;
     }
-    final guest = JamGuestService(player: HandlerJamGuestPlayer(_handler), name: _displayName(), code: trimmed);
+    await _joinWith(trimmed, () => _connect(found!.host, found.port),
+        unreachable: "Found the Jam but could not connect. The host's firewall may be blocking it.");
+  }
+
+  Future<void> _joinOnlineJam(String code) async {
+    state = const JamConnecting(hosting: false, online: true);
+    final bool exists;
+    try {
+      exists = await _onlineExists(code);
+    } catch (e) {
+      developer.log('Could not reach the Jam relay: $e', name: 'Jam');
+      state = const JamIdle(error: "Could not reach the online Jam service. Check that you're connected to the internet.");
+      return;
+    }
+    if (!exists) {
+      state = JamIdle(error: 'No online Jam with code $code. Check the code with the host.');
+      return;
+    }
+    await _joinWith(code, () => _joinOnline(code), unreachable: 'Could not connect to the online Jam. Try again.');
+  }
+
+  /// Joins over the connection [open] makes, then follows the host.
+  Future<void> _joinWith(String code, Future<JamConnection> Function() open, {required String unreachable}) async {
+    final guest = JamGuestService(player: HandlerJamGuestPlayer(_handler), name: _displayName(), code: code);
     _guest = guest;
     try {
-      final connection = await _connect(found.host, found.port);
+      final connection = await open();
       _subs.add(guest.membersStream.listen((members) {
         final s = state;
         if (s is JamJoined) state = s.copyWith(members: members);
@@ -167,7 +244,7 @@ class JamController extends StateNotifier<JamSession> {
     } catch (e) {
       developer.log('Could not join the Jam: $e', name: 'Jam');
       await _reset();
-      state = const JamIdle(error: "Found the Jam but could not connect. The host's firewall may be blocking it.");
+      state = JamIdle(error: unreachable);
     }
   }
 

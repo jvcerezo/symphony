@@ -19,7 +19,7 @@ class _FakeJam extends JamController {
   void show(JamSession session) => state = session;
 
   @override
-  Future<void> host() async => calls.add('host');
+  Future<void> host({bool online = false}) async => calls.add(online ? 'host online' : 'host');
 
   @override
   Future<void> join({required String code}) async => calls.add('join $code');
@@ -74,20 +74,39 @@ void main() {
     expect(jam.calls, ['host']);
   });
 
-  testWidgets('joining needs only the 4-digit code', (tester) async {
+  testWidgets('joining takes a 4-digit Wi-Fi code or a 6-character online one', (tester) async {
     await pump(tester, const Scaffold(body: JamPanel()));
     expect(find.widgetWithText(TextField, 'Host address'), findsNothing);
 
     await tester.enterText(find.widgetWithText(TextField, 'Jam code'), '12');
     await tester.tap(find.text('Join'));
     await tester.pump();
-    expect(find.text('The Jam code is 4 digits'), findsOneWidget);
+    expect(find.text('Jam codes are 4 digits (same Wi-Fi) or 6 letters and numbers (online)'), findsOneWidget);
     expect(jam.calls, isEmpty);
 
     await tester.enterText(find.widgetWithText(TextField, 'Jam code'), '0420');
     await tester.tap(find.text('Join'));
     await tester.pump();
-    expect(jam.calls, ['join 0420']);
+
+    await tester.enterText(find.widgetWithText(TextField, 'Jam code'), 'k7p2qx');
+    await tester.tap(find.text('Join'));
+    await tester.pump();
+    expect(jam.calls, ['join 0420', 'join K7P2QX']);
+  });
+
+  testWidgets('a Jam can be started online for friends anywhere', (tester) async {
+    await pump(tester, const Scaffold(body: JamPanel()));
+    await tester.tap(find.text('Start an online Jam'));
+    expect(jam.calls, ['host online']);
+  });
+
+  testWidgets('an online Jam shows its code and what the relay sees', (tester) async {
+    jam.show(const JamHosting(code: 'K7P2QX', members: _members, online: true));
+    await pump(tester, const Scaffold(body: JamPanel()));
+    expect(find.text('K7P2QX'), findsOneWidget);
+    expect(find.textContaining('Friends anywhere join with this code'), findsOneWidget);
+    expect(find.textContaining('never audio'), findsOneWidget);
+    expect(find.textContaining('firewall'), findsNothing);
   });
 
   testWidgets('says why the last Jam ended', (tester) async {
