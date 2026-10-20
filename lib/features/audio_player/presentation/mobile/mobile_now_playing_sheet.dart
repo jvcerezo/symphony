@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'dart:ui' show ImageFilter;
 
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
@@ -91,13 +90,18 @@ class MobileNowPlayingSheet extends ConsumerStatefulWidget {
 }
 
 class _MobileNowPlayingSheetState extends ConsumerState<MobileNowPlayingSheet> with SingleTickerProviderStateMixin {
-  // Drives the drifting glow: one slow loop.
+  // Drives the drifting glow: one slow loop, only while a song plays, so a
+  // paused screen draws nothing.
   late final AnimationController _drift = AnimationController(vsync: this, duration: const Duration(seconds: 16));
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) {
+    _syncDrift(ref.read(isPlayingProvider));
+  }
+
+  void _syncDrift(bool playing) {
+    if (!playing || (MediaQuery.maybeDisableAnimationsOf(context) ?? false)) {
       _drift.stop();
     } else if (!_drift.isAnimating) {
       _drift.repeat();
@@ -112,6 +116,7 @@ class _MobileNowPlayingSheetState extends ConsumerState<MobileNowPlayingSheet> w
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<bool>(isPlayingProvider, (_, playing) => _syncDrift(playing));
     final mediaItem = ref.watch(currentMediaItemStreamProvider).asData?.value;
     final state = ref.watch(playbackStateStreamProvider).asData?.value;
     final tint = ref.watch(nowPlayingTintProvider).valueOrNull ?? SymphonyTheme.cardActive;
@@ -385,6 +390,10 @@ class _MobileNowPlayingSheetState extends ConsumerState<MobileNowPlayingSheet> w
 
 /// The cover, hugely blurred and dimmed, under a glow in [tint] that drifts
 /// slowly around the screen, fading to black behind the controls.
+///
+/// The blur is the cover decoded 8 pixels wide and stretched smoothly: it
+/// looks like a live blur, which would cost the GPU every frame the glow
+/// moves and heat the phone.
 class _Backdrop extends StatelessWidget {
   final Uri? artUri;
   final Color tint;
@@ -402,18 +411,17 @@ class _Backdrop extends StatelessWidget {
           RepaintBoundary(
             child: Opacity(
               opacity: 0.45,
-              child: ImageFiltered(
-                imageFilter: ImageFilter.blur(sigmaX: 60, sigmaY: 60, tileMode: TileMode.decal),
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 700),
-                  child: Image.network(
-                    art.toString(),
-                    key: ValueKey(art),
-                    fit: BoxFit.cover,
-                    width: double.infinity,
-                    height: double.infinity,
-                    errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                  ),
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 700),
+                child: Image.network(
+                  art.toString(),
+                  key: ValueKey(art),
+                  cacheWidth: 8,
+                  filterQuality: FilterQuality.medium,
+                  fit: BoxFit.cover,
+                  width: double.infinity,
+                  height: double.infinity,
+                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
                 ),
               ),
             ),

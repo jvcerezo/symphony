@@ -252,35 +252,50 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
     final processingState =
         _loading ? AudioProcessingState.buffering : _transformProcessingState(_player.processingState);
 
-    playbackState.add(
-      PlaybackState(
-        controls: [
-          MediaControl.skipToPrevious,
-          if (isPlaying) MediaControl.pause else MediaControl.play,
-          MediaControl.stop,
-          MediaControl.skipToNext,
-        ],
-        systemActions: const {
-          MediaAction.seek,
-          MediaAction.seekForward,
-          MediaAction.seekBackward,
-        },
-        androidCompactActionIndices: const [0, 1, 3],
-        processingState: processingState,
-        playing: isPlaying,
-        updatePosition: _player.position,
-        bufferedPosition: _player.bufferedPosition,
-        speed: _player.speed,
-        queueIndex: currentIndex >= 0 ? currentIndex : null,
-        shuffleMode: _queue.isShuffled ? AudioServiceShuffleMode.all : AudioServiceShuffleMode.none,
-        repeatMode: switch (_queue.repeatMode) {
-          QueueRepeatMode.off => AudioServiceRepeatMode.none,
-          QueueRepeatMode.all => AudioServiceRepeatMode.all,
-          QueueRepeatMode.one => AudioServiceRepeatMode.one,
-        },
-      ),
+    final next = PlaybackState(
+      controls: [
+        MediaControl.skipToPrevious,
+        if (isPlaying) MediaControl.pause else MediaControl.play,
+        MediaControl.stop,
+        MediaControl.skipToNext,
+      ],
+      systemActions: const {
+        MediaAction.seek,
+        MediaAction.seekForward,
+        MediaAction.seekBackward,
+      },
+      androidCompactActionIndices: const [0, 1, 3],
+      processingState: processingState,
+      playing: isPlaying,
+      updatePosition: _player.position,
+      bufferedPosition: _player.bufferedPosition,
+      speed: _player.speed,
+      queueIndex: currentIndex >= 0 ? currentIndex : null,
+      shuffleMode: _queue.isShuffled ? AudioServiceShuffleMode.all : AudioServiceShuffleMode.none,
+      repeatMode: switch (_queue.repeatMode) {
+        QueueRepeatMode.off => AudioServiceRepeatMode.none,
+        QueueRepeatMode.all => AudioServiceRepeatMode.all,
+        QueueRepeatMode.one => AudioServiceRepeatMode.one,
+      },
     );
+    if (_onlyBufferMoved(playbackState.value, next)) return;
+    playbackState.add(next);
   }
+
+  /// While a song downloads the player reports progress every half second.
+  /// Passing those on would refresh the notification and every screen that
+  /// shows the player, with nothing visible changed: listeners work out the
+  /// position from the last state, and nothing shows the buffered amount.
+  static bool _onlyBufferMoved(PlaybackState last, PlaybackState next) =>
+      last.playing == next.playing &&
+      last.processingState == next.processingState &&
+      last.queueIndex == next.queueIndex &&
+      last.shuffleMode == next.shuffleMode &&
+      last.repeatMode == next.repeatMode &&
+      last.speed == next.speed &&
+      last.errorCode == next.errorCode &&
+      // Where the last state says the song is now, give or take.
+      (next.updatePosition - last.position).abs() < const Duration(milliseconds: 750);
 
   void _broadcastPlaybackState() {
     _playbackEventSub = _player.playbackEventStream.listen(
