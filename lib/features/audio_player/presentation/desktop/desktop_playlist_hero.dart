@@ -11,6 +11,7 @@ import '../controllers/offline_provider.dart';
 import '../widgets/import_playlist_dialog.dart';
 import '../widgets/nav_history_controls.dart';
 import '../widgets/playlist_fallback_cover.dart';
+import '../../../../core/widgets/sized_network_image.dart';
 
 /// Desktop playlist header: large cover, title block, and action row with
 /// the "more options" menu.
@@ -101,10 +102,8 @@ class DesktopPlaylistHero extends ConsumerWidget {
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(4),
                   child: playlist.coverUrl != null
-                      ? Image.network(
+                      ? SizedNetworkImage(
                           playlist.coverUrl!,
-                          fit: BoxFit.cover,
-                          filterQuality: FilterQuality.high,
                           errorBuilder: (context, error, stackTrace) => const PlaylistFallbackCover(),
                         )
                       : const PlaylistFallbackCover(),

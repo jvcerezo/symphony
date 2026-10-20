@@ -3,6 +3,7 @@ import '../../../../core/layout/breakpoints.dart';
 import '../../../../core/theme/symphony_theme.dart';
 import '../../../../core/widgets/hover_widgets.dart';
 import '../../../playlist_import/domain/entities/spotify_playlist.dart';
+import '../../../../core/widgets/sized_network_image.dart';
 
 /// Playlist cover card with hover play button and a choices menu.
 class SpotifyPlaylistCard extends StatefulWidget {
@@ -67,10 +68,8 @@ class _SpotifyPlaylistCardState extends State<SpotifyPlaylistCard> {
                     child: AspectRatio(
                       aspectRatio: 1.0,
                       child: playlist.coverUrl != null
-                          ? Image.network(
+                          ? SizedNetworkImage(
                               playlist.coverUrl!,
-                              fit: BoxFit.cover,
-                              filterQuality: FilterQuality.high,
                               errorBuilder: (context, error, stackTrace) => Container(
                                 color: const Color(0xFF282828),
                                 child: const Icon(Icons.music_note, color: SymphonyTheme.textMuted, size: 40),

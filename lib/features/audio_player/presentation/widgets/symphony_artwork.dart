@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/symphony_theme.dart';
 import '../controllers/audio_player_providers.dart';
 import '../../domain/entities/track.dart';
+import '../../../../core/widgets/sized_network_image.dart';
 
 class SymphonyArtwork extends ConsumerStatefulWidget {
   final Track? track;
@@ -116,13 +117,11 @@ class _SymphonyArtworkState extends ConsumerState<SymphonyArtwork> {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(borderRadius),
         child: _resolvedUri != null
-            ? Image.network(
+            ? SizedNetworkImage(
                 _resolvedUri.toString(),
                 key: ValueKey(_resolvedUri.toString()),
                 width: size,
                 height: size,
-                fit: BoxFit.cover,
-                filterQuality: FilterQuality.high,
                 errorBuilder: (context, error, stackTrace) => _buildVibrantFallback(size),
               )
             : _buildVibrantFallback(size),

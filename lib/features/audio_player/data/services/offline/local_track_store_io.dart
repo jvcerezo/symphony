@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../../domain/entities/track.dart';
 import 'local_track_store.dart';
+import '../../../../../core/utils/background_json.dart';
 
 LocalTrackStore createPlatformLocalTrackStore() => IoLocalTrackStore();
 
@@ -66,7 +67,7 @@ class IoLocalTrackStore implements LocalTrackStore {
     final index = <String, Map<String, dynamic>>{};
     if (await file.exists()) {
       try {
-        final decoded = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+        final decoded = await decodeJsonInBackground(await file.readAsString()) as Map<String, dynamic>;
         for (final raw in (decoded['tracks'] as List<dynamic>? ?? const [])) {
           final json = Map<String, dynamic>.from(raw as Map);
           if (json['trackId'] is String && json['fileName'] is String) {

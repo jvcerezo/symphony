@@ -171,13 +171,19 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
     final upcoming = _queue.upcoming(ahead);
     if (upcoming.isNotEmpty) {
       if (_usesPlaybackCache) {
-        // Prepare stream links for the few after that, so skipping ahead
+        // Prepare stream links for the two after that, so skipping ahead
         // also starts at once. Background, one at a time, yields to taps.
-        final later = _queue.upcoming(ahead + 4).skip(ahead).toList();
+        final later = _queue.upcoming(ahead + 2).skip(ahead).toList();
         unawaited(() async {
           // Offline every lookup would fail, and a failed one forgets the
           // song's remembered match.
           if (!await _network.isOnline()) return;
+          // On mobile data the next song isn't downloaded ahead, only its
+          // link found: it would cost data the user may never play.
+          if (await _network.isMetered()) {
+            _streamResolver.prefetch(upcoming, replace: true);
+            return;
+          }
           for (final t in upcoming) {
             unawaited(_warmTrack(t));
           }
@@ -789,6 +795,10 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
       // header proxy, which runs on the UI isolate) out of the player.
       // The local copy being saved in the background for the current stream.
       Future<Uri>? backgroundCopy;
+      // On mobile data the copy would download every song twice: there it
+      // is made only if streaming fails.
+      final metered = _usesPlaybackCache && await _network.isMetered();
+      if (requestId != _playRequestId) return;
 
       // Native, first play: start streaming at once (no wait for a download)
       // and save a local copy in the background for replays and instant seeks.
@@ -796,8 +806,10 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
       // through its proxy. Recently played tracks already resolved to a file.
       Future<AudioSource> sourceFor(ResolvedAudioStream stream) async {
         if (_usesPlaybackCache && PlaybackCache.shouldCache(stream)) {
-          backgroundCopy = _playbackCache.fileFor(track, stream);
-          backgroundCopy!.ignore();
+          if (!metered) {
+            backgroundCopy = _playbackCache.fileFor(track, stream);
+            backgroundCopy!.ignore();
+          }
           return AudioSource.uri(stream.streamUri, tag: item);
         }
         return AudioSource.uri(
@@ -823,7 +835,8 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
 
         // Streaming failed (e.g. the CDN wanted headers): play the local copy,
         // which downloads with the extractor's headers in ranged chunks.
-        final copy = backgroundCopy;
+        final copy = backgroundCopy ??
+            (metered && PlaybackCache.shouldCache(activeStream) ? _playbackCache.fileFor(track, activeStream) : null);
         if (copy != null) {
           try {
             final file = await copy.timeout(const Duration(seconds: 45));

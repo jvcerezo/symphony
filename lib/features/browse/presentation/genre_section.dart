@@ -8,6 +8,7 @@ import '../../playlist_import/domain/entities/playlist_summary.dart';
 import '../data/genre_catalog.dart';
 import 'genre_providers.dart';
 import '../../../core/widgets/motion.dart';
+import '../../../core/widgets/sized_network_image.dart';
 
 /// A genre's page: current playlists for it from Spotify, Apple Music and
 /// YouTube, each loading on its own. Tapping one opens it (without adding
@@ -203,9 +204,8 @@ class _SummaryCardState extends ConsumerState<_SummaryCard> {
                       borderRadius: BorderRadius.circular(6),
                       child: s.coverUrl == null
                           ? const _CoverFallback()
-                          : Image.network(
+                          : SizedNetworkImage(
                               s.coverUrl!,
-                              fit: BoxFit.cover,
                               errorBuilder: (_, __, ___) => const _CoverFallback(),
                             ),
                     ),

@@ -9,6 +9,7 @@ import '../../domain/entities/spotify_playlist.dart';
 import 'apple_music_web_service.dart';
 import 'spotify_embed_scraper_service.dart';
 import 'youtube_playlist_page.dart';
+import '../../../../core/utils/background_json.dart';
 
 enum PlaylistSourceType { spotify, youtube, deezer, appleMusic, smartMix }
 
@@ -89,7 +90,7 @@ class UniversalPlaylistImporterService {
 
     if (jsonBody != null) {
       try {
-        final Map<String, dynamic> data = jsonDecode(jsonBody) as Map<String, dynamic>;
+        final data = await decodeJsonInBackground(jsonBody) as Map<String, dynamic>;
         final title = data['title'] as String? ?? 'Deezer Playlist';
         final description = data['description'] as String?;
         final coverUrl = data['picture_xl'] as String? ?? data['picture_big'] as String?;

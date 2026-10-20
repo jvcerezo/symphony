@@ -63,7 +63,7 @@ class _SymphonyPlayerScreenState extends ConsumerState<SymphonyPlayerScreen> {
             final handler = ref.read(audioHandlerProvider);
             // Native: prepares stream links for the first few in the
             // background so tapping one of them starts at once.
-            handler.preloadTracks(next.tracks, count: kIsWeb ? 2 : 5);
+            handler.preloadTracks(next.tracks, count: kIsWeb ? 2 : 3);
           } catch (_) {}
         }
       }
