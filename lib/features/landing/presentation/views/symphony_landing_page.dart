@@ -29,6 +29,7 @@ class SymphonyLandingPage extends ConsumerWidget {
       'https://discord.com/oauth2/authorize?client_id=1559096164345970708&scope=bot&permissions=3230720';
   static const String termsUrl = '/terms-of-service';
   static const String privacyUrl = '/privacy-policy';
+  static const String compareUrl = '/free-spotify-alternative/';
 
   static void _openExternal(String url, {bool isDownload = false}) {
     AppUpdateNotifier.openUrl(url, isDownload: isDownload);
@@ -927,6 +928,10 @@ class SymphonyLandingPage extends ConsumerWidget {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              TextButton(
+                onPressed: () => _openExternal(compareUrl),
+                child: const Text('Compare', style: TextStyle(color: Color(0xFFA1A1AA), fontSize: 12)),
+              ),
               TextButton(
                 onPressed: () => _openExternal(termsUrl),
                 child: const Text('Terms', style: TextStyle(color: Color(0xFFA1A1AA), fontSize: 12)),

@@ -5,7 +5,7 @@
     "display": "standalone",
     "background_color": "#0A0A0A",
     "theme_color": "#0A0A0A",
-    "description": "Free, ad-free music player for Windows, Android, macOS and the web. Import your playlists, download songs and listen offline, and Jam with friends.",
+    "description": "Free music app with no ads for Windows, Android and macOS. Import your playlists, download songs and listen offline, and Jam with friends.",
     "orientation": "any",
     "prefer_related_applications": false,
     "categories": ["music", "audio"],
