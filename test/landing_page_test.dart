@@ -34,9 +34,9 @@ void main() {
     expect(find.textContaining('Web Demo'), findsNothing);
 
     // Verify Core Capabilities
-    expect(find.text('Native Client Resolution'), findsOneWidget);
+    expect(find.text('No Account, No Server'), findsOneWidget);
     expect(find.text('Offline-First Architecture'), findsOneWidget);
-    expect(find.text('Tri-Platform Importer'), findsOneWidget);
+    expect(find.text('Bring Your Playlists'), findsOneWidget);
   });
   testWidgets('cards side by side are the same height, buttons lined up', (tester) async {
     tester.view.physicalSize = const Size(1280, 900);
