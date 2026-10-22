@@ -1,16 +1,16 @@
 # Symphony
 
-A minimalist music player for Windows, Android and the web. Bring your playlists from Spotify, YouTube or Apple Music, or search for any song, and Symphony plays the full track.
+A minimalist music player for Windows, Android and the web. Bring your playlists from the app you already use, or search for any song, and Symphony plays the full track.
 
 Landing page: <https://symphony.jettimothycerezo.dev> · Downloads: [GitHub Releases](https://github.com/jvcerezo/symphony/releases/latest)
 
 ## What it does
 
-- **Import playlists** from a Spotify, YouTube or Apple Music link, or search songs by name (iTunes and Deezer metadata).
-- **Plays the real song.** Each track is matched to its YouTube upload, preferring the one whose length matches the original and skipping live, remix and cover versions. Matches are remembered.
+- **Import playlists** by pasting a playlist link, or search songs by name.
+- **Plays the real song.** Each track is matched to the version whose length matches the original, skipping live, remix and cover versions. Matches are remembered.
 - **Works offline.** Download songs or whole playlists; songs you play are cached too.
 - **Jam** with friends: one device hosts, others join with a code and hear the same song at the same moment. Works on the same Wi-Fi, or online through a small relay. Only playback state is shared, never audio.
-- **Synced lyrics** from [LRCLIB](https://lrclib.net).
+- **Synced lyrics** that follow along as the song plays.
 - **Feels at home on each platform:** media keys, lock-screen and notification controls, system tray and keyboard shortcuts on Windows, Discord status, and in-app updates.
 
 ## No server needed
@@ -37,7 +37,7 @@ lib/                 the Flutter app (one codebase for every platform)
   core/              theme, layout breakpoints, config, platform services
   features/
     audio_player/    playback, queue, song matching, offline downloads, player UI
-    playlist_import/ Spotify / YouTube / Apple Music importers
+    playlist_import/ playlist link importers
     metadata_search/ search and artwork
     jam/             listen-together sessions (LAN and online)
     lyrics/          synced lyrics

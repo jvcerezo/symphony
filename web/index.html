@@ -6,18 +6,37 @@
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="description" content="Symphony – Minimalist offline music player.">
+  <meta name="description" content="Symphony is a free, ad-free music player for Windows, Android, macOS and the web. Import your playlists, download songs to listen offline, and Jam with friends in sync.">
   <meta name="theme-color" content="#0A0A0A">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://symphony.jettimothycerezo.dev/">
 
   <!-- OpenGraph / Social Sharing -->
   <meta property="og:type" content="website">
-  <meta property="og:title" content="Symphony — Minimalist Offline Music">
-  <meta property="og:description" content="Clean, distraction-free offline music player and playlist hub.">
-  <meta property="og:image" content="icons/Icon-512.png">
-  <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="Symphony — Minimalist Offline Music">
-  <meta name="twitter:description" content="Clean, distraction-free offline music player and playlist hub.">
-  <meta name="twitter:image" content="icons/Icon-512.png">
+  <meta property="og:site_name" content="Symphony">
+  <meta property="og:url" content="https://symphony.jettimothycerezo.dev/">
+  <meta property="og:title" content="Symphony: Free Offline Music Player">
+  <meta property="og:description" content="Symphony is a free, ad-free music player for Windows, Android, macOS and the web. Import your playlists, download songs to listen offline, and Jam with friends in sync.">
+  <meta property="og:image" content="https://symphony.jettimothycerezo.dev/icons/symphony_og_banner.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Symphony: Free Offline Music Player">
+  <meta name="twitter:description" content="Symphony is a free, ad-free music player for Windows, Android, macOS and the web. Import your playlists, download songs to listen offline, and Jam with friends in sync.">
+  <meta name="twitter:image" content="https://symphony.jettimothycerezo.dev/icons/symphony_og_banner.jpg">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Symphony",
+    "url": "https://symphony.jettimothycerezo.dev/",
+    "description": "Symphony is a free, ad-free music player for Windows, Android, macOS and the web. Import your playlists, download songs to listen offline, and Jam with friends in sync.",
+    "applicationCategory": "MultimediaApplication",
+    "operatingSystem": "Windows 10, Windows 11, Android, macOS, Web",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "downloadUrl": "https://github.com/jvcerezo/symphony/releases/latest",
+    "image": "https://symphony.jettimothycerezo.dev/icons/Icon-512.png"
+  }
+  </script>
 
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
@@ -51,7 +70,7 @@
   <link rel="icon" type="image/svg+xml" href="icons/symphony_logo.svg">
   <link rel="alternate icon" type="image/png" href="favicon.png">
 
-  <title>Symphony</title>
+  <title>Symphony: Free Offline Music Player for Windows, Android and Web</title>
   <link rel="manifest" href="manifest.json">
 
   <!-- Minimalist Clean Monochrome Entrance with Dynamic Loading Wave -->
@@ -68,6 +87,16 @@
       align-items: center;
       height: 100vh;
       width: 100vw;
+    }
+    /* Text copy of the landing page for search engines and screen readers;
+       Flutter draws the visible page on a canvas. */
+    #symphony-about {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
     }
     #symphony-loader {
       display: flex;
@@ -166,6 +195,23 @@
   </style>
 </head>
 <body>
+  <main id="symphony-about">
+    <h1>Symphony: free offline music player</h1>
+    <p>A minimalist music player built for people who want clean audio without algorithmic bloat. Save any song or playlist to your device and play it anywhere, even with no connection.</p>
+    <h2>Features</h2>
+    <ul>
+      <li>No account, no server: everything runs on your own device.</li>
+      <li>Offline-first: download songs or whole playlists and listen with zero buffering.</li>
+      <li>Bring your playlists: paste a playlist link from the app you use today, or search any song by name.</li>
+      <li>Jam with friends: everyone hears the same song at the same moment, on the same Wi-Fi or online.</li>
+      <li>Synced lyrics, Made for you mixes and yearly recaps.</li>
+      <li>Zero ads and no trackers.</li>
+    </ul>
+    <h2>Download</h2>
+    <p>Available for Windows 10 and 11, Android, macOS, iOS (sideload) and the web. <a href="https://github.com/jvcerezo/symphony/releases/latest">Download Symphony</a>.</p>
+    <p><a href="privacy-policy/">Privacy policy</a> · <a href="terms-of-service/">Terms of service</a></p>
+  </main>
+
   <!-- Architectural Soundwave Entrance -->
   <div id="symphony-loader">
     <div class="symphony-logo-wrapper">

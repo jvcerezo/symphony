@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://symphony.jettimothycerezo.dev/sitemap.xml
