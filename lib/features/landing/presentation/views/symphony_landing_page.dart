@@ -29,6 +29,7 @@ class SymphonyLandingPage extends ConsumerWidget {
       'https://discord.com/oauth2/authorize?client_id=1559096164345970708&scope=bot&permissions=3230720';
   static const String termsUrl = '/terms-of-service';
   static const String privacyUrl = '/privacy-policy';
+  static const String compareUrl = '/free-spotify-alternative/';
 
   static void _openExternal(String url, {bool isDownload = false}) {
     AppUpdateNotifier.openUrl(url, isDownload: isDownload);
@@ -259,7 +260,7 @@ class SymphonyLandingPage extends ConsumerWidget {
               SizedBox(width: 8),
               Flexible(
                 child: Text(
-                'OFFLINE-FIRST • CLIENT-SIDE RESOLUTION • ZERO ADS',
+                'OFFLINE-FIRST • PRIVATE • ZERO ADS',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -295,7 +296,7 @@ class SymphonyLandingPage extends ConsumerWidget {
           constraints: const BoxConstraints(maxWidth: 680),
           child: const Text(
             'A minimalist music player built for people who want clean audio without algorithmic bloat. '
-            'Streams are resolved natively on your client device and saved directly to your local drive for seamless playback anywhere.',
+            'Save any song or playlist to your device and play it anywhere, even with no connection.',
             style: TextStyle(
               color: Color(0xFFA1A1AA),
               fontSize: 16,
@@ -427,7 +428,7 @@ class SymphonyLandingPage extends ConsumerWidget {
                   badge: hasDirectWindowsAsset ? 'Portable .zip' : 'GitHub Releases',
                   spec: 'Windows 10 / 11 • 64-bit',
                   description:
-                      'Full client-side stream resolution, hardware media keys, system tray, and unlimited local hard drive audio caching.',
+                      'Hardware media keys, system tray, keyboard shortcuts, and unlimited offline downloads.',
                   buttonText: hasDirectWindowsAsset ? 'Download .zip' : 'View on GitHub',
                   isPrimary: true,
                   onTap: () => _openExternal(winDownloadUrl, isDownload: true),
@@ -645,7 +646,7 @@ class SymphonyLandingPage extends ConsumerWidget {
     const steps = [
       (num: '1', title: 'Add it to your server', desc: 'Click "Add to Discord" and pick a server you manage.'),
       (num: '2', title: 'Join a voice channel', desc: 'The bot joins the channel you are in.'),
-      (num: '3', title: 'Type s!play', desc: 'A song name, a YouTube link, or a Spotify or YouTube playlist.'),
+      (num: '3', title: 'Type s!play', desc: 'A song name, or a link to a song or playlist.'),
     ];
 
     final intro = Column(
@@ -781,9 +782,9 @@ class SymphonyLandingPage extends ConsumerWidget {
     final features = [
       (
         num: '01',
-        title: 'Native Client Resolution',
+        title: 'No Account, No Server',
         desc:
-            'Audio streams are resolved locally on the user device via decentralized scraping. No central proxy hosts copyrighted files.',
+            'Everything runs on your own device. Nothing to sign up for, and your library and history never leave it.',
       ),
       (
         num: '02',
@@ -793,9 +794,9 @@ class SymphonyLandingPage extends ConsumerWidget {
       ),
       (
         num: '03',
-        title: 'Tri-Platform Importer',
+        title: 'Bring Your Playlists',
         desc:
-            'Seamlessly migrate your favorite playlists from Spotify, YouTube, and Apple Music using raw embed metadata scraping.',
+            'Paste a playlist link from the app you use today and Symphony rebuilds it, or search any song by name.',
       ),
       (
         num: '04',
@@ -927,6 +928,10 @@ class SymphonyLandingPage extends ConsumerWidget {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              TextButton(
+                onPressed: () => _openExternal(compareUrl),
+                child: const Text('Compare', style: TextStyle(color: Color(0xFFA1A1AA), fontSize: 12)),
+              ),
               TextButton(
                 onPressed: () => _openExternal(termsUrl),
                 child: const Text('Terms', style: TextStyle(color: Color(0xFFA1A1AA), fontSize: 12)),
