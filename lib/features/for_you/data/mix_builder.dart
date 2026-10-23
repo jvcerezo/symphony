@@ -152,6 +152,33 @@ class MixBuilder {
     return _mix('top_hits', 'Top Hits Right Now', 'The most played songs this week', tracks);
   }
 
+  /// Deezer genre charts that start someone with no plays yet off with
+  /// plenty to choose from: (Deezer genre id, mix key, title, what it is).
+  static const starterGenres = [
+    (132, 'pop', 'Pop Right Now', 'The most played pop songs this week'),
+    (116, 'hiphop', 'Hip-Hop Right Now', 'The biggest rap and hip-hop songs this week'),
+    (165, 'rnb', 'R&B Right Now', 'The most played R&B songs this week'),
+    (16, 'asian', 'K-Pop & Asian Hits', 'The biggest K-Pop and Asian pop songs this week'),
+    (113, 'dance', 'Dance Right Now', 'The most played dance songs this week'),
+    (197, 'latin', 'Latin Right Now', 'The biggest Latin songs this week'),
+    (85, 'alternative', 'Alternative Right Now', 'The most played alternative and indie songs this week'),
+    (152, 'rock', 'Rock Right Now', 'The most played rock songs this week'),
+    (106, 'electronic', 'Electronic Right Now', 'The most played electronic songs this week'),
+    (84, 'country', 'Country Right Now', 'The most played country songs this week'),
+    (169, 'soul', 'Soul & Funk', 'Soul and funk, new and classic'),
+  ];
+
+  /// One mix per [starterGenres] chart, for someone who hasn't played
+  /// anything yet. A chart that can't be loaded is left out.
+  Future<List<SpotifyPlaylist>> starterMixes() async {
+    final charts = await Future.wait(starterGenres.map((g) => _catalog.chart(genre: g.$1, limit: 50)));
+    return [
+      for (var i = 0; i < starterGenres.length; i++)
+        if (charts[i].length >= 8)
+          _mix('starter_${starterGenres[i].$2}', starterGenres[i].$3, starterGenres[i].$4, _dedupe(charts[i])),
+    ];
+  }
+
   /// Songs to keep playing after [seed] when the queue runs out: [seed]'s
   /// artist radio, without anything in [exclude] (song keys) or by an
   /// artist the user keeps skipping.

@@ -109,15 +109,21 @@ class MadeForYouNotifier extends StateNotifier<AsyncValue<List<SpotifyPlaylist>>
 
     try {
       var next = cache;
-      if (force || cache.day != day || (cache.daily.isEmpty && !taste.isEmpty)) {
+      if (force ||
+          cache.day != day ||
+          (cache.daily.isEmpty && !taste.isEmpty) ||
+          (taste.isEmpty && !cache.hasStarter)) {
         final daily = await _builder.dailyMixes(taste, now: now);
         final top = await _builder.topHits();
+        // Nothing played yet: genre charts until there are mixes of their own.
+        final starter = taste.isEmpty ? await _builder.starterMixes() : const <SpotifyPlaylist>[];
         // A build that failed (offline) keeps the last mixes and is tried
         // again next time instead of waiting for tomorrow.
         final built = (daily.isNotEmpty || taste.isEmpty) && top != null;
         next = next.copyWith(
           daily: taste.isEmpty ? const [] : (daily.isEmpty ? next.daily : daily),
           top: top ?? next.top,
+          starter: taste.isEmpty ? (starter.isEmpty ? next.starter : starter) : const [],
           day: built ? day : next.day,
         );
       }
@@ -151,18 +157,40 @@ class _MixCache {
   final SpotifyPlaylist? discover;
   final SpotifyPlaylist? top;
 
-  const _MixCache({this.day, this.week, this.daily = const [], this.discover, this.top});
+  /// Genre charts for someone with no plays yet ([MixBuilder.starterMixes]).
+  final List<SpotifyPlaylist> starter;
 
-  List<SpotifyPlaylist> get all => [...daily, if (discover != null) discover!, if (top != null) top!];
+  /// False for a cache kept before there were starter mixes: build them now
+  /// rather than tomorrow.
+  final bool hasStarter;
+
+  const _MixCache(
+      {this.day,
+      this.week,
+      this.daily = const [],
+      this.discover,
+      this.top,
+      this.starter = const [],
+      this.hasStarter = false});
+
+  List<SpotifyPlaylist> get all =>
+      [...daily, if (discover != null) discover!, if (top != null) top!, ...starter];
 
   _MixCache copyWith(
-          {String? day, String? week, List<SpotifyPlaylist>? daily, SpotifyPlaylist? discover, SpotifyPlaylist? top}) =>
+          {String? day,
+          String? week,
+          List<SpotifyPlaylist>? daily,
+          SpotifyPlaylist? discover,
+          SpotifyPlaylist? top,
+          List<SpotifyPlaylist>? starter}) =>
       _MixCache(
         day: day ?? this.day,
         week: week ?? this.week,
         daily: daily ?? this.daily,
         discover: discover ?? this.discover,
         top: top ?? this.top,
+        starter: starter ?? this.starter,
+        hasStarter: hasStarter || starter != null,
       );
 
   Map<String, dynamic> toJson() => {
@@ -171,17 +199,21 @@ class _MixCache {
         'daily': daily.map((p) => p.toJson()).toList(),
         'discover': discover?.toJson(),
         'top': top?.toJson(),
+        'starter': starter.map((p) => p.toJson()).toList(),
       };
 
   static _MixCache fromJson(Map<String, dynamic> json) {
     SpotifyPlaylist? one(Object? raw) => raw is Map ? SpotifyPlaylist.fromJson(Map<String, dynamic>.from(raw)) : null;
-    final rawDaily = json['daily'];
+    List<SpotifyPlaylist> many(Object? raw) =>
+        raw is List ? raw.map(one).whereType<SpotifyPlaylist>().toList() : const [];
     return _MixCache(
       day: json['day'] as String?,
       week: json['week'] as String?,
-      daily: rawDaily is List ? rawDaily.map(one).whereType<SpotifyPlaylist>().toList() : const [],
+      daily: many(json['daily']),
       discover: one(json['discover']),
       top: one(json['top']),
+      starter: many(json['starter']),
+      hasStarter: json.containsKey('starter'),
     );
   }
 }

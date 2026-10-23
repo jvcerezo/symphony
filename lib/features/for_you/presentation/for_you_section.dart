@@ -25,6 +25,7 @@ class MadeForYouShelf extends ConsumerWidget {
     final handler = ref.read(audioHandlerProvider);
     final mixes = [...local, ...?online.valueOrNull];
     final loading = online.isLoading && mixes.isEmpty;
+    final newListener = ref.watch(tasteProfileProvider.select((t) => t.isEmpty));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -44,9 +45,11 @@ class MadeForYouShelf extends ConsumerWidget {
             ),
           ],
         ),
-        const Text(
-          'Mixes from what you play, new every day',
-          style: TextStyle(fontSize: 13, color: SymphonyTheme.textSecondary),
+        Text(
+          newListener
+              ? "What's popular right now. Your own mixes show up as you listen."
+              : 'Mixes from what you play, new every day',
+          style: const TextStyle(fontSize: 13, color: SymphonyTheme.textSecondary),
         ),
         const SizedBox(height: 16),
         if (loading)
