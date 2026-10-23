@@ -51,6 +51,19 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   /// True while a song whose stream broke is being picked up again.
   bool _recovering = false;
 
+  /// True while the queue moves on by itself. A song that fails to load then
+  /// leaves the state playing for the next one: reporting it stopped would end
+  /// the Android playback service, which a backgrounded app can't restart, so
+  /// the music (and its notification) would be gone.
+  bool _carryingOn = false;
+
+  /// The last song tried failed to load: the player sits idle, shown as an error.
+  bool _loadFailed = false;
+
+  /// Playback was stopped ([stop]): the one time the state may be idle,
+  /// which on Android ends the playback service and its notification.
+  bool _stopped = false;
+
   /// The song already picked up once after its stream broke; a second
   /// break moves on instead of retrying forever.
   Track? _recoveredTrack;
@@ -254,9 +267,15 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   }
 
   void _updatePlaybackState() {
-    final isPlaying = _loading || _player.playing;
-    final processingState =
-        _loading ? AudioProcessingState.buffering : _transformProcessingState(_player.processingState);
+    // Between songs (loading one, or past one that failed) the queue is still
+    // playing, whatever the player reports.
+    final settling = _loading || (_carryingOn && !_player.playing);
+    final isPlaying = settling || _player.playing;
+    var processingState =
+        settling ? AudioProcessingState.buffering : _transformProcessingState(_player.processingState);
+    if (processingState == AudioProcessingState.idle && !_stopped && !_queue.isEmpty) {
+      processingState = _loadFailed ? AudioProcessingState.error : AudioProcessingState.ready;
+    }
 
     final next = PlaybackState(
       controls: [
@@ -456,28 +475,42 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   /// can't play (offline and not on this device, or no match found) is
   /// passed over instead of stopping everything.
   Future<void> _playOnFrom(int index) async {
+    final bool stop;
+    _carryingOn = true;
+    try {
+      stop = await _tryPlayOnFrom(index);
+    } finally {
+      _carryingOn = false;
+    }
+    stop ? await _stopAtEnd() : _updatePlaybackState();
+  }
+
+  /// [_playOnFrom]'s search. True when nothing could play and it should stop.
+  Future<bool> _tryPlayOnFrom(int index) async {
     final wrap = _queue.repeatMode == QueueRepeatMode.all;
     var token = _playRequestId;
     int? candidate = index;
     for (var tries = 0; candidate != null && tries < _queue.length; tries++) {
       final target = await _playableFrom(candidate, wrap: wrap);
       // The user chose something else meanwhile.
-      if (token != _playRequestId) return;
+      if (token != _playRequestId) return false;
       if (target == null) {
         developer.log('Nothing left in the queue can play offline', name: 'AudioHandler');
-        return _stopAtEnd();
+        return true;
       }
       try {
         await _playAt(target);
-        return;
+        return false;
       } catch (e) {
-        if (token + 1 != _playRequestId) return;
+        if (token + 1 != _playRequestId) return false;
         token = _playRequestId;
         developer.log('Passing over "${_queue.current?.title}": $e', name: 'AudioHandler');
-        candidate = _indexAfter(target, wrap: wrap);
+        // The last song failing carries on with autoplay, as finishing it would.
+        candidate = _indexAfter(target, wrap: wrap) ??
+            (await _extendQueue() && token == _playRequestId ? _indexAfter(target, wrap: wrap) : null);
       }
     }
-    if (token == _playRequestId) await _stopAtEnd();
+    return token == _playRequestId;
   }
 
   int? _indexAfter(int index, {required bool wrap}) {
@@ -556,7 +589,12 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
         // The link may have expired: fetch a new one and resume there.
         _streamResolver.forgetTrack(track);
         _recovering = false;
-        await _loadAndPlayTrack(track, startAt: position);
+        _carryingOn = true;
+        try {
+          await _loadAndPlayTrack(track, startAt: position);
+        } finally {
+          _carryingOn = false;
+        }
         return;
       }
 
@@ -565,7 +603,11 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
       _moveOn();
     } catch (e) {
       developer.log('Could not pick "${track.title}" up again: $e', name: 'AudioHandler');
-      if (identical(currentTrack, track) && !_loading) _moveOn();
+      if (identical(currentTrack, track) && !_loading) {
+        _moveOn();
+      } else {
+        _updatePlaybackState();
+      }
     } finally {
       _recovering = false;
     }
@@ -578,7 +620,22 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
       return;
     }
     final next = _indexAfter(currentIndex, wrap: _queue.repeatMode == QueueRepeatMode.all);
-    unawaited(next == null ? _stopAtEnd() : _playOnFrom(next));
+    unawaited(next == null ? _carryOnPastEnd() : _playOnFrom(next));
+  }
+
+  /// The last song can't go on: autoplay's songs, else stop.
+  Future<void> _carryOnPastEnd() async {
+    final token = _playRequestId;
+    final bool extended;
+    _carryingOn = true;
+    try {
+      extended = await _extendQueue();
+    } finally {
+      _carryingOn = false;
+    }
+    if (token != _playRequestId) return;
+    final next = extended ? _indexAfter(currentIndex, wrap: false) : null;
+    await (next == null ? _stopAtEnd() : _playOnFrom(next));
   }
 
   AudioProcessingState _transformProcessingState(ProcessingState state) {
@@ -709,6 +766,8 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   Future<void> _loadAndPlayTrack(Track track, {Duration startAt = Duration.zero, bool autoplay = true}) async {
     final requestId = ++_playRequestId;
     _loading = true;
+    _loadFailed = false;
+    _stopped = false;
     _resolvedVideoIdSubject.add(null);
 
     // Android 13+: ask for POST_NOTIFICATIONS on first playback so the media
@@ -905,13 +964,18 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
     } catch (e, st) {
       if (requestId != _playRequestId) return; // Ignore errors from superseded requests
       _loading = false;
+      _loadFailed = true;
       developer.log('Playback start failure', error: e, stackTrace: st, name: 'AudioHandler');
-      playbackState.add(
-        playbackState.value.copyWith(
-          processingState: AudioProcessingState.idle,
-          playing: false,
-        ),
-      );
+      // Moving on by itself: stay "playing" for the next song (see _carryingOn).
+      // Otherwise an error, not idle: idle ends the Android playback service.
+      if (!_carryingOn) {
+        playbackState.add(
+          playbackState.value.copyWith(
+            processingState: AudioProcessingState.error,
+            playing: false,
+          ),
+        );
+      }
       if (e is AudioStreamResolutionException) rethrow;
       throw PlaybackInitializationException('Failed to play "${track.title}"', e);
     }
@@ -972,6 +1036,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> stop() async {
+    _stopped = true;
     await _player.stop();
     _updatePlaybackState();
     await super.stop();

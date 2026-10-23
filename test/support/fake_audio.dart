@@ -21,6 +21,9 @@ class FakePlayer implements AudioPlayer {
   final loaded = <Uri>[];
   Completer<void>? gate;
 
+  /// Sources that fail to load, as a dead link would.
+  final failing = <Uri>{};
+
   bool _playing = false;
   ProcessingState _state = ProcessingState.idle;
   double volumeSet = 1;
@@ -53,7 +56,13 @@ class FakePlayer implements AudioPlayer {
   Future<Duration?> setAudioSource(AudioSource audioSource,
       {bool preload = true, int? initialIndex, Duration? initialPosition}) async {
     await gate?.future;
-    loaded.add((audioSource as UriAudioSource).uri);
+    final uri = (audioSource as UriAudioSource).uri;
+    if (failing.contains(uri)) {
+      _state = ProcessingState.idle;
+      _emit();
+      throw PlayerException(0, 'Source error', 0);
+    }
+    loaded.add(uri);
     _position = initialPosition ?? Duration.zero;
     _state = ProcessingState.ready;
     _emit();

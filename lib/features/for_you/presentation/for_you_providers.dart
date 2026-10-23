@@ -12,7 +12,6 @@ import '../data/listening_history.dart';
 import '../data/mix_builder.dart';
 import '../data/play_recorder.dart';
 import '../domain/listening_log.dart';
-import '../domain/play_event.dart';
 import '../domain/taste_profile.dart';
 
 final listeningLogStoreProvider = Provider<ListeningLogStore>((ref) => PrefsListeningLogStore());
@@ -209,10 +208,6 @@ void startForYou(ProviderContainer container) {
   if (kIsWeb) return;
   container.read(audioHandlerProvider).autoplay = (last, queue) async {
     if (!container.read(autoplayProvider)) return const [];
-    return container.read(mixBuilderProvider).radioAfter(
-          last,
-          exclude: queue.map((t) => songKeyOf(t.title, t.artist)).toSet(),
-          taste: container.read(tasteProfileProvider),
-        );
+    return container.read(mixBuilderProvider).radioAfterQueue(queue, taste: container.read(tasteProfileProvider));
   };
 }

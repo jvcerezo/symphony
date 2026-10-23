@@ -170,6 +170,20 @@ class MixBuilder {
     return _capPerArtist(_dedupe(picked), 3).take(count).toList();
   }
 
+  /// Autoplay after [queue]: [radioAfter] its last song, else the songs of
+  /// up to [maxSeeds] artists before it (latest first). One artist Deezer
+  /// doesn't know, or whose radio is all queued already, doesn't end the music.
+  Future<List<Track>> radioAfterQueue(List<Track> queue, {TasteProfile? taste, int maxSeeds = 3}) async {
+    final exclude = queue.map((t) => songKeyOf(t.title, t.artist)).toSet();
+    final tried = <String>{};
+    for (final seed in queue.reversed) {
+      if (!tried.add(normalizeName(leadArtistOf(seed.artist)))) continue;
+      final radio = await radioAfter(seed, exclude: exclude, taste: taste);
+      if (radio.isNotEmpty || tried.length >= maxSeeds) return radio;
+    }
+    return const [];
+  }
+
   // ---- Helpers ----
 
   /// Ids carry the day they were built, so a mix saved to the library

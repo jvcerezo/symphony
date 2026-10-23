@@ -132,6 +132,16 @@ void main() {
     expect(radio.first.expectedDuration, const Duration(seconds: 200));
   });
 
+  test('autoplay after a queue falls back to earlier artists when the last one finds nothing', () async {
+    const queue = [
+      Track(id: 'f', title: 'Fave hit 1', artist: 'Fave'),
+      Track(id: 'n', title: 'Unknown song', artist: 'Nobody Deezer Knows'),
+    ];
+    final radio = await builder.radioAfterQueue(queue);
+    expect(radio, isNotEmpty);
+    expect(radio.map((t) => t.title), isNot(contains('Fave hit 1')));
+  });
+
   test('offline: nothing is built and nothing breaks', () async {
     deezer.down = true;
     final taste = TasteProfile.from(_likes({'Fave': 6}), now: _now);
