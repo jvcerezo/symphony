@@ -31,7 +31,8 @@ class Genre {
   int get hashCode => id.hashCode;
 }
 
-/// Spotify ids checked against open.spotify.com/embed on 2026-10-12.
+/// Spotify ids checked against open.spotify.com/embed on 2026-10-12
+/// (the ones added since, on 2026-10-23).
 abstract final class GenreCatalog {
   static const all = [
     Genre(
@@ -41,6 +42,43 @@ abstract final class GenreCatalog {
       icon: Icons.music_note_rounded,
       spotifyPlaylistIds: ['37i9dQZF1DXcBWIGoYBM5M', '37i9dQZF1DWUa8ZRTfalHk'], // Today's Top Hits, Pop Rising
       query: 'pop hits',
+    ),
+    Genre(
+      id: 'opm',
+      title: 'OPM & Pinoy Hits',
+      gradient: [Color(0xFF0038A8), Color(0xFFCE1126)],
+      icon: Icons.wb_sunny_rounded,
+      spotifyPlaylistIds: ['37i9dQZEVXbNBz9cRCSFkY'], // Top 50 - Philippines
+      query: 'OPM',
+    ),
+    Genre(
+      id: 'kpop',
+      title: 'K-Pop',
+      gradient: [Color(0xFFD81B60), Color(0xFFFF80AB)],
+      icon: Icons.auto_awesome_rounded,
+      spotifyPlaylistIds: ['37i9dQZF1DX9tPFwDMOaN1'], // K-Pop ON! (온)
+      query: 'k-pop',
+    ),
+    Genre(
+      id: 'throwback',
+      title: 'Throwbacks',
+      gradient: [Color(0xFF5D4037), Color(0xFFFFB300)],
+      icon: Icons.history_rounded,
+      spotifyPlaylistIds: [
+        '37i9dQZF1DX5Ejj0EkURtP', // All Out 2010s
+        '37i9dQZF1DX4o1oenSJRJd', // All Out 2000s
+        '37i9dQZF1DXbTxeAdrVG2l', // All Out 90s
+        '37i9dQZF1DX4UtSsGT1Sbe', // All Out 80s
+      ],
+      query: 'throwback hits',
+    ),
+    Genre(
+      id: 'love',
+      title: 'Love Songs',
+      gradient: [Color(0xFFAD1457), Color(0xFFF06292)],
+      icon: Icons.favorite_rounded,
+      spotifyPlaylistIds: ['37i9dQZF1DX50QitC6Oqtn'], // Love Pop
+      query: 'love songs',
     ),
     Genre(
       id: 'chill',
@@ -55,7 +93,7 @@ abstract final class GenreCatalog {
       title: 'Rock Classics',
       gradient: [Color(0xFF8B0000), Color(0xFFE91E63)],
       icon: Icons.electric_bolt_rounded,
-      spotifyPlaylistIds: ['37i9dQZF1DWXRqgorJj26U'], // Rock Classics
+      spotifyPlaylistIds: ['37i9dQZF1DWXRqgorJj26U', '37i9dQZF1DX1rVvRgjX59F'], // Rock Classics, 90s Rock Anthems
       query: 'classic rock',
     ),
     Genre(
@@ -97,6 +135,86 @@ abstract final class GenreCatalog {
       icon: Icons.spa_rounded,
       spotifyPlaylistIds: ['37i9dQZF1DX4E3UdUs7fUx', '37i9dQZF1DX6ziVCJnEm59'], // Afternoon Acoustic, Coffeehouse
       query: 'acoustic',
+    ),
+    Genre(
+      id: 'sad',
+      title: 'Sad Songs',
+      gradient: [Color(0xFF263238), Color(0xFF546E7A)],
+      icon: Icons.water_drop_rounded,
+      spotifyPlaylistIds: ['37i9dQZF1DX7qK8ma5wgG1'], // Sad Songs
+      query: 'sad songs',
+    ),
+    Genre(
+      id: 'dance',
+      title: 'Dance & EDM',
+      gradient: [Color(0xFF00838F), Color(0xFF00E5FF)],
+      icon: Icons.celebration_rounded,
+      spotifyPlaylistIds: ['37i9dQZF1DX4dyzvuaRJ0n', '37i9dQZF1DXaXB8fQg7xif'], // mint, Dance Party
+      query: 'edm',
+    ),
+    Genre(
+      id: 'latin',
+      title: 'Latin',
+      gradient: [Color(0xFFE65100), Color(0xFFFFCA28)],
+      icon: Icons.local_fire_department_rounded,
+      spotifyPlaylistIds: ['37i9dQZF1DX10zKzsJ2jva'], // Viva Latino
+      query: 'latin hits',
+    ),
+    Genre(
+      id: 'indie',
+      title: 'Indie & Alternative',
+      gradient: [Color(0xFF33691E), Color(0xFF9CCC65)],
+      icon: Icons.graphic_eq_rounded,
+      spotifyPlaylistIds: ['37i9dQZF1DXdbXrPNafg9d', '37i9dQZF1DXdwmD5Q7Gxah'], // All New Indie, Lorem
+      query: 'indie',
+    ),
+    Genre(
+      id: 'country',
+      title: 'Country',
+      gradient: [Color(0xFF6D4C41), Color(0xFFD7A86E)],
+      icon: Icons.landscape_rounded,
+      spotifyPlaylistIds: ['37i9dQZF1DX1lVhptIYRda'], // Hot Country
+      query: 'country hits',
+    ),
+    Genre(
+      id: 'jazz',
+      title: 'Jazz',
+      gradient: [Color(0xFF3E2723), Color(0xFFA1887F)],
+      icon: Icons.piano_rounded,
+      spotifyPlaylistIds: ['37i9dQZF1DXbITWG1ZJKYt', '37i9dQZF1DX0SM0LYsmbMT'], // Jazz Classics, Jazz Vibes
+      query: 'jazz',
+    ),
+    Genre(
+      id: 'classical',
+      title: 'Classical',
+      gradient: [Color(0xFF37474F), Color(0xFFB0BEC5)],
+      icon: Icons.queue_music_rounded,
+      spotifyPlaylistIds: ['37i9dQZF1DWWEJlAGA9gs0'], // Classical Essentials
+      query: 'classical music',
+    ),
+    Genre(
+      id: 'sleep',
+      title: 'Sleep',
+      gradient: [Color(0xFF1A237E), Color(0xFF5C6BC0)],
+      icon: Icons.bedtime_rounded,
+      spotifyPlaylistIds: ['37i9dQZF1DWZd79rJ6a7lp'], // Sleep
+      query: 'sleep music',
+    ),
+    Genre(
+      id: 'metal',
+      title: 'Metal',
+      gradient: [Color(0xFF212121), Color(0xFF757575)],
+      icon: Icons.flash_on_rounded,
+      spotifyPlaylistIds: ['37i9dQZF1DWTcqUzwhNmKv'], // Kickass Metal
+      query: 'metal',
+    ),
+    Genre(
+      id: 'anime',
+      title: 'Anime',
+      gradient: [Color(0xFF6A1B9A), Color(0xFF4FC3F7)],
+      icon: Icons.animation_rounded,
+      spotifyPlaylistIds: ['37i9dQZF1DWT8aqnwgRt92'], // Anime Now
+      query: 'anime songs',
     ),
   ];
 }

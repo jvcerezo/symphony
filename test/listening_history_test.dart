@@ -66,15 +66,18 @@ void main() {
     late _MemoryStore store;
     var now = DateTime(2026, 10, 20, 9);
 
-    final taste = TasteProfile.from(ListeningLog(), now: now);
+    var taste = TasteProfile.from(ListeningLog(), now: now);
 
     MadeForYouNotifier notifier() => MadeForYouNotifier(
           builder: MixBuilder(
             catalog: DeezerCatalog(httpClient: MockClient((req) async {
               deezerCalls++;
               if (deezerDown) throw http.ClientException('offline');
-              final track = {'id': 1, 'title': 'Hit', 'duration': 200, 'artist': {'id': 9, 'name': 'Star'}, 'album': {}};
-              return http.Response(jsonEncode({'data': [track]}), 200);
+              final tracks = [
+                for (var i = 1; i <= 10; i++)
+                  {'id': i, 'title': 'Hit $i', 'duration': 200, 'artist': {'id': 9, 'name': 'Star'}, 'album': {}},
+              ];
+              return http.Response(jsonEncode({'data': tracks}), 200);
             })),
             clock: () => now,
           ),
@@ -89,18 +92,53 @@ void main() {
       deezerDown = false;
       store = _MemoryStore();
       now = DateTime(2026, 10, 20, 9);
+      taste = TasteProfile.from(ListeningLog(), now: now);
+    });
+
+    const starterTitles = ['Pop Right Now', 'Hip-Hop Right Now', 'K-Pop & Asian Hits'];
+
+    test('nothing played yet: top hits plus a mix per genre chart', () async {
+      final mixes = notifier();
+      await mixes.refresh();
+      final titles = mixes.state.value!.map((p) => p.title).toList();
+      expect(titles.first, 'Top Hits Right Now');
+      expect(titles, containsAll(starterTitles));
+      expect(titles, hasLength(1 + MixBuilder.starterGenres.length));
+    });
+
+    test('a cache from before starter mixes gets them the same day', () async {
+      await store.write(MadeForYouNotifier.cacheKey, jsonEncode({'day': '2026-10-20', 'daily': [], 'top': null}));
+      final mixes = notifier();
+      await mixes.refresh();
+      expect(mixes.state.value!.map((p) => p.title), containsAll(starterTitles));
+      final calls = deezerCalls;
+
+      await notifier().refresh();
+      expect(deezerCalls, calls, reason: 'built once, then kept');
+    });
+
+    test('once there are plays, the genre charts make way', () async {
+      await notifier().refresh();
+      final log = ListeningLog();
+      for (var i = 0; i < 6; i++) {
+        log.add(_play('Song $i', DateTime(2026, 10, 19, 10 + i)));
+      }
+      taste = TasteProfile.from(log, now: now);
+      final mixes = notifier();
+      await mixes.refresh(force: true);
+      expect(mixes.state.value!.map((p) => p.title), isNot(contains('Pop Right Now')));
     });
 
     test('built once a day, then opened from what was kept', () async {
       final first = notifier();
       await first.refresh();
-      expect(first.state.value!.map((p) => p.title), ['Top Hits Right Now']);
+      expect(first.state.value!.first.title, 'Top Hits Right Now');
       final callsAfterFirst = deezerCalls;
 
       final second = notifier();
       await second.refresh();
       expect(deezerCalls, callsAfterFirst, reason: 'same day: no new requests');
-      expect(second.state.value!.single.title, 'Top Hits Right Now');
+      expect(second.state.value!.first.title, 'Top Hits Right Now');
 
       now = DateTime(2026, 10, 21, 9);
       await notifier().refresh();
@@ -113,7 +151,8 @@ void main() {
       now = DateTime(2026, 10, 21, 9);
       final offline = notifier();
       await offline.refresh();
-      expect(offline.state.value!.single.title, 'Top Hits Right Now');
+      expect(offline.state.value!.first.title, 'Top Hits Right Now');
+      expect(offline.state.value!.map((p) => p.title), contains('Pop Right Now'));
 
       deezerDown = false;
       final calls = deezerCalls;

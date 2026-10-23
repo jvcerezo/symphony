@@ -70,8 +70,10 @@ class DeezerCatalog {
   Future<List<Track>> artistRadio(int artistId, {int limit = 25}) async =>
       _tracks(await _get('/artist/$artistId/radio?limit=$limit'));
 
-  /// Most played songs on Deezer right now.
-  Future<List<Track>> chart({int limit = 50}) async => _tracks(await _get('/chart/0/tracks?limit=$limit'));
+  /// Most played songs on Deezer right now, overall or in one [genre]
+  /// (a Deezer genre id).
+  Future<List<Track>> chart({int genre = 0, int limit = 50}) async =>
+      _tracks(await _get('/chart/$genre/tracks?limit=$limit'));
 
   List<Track> _tracks(Object? body) => _data(body).map(trackFromJson).whereType<Track>().toList();
 
