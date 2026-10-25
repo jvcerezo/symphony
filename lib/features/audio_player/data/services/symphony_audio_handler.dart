@@ -396,12 +396,19 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
       //    the copy on this device, or move on when offline.
       if (_player.processingState == ProcessingState.buffering &&
           DateTime.now().difference(_lastPositionAdvanceTime) > _stallLimit) {
+        // Checked again after another [_stallLimit], not every tick.
+        _lastPositionAdvanceTime = DateTime.now();
         unawaited(_recoverPlayback(fromStall: true));
       }
     });
   }
 
   static const _stallLimit = Duration(seconds: 8);
+
+  /// Songs [_playOnFrom] passes over in a row before it stops. Without a
+  /// limit, a connection that fails every load kept autoplay adding songs
+  /// to fail on, running yt-dlp nonstop until Android killed the app.
+  static const _maxPassedOver = 8;
 
   Future<void> _handleTrackCompleted([String reason = '']) async {
     if (_isAutoSkipping || _loading || _queue.isEmpty) return;
@@ -490,7 +497,8 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
     final wrap = _queue.repeatMode == QueueRepeatMode.all;
     var token = _playRequestId;
     int? candidate = index;
-    for (var tries = 0; candidate != null && tries < _queue.length; tries++) {
+    var extended = false;
+    for (var tries = 0; candidate != null && tries < _queue.length && tries < _maxPassedOver; tries++) {
       final target = await _playableFrom(candidate, wrap: wrap);
       // The user chose something else meanwhile.
       if (token != _playRequestId) return false;
@@ -505,9 +513,13 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
         if (token + 1 != _playRequestId) return false;
         token = _playRequestId;
         developer.log('Passing over "${_queue.current?.title}": $e', name: 'AudioHandler');
-        // The last song failing carries on with autoplay, as finishing it would.
-        candidate = _indexAfter(target, wrap: wrap) ??
-            (await _extendQueue() && token == _playRequestId ? _indexAfter(target, wrap: wrap) : null);
+        // The last song failing carries on with autoplay, as finishing it
+        // would, but only once: songs that failed to load stop it.
+        candidate = _indexAfter(target, wrap: wrap);
+        if (candidate == null && !extended) {
+          extended = true;
+          if (await _extendQueue() && token == _playRequestId) candidate = _indexAfter(target, wrap: wrap);
+        }
       }
     }
     return token == _playRequestId;

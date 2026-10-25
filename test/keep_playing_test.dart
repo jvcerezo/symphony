@@ -76,6 +76,29 @@ void main() {
     expect(states.where((s) => s.processingState == AudioProcessingState.idle), isEmpty);
   });
 
+  test('songs that keep failing stop autoplay instead of looping forever', () async {
+    var made = 0;
+    var asked = 0;
+    handler.autoplay = (_, __) async {
+      asked++;
+      return [
+        for (var i = 0; i < 3; i++) song('f${(made++).toString().padLeft(10, '0')}'),
+      ];
+    };
+    // Every song autoplay finds fails to load, as on a dead connection.
+    final loads = player.loaded.length;
+    player.failing.addAll([for (var i = 0; i < 100; i++) _uri('f${i.toString().padLeft(10, '0')}')]);
+    player.failing.add(_uri('bbbbbbbbbbb'));
+    await handler.playQueue([_a, _b]);
+    await finish();
+    await pumpEventQueue();
+
+    expect(asked, lessThanOrEqualTo(2));
+    expect(player.loaded.length - loads, lessThan(12));
+    expect(player.playing, isFalse);
+    expect(states.where((s) => s.processingState == AudioProcessingState.idle), isEmpty);
+  });
+
   test('a song picked by the user that fails shows an error, not idle', () async {
     player.failing.add(_uri('bbbbbbbbbbb'));
     await expectLater(handler.playTrack(_b), throwsA(anything));
