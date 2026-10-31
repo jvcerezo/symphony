@@ -55,7 +55,22 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   /// leaves the state playing for the next one: reporting it stopped would end
   /// the Android playback service, which a backgrounded app can't restart, so
   /// the music (and its notification) would be gone.
-  bool _carryingOn = false;
+  ///
+  /// A count, not a flag: on a weak signal a broken stream can be picked up
+  /// while the queue is already moving on, and the first to finish must not
+  /// clear it for the other. That reported the music stopped mid-skip, and
+  /// Android then crashed the app for restarting playback from the background.
+  int _carryOnDepth = 0;
+  bool get _carryingOn => _carryOnDepth > 0;
+
+  Future<T> _carryOn<T>(Future<T> Function() body) async {
+    _carryOnDepth++;
+    try {
+      return await body();
+    } finally {
+      _carryOnDepth--;
+    }
+  }
 
   /// The last song tried failed to load: the player sits idle, shown as an error.
   bool _loadFailed = false;
@@ -89,6 +104,8 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
     PlaybackCache? playbackCache,
     PlayQueue? queue,
     NetworkStatus? network,
+    this.signalWait = const Duration(seconds: 45),
+    this.signalPoll = const Duration(seconds: 5),
   })  : // Interruptions are handled here; just_audio's own handling would
         // pause and resume the player a second time.
         _player = player ?? AudioPlayer(handleInterruptions: false),
@@ -102,6 +119,12 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
     _broadcastPlaybackState();
     _listenToCompletion();
   }
+
+  /// A song whose stream broke with no connection waits this long for the
+  /// signal to come back (a tunnel, a lift) before moving on to one on the
+  /// device, checking every [signalPoll].
+  final Duration signalWait;
+  final Duration signalPoll;
 
   ValueStream<int> get currentIndexStream => _currentIndexSubject.stream;
   ValueStream<List<Track>> get playlistQueueStream => _queueSubject.stream;
@@ -333,7 +356,9 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   /// mid-song. Failures while a song loads are handled by that load.
   void _onPlayerError(Object error, [StackTrace? stackTrace]) {
     developer.log('Player error: $error', name: 'AudioHandler');
-    if (_loading || _recovering || _queue.isEmpty) return;
+    // Already moving on by itself: that is the recovery. A second one would
+    // run beside it, each loading songs over the other.
+    if (_loading || _recovering || _carryingOn || _queue.isEmpty) return;
     unawaited(_recoverPlayback());
   }
 
@@ -482,13 +507,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   /// can't play (offline and not on this device, or no match found) is
   /// passed over instead of stopping everything.
   Future<void> _playOnFrom(int index) async {
-    final bool stop;
-    _carryingOn = true;
-    try {
-      stop = await _tryPlayOnFrom(index);
-    } finally {
-      _carryingOn = false;
-    }
+    final stop = await _carryOn(() => _tryPlayOnFrom(index));
     stop ? await _stopAtEnd() : _updatePlaybackState();
   }
 
@@ -572,6 +591,9 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
     try {
       if (identical(_recoveredTrack, track)) {
         if (fromStall && await _network.isOnline()) return;
+        // Still buffering it: give a dropped signal time to come back.
+        if (fromStall && await _waitForSignal(requestId)) return;
+        if (requestId != _playRequestId) return;
         developer.log('"${track.title}" broke again; moving on', name: 'AudioHandler');
         _moveOn();
         return;
@@ -595,18 +617,22 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
         return;
       }
 
-      if (await _network.isOnline()) {
+      var online = await _network.isOnline();
+      if (!online) {
+        // Most drops outside are short: wait for the signal before giving
+        // up on the song.
+        developer.log('Offline mid-song in "${track.title}"; waiting for the signal', name: 'AudioHandler');
+        online = await _waitForSignal(requestId);
+        // The user picked another song or paused meanwhile.
+        if (requestId != _playRequestId || !_player.playing) return;
+      }
+      if (online) {
         if (fromStall) return;
         _recoveredTrack = track;
         // The link may have expired: fetch a new one and resume there.
         _streamResolver.forgetTrack(track);
         _recovering = false;
-        _carryingOn = true;
-        try {
-          await _loadAndPlayTrack(track, startAt: position);
-        } finally {
-          _carryingOn = false;
-        }
+        await _carryOn(() => _loadAndPlayTrack(track, startAt: position));
         return;
       }
 
@@ -625,6 +651,18 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
     }
   }
 
+  /// Waits up to [signalWait] for a connection. False when none came, or
+  /// another song was picked meanwhile.
+  Future<bool> _waitForSignal(int requestId) async {
+    final giveUpAt = DateTime.now().add(signalWait);
+    while (DateTime.now().isBefore(giveUpAt)) {
+      await Future<void>.delayed(signalPoll);
+      if (requestId != _playRequestId) return false;
+      if (await _network.isOnline()) return true;
+    }
+    return false;
+  }
+
   /// Leaves a song that can't go on for the next one that can play.
   void _moveOn() {
     if (_remote != null) {
@@ -638,13 +676,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   /// The last song can't go on: autoplay's songs, else stop.
   Future<void> _carryOnPastEnd() async {
     final token = _playRequestId;
-    final bool extended;
-    _carryingOn = true;
-    try {
-      extended = await _extendQueue();
-    } finally {
-      _carryingOn = false;
-    }
+    final extended = await _carryOn(_extendQueue);
     if (token != _playRequestId) return;
     final next = extended ? _indexAfter(currentIndex, wrap: false) : null;
     await (next == null ? _stopAtEnd() : _playOnFrom(next));

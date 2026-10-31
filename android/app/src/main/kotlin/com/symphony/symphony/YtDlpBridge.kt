@@ -1,6 +1,7 @@
 package com.symphony.symphony
 
 import android.content.Context
+import android.net.ConnectivityManager
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -16,7 +17,6 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.ReentrantReadWriteLock
-import kotlin.concurrent.read
 import kotlin.concurrent.write
 
 /**
@@ -34,6 +34,12 @@ object YtDlpBridge {
     private const val KEY_LAST_UPDATE = "last_update_ms"
     private const val UPDATE_INTERVAL_MS = 24L * 60 * 60 * 1000
     private const val EXTRACT_TIMEOUT_S = 90L
+    /**
+     * How long an extract waits for a running update before failing (the
+     * Dart side then tries its other extractor). An update on a weak signal
+     * could otherwise hold every song lookup until it finished.
+     */
+    private const val UPDATE_WAIT_S = 20L
     private const val FORMAT = "ba[ext=m4a]/ba[acodec^=mp4a]/ba"
     private val VIDEO_ID = Regex("^[A-Za-z0-9_-]{11}$")
 
@@ -150,7 +156,19 @@ object YtDlpBridge {
         return created
     }
 
-    private fun runExtract(key: String, url: String, extraOptions: List<String>): Map<String, Any?> = binaryLock.read {
+    private fun runExtract(key: String, url: String, extraOptions: List<String>): Map<String, Any?> {
+        val lock = binaryLock.readLock()
+        if (!lock.tryLock(UPDATE_WAIT_S, TimeUnit.SECONDS)) {
+            throw IllegalStateException("yt-dlp is still updating")
+        }
+        try {
+            return runExtractLocked(key, url, extraOptions)
+        } finally {
+            lock.unlock()
+        }
+    }
+
+    private fun runExtractLocked(key: String, url: String, extraOptions: List<String>): Map<String, Any?> {
         val processId = "extract-${key.hashCode()}-${System.nanoTime()}"
         val request = YoutubeDLRequest(url).apply {
             addOption("-f", FORMAT)
@@ -180,7 +198,7 @@ object YtDlpBridge {
             kill.cancel(false)
         }
         Log.i(TAG, "extract $key took ${System.currentTimeMillis() - started} ms")
-        parseDumpJson(response.out)
+        return parseDumpJson(response.out)
     }
 
     /** Maps yt-dlp's `--dump-json` output for the selected format to the channel reply. */
@@ -236,6 +254,10 @@ object YtDlpBridge {
     private fun maybeDailyUpdate(context: Context) {
         val last = prefs(context).getLong(KEY_LAST_UPDATE, 0L)
         if (System.currentTimeMillis() - last < UPDATE_INTERVAL_MS) return
+        // Wi-Fi only: on mobile data the signal may be weak, and lookups
+        // wait while yt-dlp is replaced. It updates on the next Wi-Fi start.
+        val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        if (connectivity.activeNetwork == null || connectivity.isActiveNetworkMetered) return
         update().whenComplete { _, err ->
             if (err != null) Log.w(TAG, "background yt-dlp update failed: ${unwrap(err).message}")
         }
