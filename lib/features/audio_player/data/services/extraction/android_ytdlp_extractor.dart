@@ -17,7 +17,7 @@ import 'audio_extractor.dart';
 /// thread at app start (`isAvailable` waits for that), coalesces concurrent
 /// `extract` calls for the same id, kills a yt-dlp run after 90 s, and
 /// updates yt-dlp from the stable channel at most once a day by itself.
-class AndroidYtDlpExtractor implements AudioExtractor {
+class AndroidYtDlpExtractor implements BatchAudioExtractor {
   @visibleForTesting
   static const channel = MethodChannel('com.symphony.symphony/ytdlp');
 
@@ -47,6 +47,28 @@ class AndroidYtDlpExtractor implements AudioExtractor {
       return _toExtracted(raw, videoId, fallbackId: videoId);
     } on PlatformException catch (e) {
       throw AudioStreamResolutionException('yt-dlp (android) failed for $videoId', e.message);
+    } on MissingPluginException catch (e) {
+      throw AudioStreamResolutionException('yt-dlp (android) is not available', e.message);
+    }
+  }
+
+  /// `extractMany`: the videos found, by id, from one yt-dlp run.
+  @override
+  Future<Map<String, ExtractedAudio>> extractMany(List<String> videoIds) async {
+    try {
+      final raw = await channel.invokeMapMethod<String, dynamic>('extractMany', {'videoIds': videoIds});
+      final found = <String, ExtractedAudio>{};
+      raw?.forEach((id, info) {
+        if (info is! Map) return;
+        try {
+          found[id] = _toExtracted(Map<String, dynamic>.from(info), id, fallbackId: id);
+        } on AudioStreamResolutionException {
+          // No usable link for this one: it is resolved on its own later.
+        }
+      });
+      return found;
+    } on PlatformException catch (e) {
+      throw AudioStreamResolutionException('yt-dlp (android) failed for ${videoIds.length} videos', e.message);
     } on MissingPluginException catch (e) {
       throw AudioStreamResolutionException('yt-dlp (android) is not available', e.message);
     }

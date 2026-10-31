@@ -40,6 +40,10 @@ object YtDlpBridge {
      * could otherwise hold every song lookup until it finished.
      */
     private const val UPDATE_WAIT_S = 20L
+    /** Most videos one [extractMany] run takes, and its time limit. */
+    private const val MAX_BATCH = 8
+    private const val BATCH_BASE_TIMEOUT_S = 30L
+    private const val BATCH_PER_VIDEO_TIMEOUT_S = 15L
     private const val FORMAT = "ba[ext=m4a]/ba[acodec^=mp4a]/ba"
     private val VIDEO_ID = Regex("^[A-Za-z0-9_-]{11}$")
 
@@ -98,6 +102,16 @@ object YtDlpBridge {
                 extract(videoId, "https://www.youtube.com/watch?v=$videoId", listOf("--no-playlist"))
                     .whenComplete { info, err -> replyExtract(result, info, err) }
             }
+            "extractMany" -> {
+                // Several videos in one yt-dlp run: Python starts once, not
+                // once per song. Videos that fail are left out of the reply.
+                val ids = call.argument<List<String>>("videoIds")?.distinct()
+                if (ids.isNullOrEmpty() || ids.size > MAX_BATCH || !ids.all { VIDEO_ID.matches(it) }) {
+                    result.error("bad_args", "extractMany needs 1-$MAX_BATCH 11-character videoIds, got $ids", null)
+                    return
+                }
+                extractMany(ids).whenComplete { infos, err -> replyExtract(result, infos, err) }
+            }
             "searchSong" -> {
                 // YouTube Music "songs" search: canonical album audio whose length
                 // matches streaming services; extracts the top result in one run.
@@ -122,6 +136,38 @@ object YtDlpBridge {
             }
             else -> result.notImplemented()
         }
+    }
+
+    private fun extractMany(ids: List<String>): CompletableFuture<Map<String, Any?>> {
+        val future = CompletableFuture<Map<String, Any?>>()
+        initFuture!!.thenAcceptAsync({ ok ->
+            val key = "batch:${ids.size}"
+            try {
+                if (ok != true) throw IllegalStateException("youtubedl-android failed to initialise")
+                val out = runYtDlp(
+                    key,
+                    ids.map { "https://www.youtube.com/watch?v=$it" },
+                    listOf("--no-playlist", "--ignore-errors"),
+                    BATCH_BASE_TIMEOUT_S + BATCH_PER_VIDEO_TIMEOUT_S * ids.size,
+                )
+                val found = mutableMapOf<String, Any?>()
+                for (line in out.lineSequence().map { it.trim() }.filter { it.startsWith("{") }) {
+                    try {
+                        val info = parseInfo(JSONObject(line))
+                        val id = info["id"] as String?
+                        if (id != null && id in ids) found[id] = info
+                    } catch (e: Exception) {
+                        Log.w(TAG, "$key: skipped an unreadable result: ${e.message}")
+                    }
+                }
+                Log.i(TAG, "$key: found ${found.size} of ${ids.size}")
+                future.complete(found)
+            } catch (e: Throwable) {
+                Log.w(TAG, "$key failed: ${e.message}")
+                future.completeExceptionally(e)
+            }
+        }, workers)
+        return future
     }
 
     private fun replyExtract(result: MethodChannel.Result, info: Map<String, Any?>?, err: Throwable?) {
@@ -156,21 +202,25 @@ object YtDlpBridge {
         return created
     }
 
-    private fun runExtract(key: String, url: String, extraOptions: List<String>): Map<String, Any?> {
+    private fun runExtract(key: String, url: String, extraOptions: List<String>): Map<String, Any?> =
+        parseDumpJson(runYtDlp(key, listOf(url), extraOptions, EXTRACT_TIMEOUT_S))
+
+    /** One yt-dlp run printing `--dump-json` for [urls]; its standard output. */
+    private fun runYtDlp(key: String, urls: List<String>, extraOptions: List<String>, timeoutS: Long): String {
         val lock = binaryLock.readLock()
         if (!lock.tryLock(UPDATE_WAIT_S, TimeUnit.SECONDS)) {
             throw IllegalStateException("yt-dlp is still updating")
         }
         try {
-            return runExtractLocked(key, url, extraOptions)
+            return runYtDlpLocked(key, urls, extraOptions, timeoutS)
         } finally {
             lock.unlock()
         }
     }
 
-    private fun runExtractLocked(key: String, url: String, extraOptions: List<String>): Map<String, Any?> {
+    private fun runYtDlpLocked(key: String, urls: List<String>, extraOptions: List<String>, timeoutS: Long): String {
         val processId = "extract-${key.hashCode()}-${System.nanoTime()}"
-        val request = YoutubeDLRequest(url).apply {
+        val request = YoutubeDLRequest(urls).apply {
             addOption("-f", FORMAT)
             addOption("--dump-json")
             addOption("--no-warnings")
@@ -188,9 +238,9 @@ object YtDlpBridge {
             }
         }
         val kill = watchdog.schedule({
-            Log.w(TAG, "extract $key exceeded ${EXTRACT_TIMEOUT_S}s; killing yt-dlp")
+            Log.w(TAG, "extract $key exceeded ${timeoutS}s; killing yt-dlp")
             YoutubeDL.getInstance().destroyProcessById(processId)
-        }, EXTRACT_TIMEOUT_S, TimeUnit.SECONDS)
+        }, timeoutS, TimeUnit.SECONDS)
         val started = System.currentTimeMillis()
         val response = try {
             YoutubeDL.getInstance().execute(request, processId)
@@ -198,14 +248,18 @@ object YtDlpBridge {
             kill.cancel(false)
         }
         Log.i(TAG, "extract $key took ${System.currentTimeMillis() - started} ms")
-        return parseDumpJson(response.out)
+        return response.out
     }
 
     /** Maps yt-dlp's `--dump-json` output for the selected format to the channel reply. */
     private fun parseDumpJson(out: String): Map<String, Any?> {
         val line = out.lineSequence().map { it.trim() }.firstOrNull { it.startsWith("{") }
             ?: throw IllegalStateException("yt-dlp printed no JSON")
-        val json = JSONObject(line)
+        return parseInfo(JSONObject(line))
+    }
+
+    /** One video's `--dump-json` object as the channel reply. */
+    private fun parseInfo(json: JSONObject): Map<String, Any?> {
         // A single-format pick puts the URL at top level; a merged pick would
         // list it under requested_formats, which "ba" never produces.
         val url = json.optString("url").takeIf { it.isNotEmpty() }

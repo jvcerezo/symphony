@@ -56,7 +56,15 @@ abstract class AudioExtractor {
 }
 
 /// Tries each extractor in order and returns the first success.
-class ChainedAudioExtractor implements AudioExtractor {
+/// An extractor that finds several videos' audio in one go, which costs
+/// about as much as one: on Android each yt-dlp run starts Python.
+abstract class BatchAudioExtractor implements AudioExtractor {
+  /// Audio for the [videoIds] it could find, by video id. Videos that
+  /// failed are left out.
+  Future<Map<String, ExtractedAudio>> extractMany(List<String> videoIds);
+}
+
+class ChainedAudioExtractor implements BatchAudioExtractor {
   final List<AudioExtractor> _extractors;
 
   ChainedAudioExtractor(this._extractors);
@@ -87,6 +95,17 @@ class ChainedAudioExtractor implements AudioExtractor {
       'No extractor could produce audio for $videoId',
       errors.isEmpty ? 'no extractor available' : errors.join('; '),
     );
+  }
+
+  /// The first available extractor's batch; none (empty) when that one
+  /// can't batch, so each song goes through [extract] as before.
+  @override
+  Future<Map<String, ExtractedAudio>> extractMany(List<String> videoIds) async {
+    for (final e in _extractors) {
+      if (!await e.isAvailable()) continue;
+      return e is BatchAudioExtractor ? e.extractMany(videoIds) : const {};
+    }
+    return const {};
   }
 
   @override

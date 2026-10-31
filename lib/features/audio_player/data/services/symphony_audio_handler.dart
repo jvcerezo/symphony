@@ -201,6 +201,10 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   }
 
   /// Helper to pre-resolve the tracks that play next (shuffle/repeat aware).
+  /// Songs ahead whose expired links are renewed together, in one yt-dlp
+  /// run instead of one each (a link lasts about 6 hours).
+  static const _linksAhead = 6;
+
   void _preloadUpcomingTracks() {
     if (_queue.isEmpty) return;
     final ahead = _usesPlaybackCache ? 1 : 2;
@@ -217,13 +221,14 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
           // On mobile data the next song isn't downloaded ahead, only its
           // link found: it would cost data the user may never play.
           if (await _network.isMetered()) {
-            _streamResolver.prefetch(upcoming, replace: true);
+            _streamResolver.prefetch(upcoming, replace: true, linksAhead: _queue.upcoming(_linksAhead));
             return;
           }
           for (final t in upcoming) {
             unawaited(_warmTrack(t));
           }
-          _streamResolver.prefetch(later, replace: true);
+          _streamResolver.prefetch(later,
+              replace: true, linksAhead: _queue.upcoming(_linksAhead).skip(ahead));
         }());
       } else {
         _streamResolver.preloadTracks(upcoming, count: 2);
