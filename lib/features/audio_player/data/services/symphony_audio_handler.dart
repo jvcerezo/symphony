@@ -104,6 +104,8 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
     PlaybackCache? playbackCache,
     PlayQueue? queue,
     NetworkStatus? network,
+    this.signalWait = const Duration(seconds: 45),
+    this.signalPoll = const Duration(seconds: 5),
   })  : // Interruptions are handled here; just_audio's own handling would
         // pause and resume the player a second time.
         _player = player ?? AudioPlayer(handleInterruptions: false),
@@ -117,6 +119,12 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
     _broadcastPlaybackState();
     _listenToCompletion();
   }
+
+  /// A song whose stream broke with no connection waits this long for the
+  /// signal to come back (a tunnel, a lift) before moving on to one on the
+  /// device, checking every [signalPoll].
+  final Duration signalWait;
+  final Duration signalPoll;
 
   ValueStream<int> get currentIndexStream => _currentIndexSubject.stream;
   ValueStream<List<Track>> get playlistQueueStream => _queueSubject.stream;
@@ -583,6 +591,9 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
     try {
       if (identical(_recoveredTrack, track)) {
         if (fromStall && await _network.isOnline()) return;
+        // Still buffering it: give a dropped signal time to come back.
+        if (fromStall && await _waitForSignal(requestId)) return;
+        if (requestId != _playRequestId) return;
         developer.log('"${track.title}" broke again; moving on', name: 'AudioHandler');
         _moveOn();
         return;
@@ -606,7 +617,16 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
         return;
       }
 
-      if (await _network.isOnline()) {
+      var online = await _network.isOnline();
+      if (!online) {
+        // Most drops outside are short: wait for the signal before giving
+        // up on the song.
+        developer.log('Offline mid-song in "${track.title}"; waiting for the signal', name: 'AudioHandler');
+        online = await _waitForSignal(requestId);
+        // The user picked another song or paused meanwhile.
+        if (requestId != _playRequestId || !_player.playing) return;
+      }
+      if (online) {
         if (fromStall) return;
         _recoveredTrack = track;
         // The link may have expired: fetch a new one and resume there.
@@ -629,6 +649,18 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
     } finally {
       _recovering = false;
     }
+  }
+
+  /// Waits up to [signalWait] for a connection. False when none came, or
+  /// another song was picked meanwhile.
+  Future<bool> _waitForSignal(int requestId) async {
+    final giveUpAt = DateTime.now().add(signalWait);
+    while (DateTime.now().isBefore(giveUpAt)) {
+      await Future<void>.delayed(signalPoll);
+      if (requestId != _playRequestId) return false;
+      if (await _network.isOnline()) return true;
+    }
+    return false;
   }
 
   /// Leaves a song that can't go on for the next one that can play.

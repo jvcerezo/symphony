@@ -191,6 +191,8 @@ void main() {
       playbackCache: PlaybackCache(store: cache, httpClient: MockClient((_) async => http.Response('', 404))),
       notificationPermission: NotificationPermissionService(isAndroid: () => false),
       network: NetworkStatus(probe: () async => online, maxAge: Duration.zero),
+      signalWait: const Duration(milliseconds: 300),
+      signalPoll: const Duration(milliseconds: 20),
     );
   });
 
@@ -287,6 +289,22 @@ void main() {
       await until(() => player.current == Uri.file('/data/c.m4a'));
 
       expect(handler.currentTrack, same(_c));
+    });
+
+    test('offline for a moment, it waits for the signal and resumes there', () async {
+      downloads.put(_c, 'c.m4a');
+      await handler.playQueue([_a, _b, _c]);
+      online = false;
+
+      player.breakStream(at: const Duration(seconds: 30));
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(handler.currentTrack, same(_a));
+      online = true;
+      await until(() => player.loads.length == 2);
+
+      expect(player.loads.last.uri, Uri.parse('https://media.example/aaaaaaaaaaa'));
+      expect(player.loads.last.at, const Duration(seconds: 30));
+      expect(handler.currentTrack, same(_a));
     });
 
     test('online, it fetches a new link and resumes there', () async {
