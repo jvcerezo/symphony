@@ -201,6 +201,10 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   }
 
   /// Helper to pre-resolve the tracks that play next (shuffle/repeat aware).
+  /// Songs ahead whose expired links are renewed together, in one yt-dlp
+  /// run instead of one each (a link lasts about 6 hours).
+  static const _linksAhead = 6;
+
   void _preloadUpcomingTracks() {
     if (_queue.isEmpty) return;
     final ahead = _usesPlaybackCache ? 1 : 2;
@@ -213,17 +217,18 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
         unawaited(() async {
           // Offline every lookup would fail, and a failed one forgets the
           // song's remembered match.
-          if (!await _network.isOnline()) return;
+          if (!await _network.isLikelyOnline()) return;
           // On mobile data the next song isn't downloaded ahead, only its
           // link found: it would cost data the user may never play.
           if (await _network.isMetered()) {
-            _streamResolver.prefetch(upcoming, replace: true);
+            _streamResolver.prefetch(upcoming, replace: true, linksAhead: _queue.upcoming(_linksAhead));
             return;
           }
           for (final t in upcoming) {
             unawaited(_warmTrack(t));
           }
-          _streamResolver.prefetch(later, replace: true);
+          _streamResolver.prefetch(later,
+              replace: true, linksAhead: _queue.upcoming(_linksAhead).skip(ahead));
         }());
       } else {
         _streamResolver.preloadTracks(upcoming, count: 2);
@@ -552,7 +557,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
   /// [start], or offline the first song from there on (backwards with a
   /// negative [step]) that is on this device. Null when none is.
   Future<int?> _playableFrom(int start, {required bool wrap, int step = 1}) async {
-    if (!_usesPlaybackCache || await _network.isOnline()) return start;
+    if (!_usesPlaybackCache || await _network.isLikelyOnline()) return start;
     final tracks = _queue.tracks;
     final n = tracks.length;
     var i = start;
@@ -852,7 +857,7 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
         cached = null;
       }
       final onDevice = download ?? cached;
-      if (onDevice == null && _usesPlaybackCache && !await _network.isOnline()) {
+      if (onDevice == null && _usesPlaybackCache && !await _network.isLikelyOnline()) {
         throw AudioStreamResolutionException('"${track.title}" isn\'t downloaded and there\'s no internet connection');
       }
       final streamInfo = onDevice ?? await _streamResolver.resolveBestAudioStream(track);
@@ -1009,6 +1014,8 @@ class SymphonyAudioHandler extends BaseAudioHandler with SeekHandler {
       if (requestId != _playRequestId) return; // Ignore errors from superseded requests
       _loading = false;
       _loadFailed = true;
+      // Maybe the connection is gone: the next check asks for real.
+      _network.forget();
       developer.log('Playback start failure', error: e, stackTrace: st, name: 'AudioHandler');
       // Moving on by itself: stay "playing" for the next song (see _carryingOn).
       // Otherwise an error, not idle: idle ends the Android playback service.

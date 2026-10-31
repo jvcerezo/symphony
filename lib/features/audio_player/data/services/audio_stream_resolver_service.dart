@@ -33,6 +33,13 @@ class AudioStreamResolverService {
   bool _prefetchRunning = false;
   static const _maxPrefetchQueue = 12;
 
+  /// Songs ahead whose links [prefetch] renews together (see [_renewLinks]).
+  List<Track> _linksAhead = const [];
+
+  /// Fewest songs worth a shared yt-dlp run; fewer wait for more to join.
+  static const _minBatch = 3;
+  static const _maxBatch = 8;
+
   factory AudioStreamResolverService({
     YoutubeExplode? ytClient,
     AudioExtractor? extractor,
@@ -123,8 +130,12 @@ class AudioStreamResolverService {
   /// one at a time, pausing whenever the user is waiting on a resolve, and
   /// skipping tracks that already have a local file or a fresh stream link.
   /// With [replace], anything still queued is dropped first.
-  void prefetch(Iterable<Track> tracks, {bool replace = false}) {
+  ///
+  /// [linksAhead]: songs further on whose links are renewed first, together
+  /// in one yt-dlp run (see [_renewLinks]).
+  void prefetch(Iterable<Track> tracks, {bool replace = false, Iterable<Track> linksAhead = const []}) {
     if (_isWeb) return;
+    if (linksAhead.isNotEmpty) _linksAhead = linksAhead.take(_maxBatch).toList();
     if (replace) _prefetchQueue.clear();
     for (final t in tracks) {
       final key = _normKey(t);
@@ -139,9 +150,15 @@ class AudioStreamResolverService {
   Future<void> _runPrefetch() async {
     _prefetchRunning = true;
     try {
-      while (_prefetchQueue.isNotEmpty) {
+      while (_prefetchQueue.isNotEmpty || _linksAhead.isNotEmpty) {
         while (_foregroundResolves > 0) {
           await Future<void>.delayed(const Duration(milliseconds: 250));
+        }
+        if (_linksAhead.isNotEmpty) {
+          final ahead = _linksAhead;
+          _linksAhead = const [];
+          await _renewLinks(ahead);
+          continue;
         }
         final track = _prefetchQueue.removeAt(0);
         if (await hasInstantSource(track)) continue;
@@ -153,6 +170,47 @@ class AudioStreamResolverService {
       }
     } finally {
       _prefetchRunning = false;
+    }
+  }
+
+  /// Renews the stream links of the songs in [tracks] whose video is known
+  /// but whose link is gone (they last about 6 hours), in one yt-dlp run:
+  /// each run starts Python on the phone, a few seconds and some heat, so a
+  /// playlist played again the next day needed one per song.
+  ///
+  /// Waits until at least [_minBatch] songs need it; the next song alone is
+  /// still prepared by the per-song prefetch. Never searches.
+  Future<void> _renewLinks(List<Track> tracks) async {
+    final extractor = _extractor;
+    if (extractor is! BatchAudioExtractor) return;
+    final wanted = <String, ({Track track, String key, MatchSource source})>{};
+    for (final t in tracks) {
+      if (await hasInstantSource(t)) continue;
+      final key = _normKey(t);
+      final MatchSource source;
+      final String videoId;
+      if (t.id.startsWith('yt_')) {
+        videoId = t.id.substring(3);
+        source = MatchSource.videoId;
+      } else {
+        final remembered = await _matchIndex.lookup(key);
+        if (remembered == null || !remembered.isTrusted) continue;
+        videoId = remembered.videoId;
+        source = remembered.source ?? MatchSource.scoredSearch;
+      }
+      wanted.putIfAbsent(videoId, () => (track: t, key: key, source: source));
+    }
+    if (wanted.length < _minBatch) return;
+    try {
+      final found = await extractor.extractMany(wanted.keys.toList());
+      for (final MapEntry(key: videoId, value: audio) in found.entries) {
+        final w = wanted[videoId];
+        if (w == null) continue;
+        await _rememberResolved(w.key, _toResolved(audio, videoId, fallbackDuration: w.track.expectedDuration), w.source);
+      }
+      developer.log('Renewed ${found.length} of ${wanted.length} links in one run', name: 'AudioStreamResolver');
+    } catch (e) {
+      developer.log('Renewing ${wanted.length} links failed: $e', name: 'AudioStreamResolver');
     }
   }
 

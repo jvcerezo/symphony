@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'network_status_stub.dart' if (dart.library.io) 'network_status_io.dart' as impl;
 
 /// Whether this device can reach the internet right now, answered within a
@@ -10,6 +12,7 @@ class NetworkStatus {
     Future<bool> Function()? probe,
     Future<bool> Function()? meteredProbe,
     this.maxAge = const Duration(seconds: 10),
+    this.trustOnlineFor = const Duration(minutes: 2),
   })  : _probe = probe ?? impl.canReachInternet,
         _meteredProbe = meteredProbe ?? impl.isMeteredConnection;
 
@@ -23,9 +26,35 @@ class NetworkStatus {
   Future<bool> isMetered() => _meteredProbe().catchError((Object _) => false);
   final Duration maxAge;
 
+  /// How long a check that found the internet lets [isLikelyOnline] answer
+  /// at once, without waiting on another one.
+  final Duration trustOnlineFor;
+
   bool? _last;
   DateTime? _checkedAt;
   Future<bool>? _inFlight;
+
+  /// Like [isOnline], but answers at once when a check found the internet in
+  /// the last [trustOnlineFor], checking again in the background. For
+  /// starting a song: waiting on a connection to YouTube before every lookup
+  /// added a round trip (seconds, on a weak signal) to each one. A lookup
+  /// that fails offline is handled like any failure, and [forget] makes the
+  /// next answer a real check.
+  Future<bool> isLikelyOnline() {
+    final checkedAt = _checkedAt;
+    if (_last == true && checkedAt != null && DateTime.now().difference(checkedAt) < trustOnlineFor) {
+      if (DateTime.now().difference(checkedAt) >= maxAge) unawaited(isOnline());
+      return Future.value(true);
+    }
+    return isOnline();
+  }
+
+  /// Drops the last answer, e.g. after a lookup failed: the next question
+  /// checks again.
+  void forget() {
+    _last = null;
+    _checkedAt = null;
+  }
 
   Future<bool> isOnline() {
     final last = _last;
