@@ -45,6 +45,9 @@ class FakePlayer implements AudioPlayer {
     _events.add(PlaybackEvent(bufferedPosition: _buffered, updatePosition: position));
   }
 
+  /// The connection drops: the player gives up on its source.
+  void dropConnection() => _events.addError(PlayerException(0, 'Source error', 0));
+
   /// The song plays to its end.
   void finishSong() {
     _position = const Duration(seconds: 200);

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:symphony/features/audio_player/data/services/symphony_audio_handler.dart';
@@ -61,6 +63,29 @@ void main() {
     await finish();
 
     expect(asked.single.id, _b.id);
+    expect(handler.currentTrack?.id, _c.id);
+    expect(player.playing, isTrue);
+    expectNeverStopped();
+  });
+
+  test('the connection dropping while it looks for the next song never reports stopped', () async {
+    // Autoplay is slow, as on a weak signal; the player reports the dropped
+    // connection meanwhile. That once started a second "move on" that
+    // cleared the first one's "still playing", so Android was told the music
+    // stopped, then started again from the background, which crashes the app.
+    final more = Completer<List<Track>>();
+    handler.autoplay = (_, __) => more.future;
+    player.failing.add(_uri('bbbbbbbbbbb'));
+    await handler.playQueue([_a, _b]);
+    await finish();
+
+    player.dropConnection();
+    await pumpEventQueue();
+    player.reportBuffered(const Duration(seconds: 1));
+    await pumpEventQueue();
+    more.complete([_c]);
+    await pumpEventQueue();
+
     expect(handler.currentTrack?.id, _c.id);
     expect(player.playing, isTrue);
     expectNeverStopped();
